@@ -18,21 +18,205 @@ generator client {
   output   = "../app/generated/prisma"
 }
 
+// datasource db {
+//   provider = "postgresql"
+// }
+
+// schema.prisma
+// generator client {
+//   provider = "prisma-client-js"
+// }
+
 datasource db {
   provider = "postgresql"
+  // url      = env("DATABASE_URL")
 }
 
-model User { 
-  id    Int     @id @default(autoincrement()) 
-  email String  @unique
-  name  String?
-  posts Post[]
-} 
-model Post { 
-  id        Int     @id @default(autoincrement()) 
-  title     String
-  content   String?
-  published Boolean @default(false) 
-  authorId  Int
-  author    User    @relation(fields: [authorId], references: [id]) 
-} 
+// =====================
+// Core Entities
+// =====================
+
+model User {
+  id        Int        @id @default(autoincrement())
+  name      String
+  email     String     @unique
+  password  String
+  role      Role
+  status    UserStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  // Relations
+
+  // only if the user is a player
+  players   Player[]
+  auditLogs AuditLog[]
+}
+
+model Player {
+  id           Int          @id @default(autoincrement())
+  name         String
+  jerseyNumber Int
+  position     String
+  status       PlayerStatus @default(ACTIVE)
+
+  team     Team   @relation(fields: [teamId], references: [id])
+  teamId   Int
+  season   Season @relation(fields: [seasonId], references: [id])
+  seasonId Int
+  user     User?  @relation(fields: [userId], references: [id])
+  userId   Int? // optional if linked to a user account
+
+  matchParticipations MatchParticipation[]
+  matchEvents         MatchEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([teamId, seasonId, jerseyNumber]) // jersey numbers unique per team per season
+}
+
+model Team {
+  id       Int        @id @default(autoincrement())
+  name     String
+  coach    String?
+  season   Season     @relation(fields: [seasonId], references: [id])
+  seasonId Int
+  league   String
+  status   TeamStatus @default(ACTIVE)
+
+  players     Player[]
+  homeMatches Match[]  @relation("HomeTeam")
+  awayMatches Match[]  @relation("AwayTeam")
+
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  matchParticipations MatchParticipation[]
+
+  @@unique([name, seasonId]) // prevent duplicate team names in same season
+}
+
+model Season {
+  id        Int          @id @default(autoincrement())
+  year      Int
+  startDate DateTime
+  endDate   DateTime
+  status    SeasonStatus @default(SCHEDULED)
+
+  teams     Team[]
+  matches   Match[]
+  players   Player[] // convenience relation
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Match {
+  id     Int         @id @default(autoincrement())
+  date   DateTime
+  time   DateTime
+  venue  String
+  status MatchStatus @default(SCHEDULED)
+
+  homeTeam   Team   @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  homeTeamId Int
+  awayTeam   Team   @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  awayTeamId Int
+  season     Season @relation(fields: [seasonId], references: [id])
+  seasonId   Int
+
+  events         MatchEvent[]
+  participations MatchParticipation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // @@check([homeTeamId != awayTeamId], name: "different_teams") // prevent match with same team
+}
+
+model MatchEvent {
+  id        Int       @id @default(autoincrement())
+  match     Match     @relation(fields: [matchId], references: [id])
+  matchId   Int
+  player    Player?   @relation(fields: [playerId], references: [id])
+  playerId  Int?
+  eventType EventType
+  eventTime DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MatchParticipation {
+  id       Int    @id @default(autoincrement())
+  match    Match  @relation(fields: [matchId], references: [id])
+  matchId  Int
+  player   Player @relation(fields: [playerId], references: [id])
+  playerId Int
+  team     Team   @relation(fields: [teamId], references: [id])
+  teamId   Int
+
+  @@unique([matchId, playerId]) // player can only participate once per match
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  user       User     @relation(fields: [userId], references: [id])
+  userId     Int
+  actionType String
+  timestamp  DateTime @default(now())
+  details    String
+}
+
+// =====================
+// Enums for Validation
+// =====================
+
+enum Role {
+  SUPER_ADMIN
+  ORGANIZATION_ADMIN
+  LEAGUE_ADMIN
+  CLUB_ADMIN
+  MATCH_EVENT_ADMIN
+  FAN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum PlayerStatus {
+  ACTIVE
+  INACTIVE
+  INJURED
+  SUSPENDED
+}
+
+enum TeamStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum SeasonStatus {
+  SCHEDULED
+  ONGOING
+  COMPLETED
+}
+
+enum MatchStatus {
+  SCHEDULED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum EventType {
+  GOAL
+  YELLOW_CARD
+  RED_CARD
+  SUBSTITUTION
+  INJURY
+  COMMENTARY
+}
