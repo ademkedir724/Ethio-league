@@ -28,3 +28,12 @@ export function parseId(params: { id: string }): number | null {
   const id = Number(params.id);
   return Number.isNaN(id) ? null : id;
 }
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function parseUUID(params: { id?: string } | string): string | null {
+  const raw = typeof params === "string" ? params : params.id;
+  if (!raw) return null;
+  return UUID_RE.test(raw) ? raw : null;
+}

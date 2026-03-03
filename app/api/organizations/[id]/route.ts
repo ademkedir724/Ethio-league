@@ -6,7 +6,7 @@ import {
   badRequest,
   notFound,
   serverError,
-  parseId,
+  parseUUID,
 } from "@/lib/api-helpers";
 import { NextResponse } from "next/server";
 
@@ -20,7 +20,7 @@ export async function GET(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const id = parseId({ id: idStr });
+    const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid organization ID");
 
     const org = await prisma.organization.findUnique({
@@ -47,7 +47,7 @@ export async function PATCH(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const id = parseId({ id: idStr });
+    const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid organization ID");
 
     const isSuperAdmin = hasRole(auth, ["super_admin"]);
@@ -98,7 +98,7 @@ export async function DELETE(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const id = parseId({ id: idStr });
+    const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid organization ID");
 
     await prisma.organization.delete({ where: { id } });

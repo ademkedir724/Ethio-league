@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     const status = req.nextUrl.searchParams.get("status");
 
     const where: Record<string, unknown> = {};
-    if (seasonId) where.seasonId = Number(seasonId);
+    if (seasonId) where.seasonId = seasonId;
     if (status) where.status = status;
 
     const matches = await prisma.match.findMany({

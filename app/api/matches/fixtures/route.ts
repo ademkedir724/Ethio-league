@@ -37,9 +37,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Round-robin algorithm
+    const BYE = "00000000-0000-0000-0000-000000000000";
     const teams = [...clubIds];
     if (teams.length % 2 !== 0) {
-      teams.push(-1); // bye team placeholder
+      teams.push(BYE); // bye team placeholder
     }
 
     const numTeams = teams.length;
@@ -47,9 +48,9 @@ export async function POST(req: NextRequest) {
     const matchesPerRound = numTeams / 2;
 
     const fixtures: {
-      seasonId: number;
-      homeClubId: number;
-      awayClubId: number;
+      seasonId: string;
+      homeClubId: string;
+      awayClubId: string;
       matchDate: Date;
       roundNumber: number;
     }[] = [];
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest) {
         const home = teams[match];
         const away = teams[numTeams - 1 - match];
 
-        if (home === -1 || away === -1) continue; // skip bye
+        if (home === BYE || away === BYE) continue; // skip bye
 
         const matchDate = new Date(baseDate);
         matchDate.setDate(matchDate.getDate() + round * 7); // 1 week apart

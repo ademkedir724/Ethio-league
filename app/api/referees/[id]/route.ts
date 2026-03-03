@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { success, badRequest, notFound, serverError, parseId } from "@/lib/api-helpers";
+import { success, badRequest, notFound, serverError, parseUUID } from "@/lib/api-helpers";
 
 // GET /api/referees/:id
 export async function GET(
@@ -13,7 +13,7 @@ export async function GET(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const id = parseId({ id: idStr });
+    const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid referee ID");
 
     const referee = await prisma.referee.findUnique({
@@ -58,7 +58,7 @@ export async function PATCH(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const id = parseId({ id: idStr });
+    const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid referee ID");
 
     const data = await req.json();

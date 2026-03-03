@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError, hasRole, hasClubRole } from "@/lib/auth";
-import { success, badRequest, notFound, serverError, parseId } from "@/lib/api-helpers";
+import { success, badRequest, notFound, serverError, parseUUID } from "@/lib/api-helpers";
 import { NextResponse } from "next/server";
 
 // GET /api/clubs/:id
@@ -14,7 +14,7 @@ export async function GET(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const id = parseId({ id: idStr });
+    const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid club ID");
 
     const club = await prisma.club.findUnique({
@@ -47,7 +47,7 @@ export async function PATCH(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const id = parseId({ id: idStr });
+    const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid club ID");
 
     const isSuperAdmin = hasRole(auth, ["super_admin"]);
@@ -89,7 +89,7 @@ export async function DELETE(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const id = parseId({ id: idStr });
+    const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid club ID");
 
     await prisma.club.delete({ where: { id } });

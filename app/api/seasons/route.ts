@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
 
     const orgId = req.nextUrl.searchParams.get("organizationId");
 
-    const where = orgId ? { organizationId: Number(orgId) } : {};
+    const where = orgId ? { organizationId: orgId } : {};
 
     const seasons = await prisma.season.findMany({
       where,

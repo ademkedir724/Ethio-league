@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { success, created, badRequest, notFound, serverError, parseId } from "@/lib/api-helpers";
+import { success, created, badRequest, notFound, serverError, parseUUID } from "@/lib/api-helpers";
 
 // GET /api/matches/:id/lineups — get lineups for a match
 export async function GET(
@@ -13,7 +13,7 @@ export async function GET(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const matchId = parseId({ id: idStr });
+    const matchId = parseUUID(idStr);
     if (!matchId) return badRequest("Invalid match ID");
 
     const lineups = await prisma.matchLineup.findMany({
@@ -51,7 +51,7 @@ export async function POST(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const matchId = parseId({ id: idStr });
+    const matchId = parseUUID(idStr);
     if (!matchId) return badRequest("Invalid match ID");
 
     const match = await prisma.match.findUnique({ where: { id: matchId } });

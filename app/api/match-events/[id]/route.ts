@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError, hasRole } from "@/lib/auth";
-import { success, badRequest, notFound, serverError, parseId } from "@/lib/api-helpers";
+import { success, badRequest, notFound, serverError, parseUUID } from "@/lib/api-helpers";
 import { NextResponse } from "next/server";
 
 const TEN_MINUTES_MS = 10 * 60 * 1000;
@@ -20,7 +20,7 @@ export async function PATCH(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const id = parseId({ id: idStr });
+    const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid match event ID");
 
     const event = await prisma.matchEvent.findUnique({ where: { id } });
@@ -73,7 +73,7 @@ export async function DELETE(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const id = parseId({ id: idStr });
+    const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid match event ID");
 
     await prisma.matchEvent.delete({ where: { id } });
