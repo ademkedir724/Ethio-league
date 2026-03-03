@@ -11,11 +11,10 @@ import {
 // GET /api/organizations — list all organizations
 export async function GET(req: NextRequest) {
   try {
-    const auth = requireAuth(req);
+    const auth = await requireAuth(req);
     if (isAuthError(auth)) return auth;
 
     const orgs = await prisma.organization.findMany({
-      include: { owner: { select: { id: true, name: true, email: true } } },
       orderBy: { createdAt: "desc" },
     });
     return success(orgs);
@@ -24,13 +23,14 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/organizations — request a new organization
+// POST /api/organizations — request a new organization (any authenticated user)
 export async function POST(req: NextRequest) {
   try {
-    const auth = requireAuth(req);
+    const auth = await requireAuth(req);
     if (isAuthError(auth)) return auth;
 
-    const { name, description, logoUrl } = await req.json();
+    const { name, country, city, foundedYear, logoUrl, description } =
+      await req.json();
 
     if (!name) return badRequest("Organization name is required");
 
@@ -40,10 +40,12 @@ export async function POST(req: NextRequest) {
     const org = await prisma.organization.create({
       data: {
         name,
-        description,
+        country,
+        city,
+        foundedYear,
         logoUrl,
-        ownerId: auth.userId,
-        status: "PENDING",
+        description,
+        status: "pending",
       },
     });
 

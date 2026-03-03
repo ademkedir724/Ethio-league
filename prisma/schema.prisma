@@ -7,291 +7,401 @@ datasource db {
   provider = "postgresql"
 }
 
-// ─── Enums ──────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// A. ENUM TABLES (real DB tables, not Prisma enums)
+// ═══════════════════════════════════════════════════════════════
 
-enum Role {
-  SUPER_ADMIN
-  LEAGUE_ADMIN
-  CLUB_ADMIN
-  REFEREE
-  PLAYER
-  COACH
-  FAN
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique         // super_admin, organization_admin, league_admin, club_admin, match_event_admin, fan
+  description String?
+  createdAt   DateTime @default(now())
+
+  userRoleScopes UserRoleScope[]
+
+  @@map("roles")
 }
 
-enum OrgStatus {
-  PENDING
-  APPROVED
-  REJECTED
+model LeagueType {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique          // round_robin, knockout, hybrid
+  description String?
+
+  seasons Season[]
+
+  @@map("league_types")
 }
 
-enum ClubStatus {
-  PENDING
-  APPROVED
-  REJECTED
+model EventType {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique          // goal, assist, yellow_card, red_card, own_goal, penalty_goal, substitution, injury
+  description String?
+
+  matchEvents MatchEvent[]
+
+  @@map("event_types")
 }
 
-enum MatchStatus {
-  SCHEDULED
-  LIVE
-  COMPLETED
-  POSTPONED
-  CANCELLED
+model Position {
+  id          Int     @id @default(autoincrement())
+  code        String  @unique          // GK, CB, RB, LB, CDM, CM, CAM, LW, RW, ST, CF
+  name        String                   // Goalkeeper, Center Back, ...
+  description String?
+
+  players            Player[]           @relation("PrimaryPosition")
+  seasonClubPlayers  SeasonClubPlayer[]
+  matchLineups       MatchLineup[]
+
+  @@map("positions")
 }
 
-enum EventType {
-  GOAL
-  ASSIST
-  YELLOW_CARD
-  RED_CARD
-  SUBSTITUTION
-  PENALTY
-  OWN_GOAL
-}
-
-enum PlayerPosition {
-  GOALKEEPER
-  DEFENDER
-  MIDFIELDER
-  FORWARD
-}
-
-enum SeasonStatus {
-  UPCOMING
-  ACTIVE
-  COMPLETED
-}
-
-// ─── Models ─────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// B. BASIC TABLES (stand-alone core entities)
+// ═══════════════════════════════════════════════════════════════
 
 model User {
-  id             Int       @id @default(autoincrement())
-  email          String    @unique
-  passwordHash   String
-  name           String
-  role           Role      @default(FAN)
-  avatarUrl      String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id           Int      @id @default(autoincrement())
+  fullName     String
+  email        String   @unique
+  passwordHash String
+  phone        String?
+  status       String   @default("active") // active, inactive, suspended
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  // Relations
-  organization   Organization? @relation("OrgOwner")
-  managedLeagues League[]      @relation("LeagueAdmin")
-  player         Player?
-  coach          Coach?
-  referee        Referee?
+  userRoleScopes UserRoleScope[]
   notifications  Notification[]
 
   @@map("users")
 }
 
 model Organization {
-  id          Int       @id @default(autoincrement())
-  name        String    @unique
-  description String?
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  country     String?
+  city        String?
+  foundedYear Int?
   logoUrl     String?
-  status      OrgStatus @default(PENDING)
-  ownerId     Int       @unique
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  description String?
+  status      String   @default("pending") // pending, approved, rejected, active, inactive
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  // Relations
-  owner   User     @relation("OrgOwner", fields: [ownerId], references: [id])
-  leagues League[]
+  seasons        Season[]
+  userRoleScopes UserRoleScope[]
 
   @@map("organizations")
 }
 
-model League {
-  id             Int      @id @default(autoincrement())
-  name           String
-  description    String?
-  logoUrl        String?
-  organizationId Int
-  adminId        Int?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  // Relations
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  admin        User?        @relation("LeagueAdmin", fields: [adminId], references: [id])
-  seasons      Season[]
-  clubs        Club[]
-  rules        LeagueRule[]
-  referees     RefereeLeague[]
-
-  @@map("leagues")
-}
-
-model LeagueRule {
-  id       Int    @id @default(autoincrement())
-  leagueId Int
-  title    String
-  body     String
-
-  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-
-  @@map("league_rules")
-}
-
-model Season {
-  id        Int          @id @default(autoincrement())
-  name      String
-  leagueId  Int
-  status    SeasonStatus @default(UPCOMING)
-  startDate DateTime
-  endDate   DateTime
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-
-  // Relations
-  league    League     @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  matches   Match[]
-  standings Standing[]
-
-  @@map("seasons")
-}
-
 model Club {
-  id        Int        @id @default(autoincrement())
-  name      String
-  shortName String?
-  logoUrl   String?
-  leagueId  Int
-  status    ClubStatus @default(PENDING)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id               Int      @id @default(autoincrement())
+  name             String
+  shortName        String?
+  country          String?
+  city             String?
+  foundedYear      Int?
+  logoUrl          String?
+  primaryStadiumId Int?
+  website          String?
+  description      String?
+  status           String   @default("active") // active, inactive
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  // Relations
-  league      League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  players     Player[]
-  coaches     Coach[]
-  homeMatches Match[]  @relation("HomeClub")
-  awayMatches Match[]  @relation("AwayClub")
-  standings   Standing[]
+  primaryStadium Stadium?       @relation("PrimaryStadium", fields: [primaryStadiumId], references: [id])
+  ownedStadiums  Stadium[]      @relation("StadiumOwner")
+  seasonClubs    SeasonClub[]
+  homeMatches    Match[]        @relation("HomeClub")
+  awayMatches    Match[]        @relation("AwayClub")
+  matchEvents    MatchEvent[]
+  standings      Standing[]
+  userRoleScopes UserRoleScope[]
 
   @@map("clubs")
 }
 
-model Player {
-  id          Int            @id @default(autoincrement())
-  firstName   String
-  lastName    String
-  dateOfBirth DateTime?
-  position    PlayerPosition
-  jerseyNumber Int?
-  clubId      Int
-  userId      Int?           @unique
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+model Stadium {
+  id          Int      @id @default(autoincrement())
+  name        String
+  city        String?
+  country     String?
+  capacity    Int?
+  surfaceType String?  // grass, turf, hybrid
+  builtYear   Int?
+  ownerClubId Int?
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  // Relations
-  club      Club         @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  user      User?        @relation(fields: [userId], references: [id])
-  lineups   Lineup[]
-  events    MatchEvent[]
+  ownerClub      Club?   @relation("StadiumOwner", fields: [ownerClubId], references: [id])
+  primaryForClubs Club[] @relation("PrimaryStadium")
+  matches        Match[]
+
+  @@map("stadiums")
+}
+
+model Player {
+  id                Int      @id @default(autoincrement())
+  firstName         String
+  lastName          String
+  dateOfBirth       DateTime?
+  nationality       String?
+  heightCm          Int?
+  weightKg          Int?
+  preferredFoot     String?  // left, right, both
+  primaryPositionId Int?
+  photoUrl          String?
+  status            String   @default("active") // active, retired, injured, suspended
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  primaryPosition    Position?          @relation("PrimaryPosition", fields: [primaryPositionId], references: [id])
+  seasonClubPlayers  SeasonClubPlayer[]
+  matchEvents        MatchEvent[]       @relation("EventPlayer")
+  relatedMatchEvents MatchEvent[]       @relation("RelatedPlayer")
 
   @@map("players")
 }
 
 model Coach {
-  id        Int      @id @default(autoincrement())
-  firstName String
-  lastName  String
-  clubId    Int
-  userId    Int?     @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              Int      @id @default(autoincrement())
+  firstName       String
+  lastName        String
+  dateOfBirth     DateTime?
+  nationality     String?
+  licenseLevel    String?
+  experienceYears Int?
+  photoUrl        String?
+  status          String   @default("active") // active, inactive, retired
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  // Relations
-  club Club  @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  user User? @relation(fields: [userId], references: [id])
+  seasonClubCoaches SeasonClubCoach[]
 
   @@map("coaches")
 }
 
 model Referee {
-  id        Int      @id @default(autoincrement())
-  firstName String
-  lastName  String
-  userId    Int?     @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              Int      @id @default(autoincrement())
+  firstName       String
+  lastName        String
+  dateOfBirth     DateTime?
+  nationality     String?
+  licenseLevel    String?
+  experienceYears Int?
+  photoUrl        String?
+  status          String   @default("active") // active, inactive, retired
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  // Relations
-  user    User?           @relation(fields: [userId], references: [id])
-  leagues RefereeLeague[]
-  matches Match[]
+  refereeLeagues RefereeLeague[]
+  matchReferees  MatchReferee[]
 
   @@map("referees")
 }
 
-model RefereeLeague {
-  id        Int @id @default(autoincrement())
-  refereeId Int
-  leagueId  Int
+// ═══════════════════════════════════════════════════════════════
+// C. LITTLE RELATED TABLES
+// ═══════════════════════════════════════════════════════════════
 
-  referee Referee @relation(fields: [refereeId], references: [id], onDelete: Cascade)
-  league  League  @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+model Season {
+  id              Int      @id @default(autoincrement())
+  organizationId  Int
+  name            String
+  leagueName      String
+  leagueTypeId    Int?
+  genderCategory  String?  // male, female
+  ageCategory     String?  // senior, youth, u21, u17
+  divisionLevel   Int?
+  startDate       DateTime
+  endDate         DateTime
+  pointsWin       Int      @default(3)
+  pointsDraw      Int      @default(1)
+  pointsLoss      Int      @default(0)
+  status          String   @default("upcoming") // upcoming, active, completed, cancelled
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  @@unique([refereeId, leagueId])
-  @@map("referee_leagues")
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leagueType     LeagueType?     @relation(fields: [leagueTypeId], references: [id])
+  seasonClubs    SeasonClub[]
+  matches        Match[]
+  standings      Standing[]
+  refereeLeagues RefereeLeague[]
+  userRoleScopes UserRoleScope[]
+
+  @@map("seasons")
 }
 
 model Match {
-  id         Int         @id @default(autoincrement())
-  seasonId   Int
-  homeClubId Int
-  awayClubId Int
-  refereeId  Int?
-  matchDate  DateTime
-  venue      String?
-  status     MatchStatus @default(SCHEDULED)
-  homeScore  Int         @default(0)
-  awayScore  Int         @default(0)
-  matchday   Int?
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  id          Int      @id @default(autoincrement())
+  seasonId    Int
+  homeClubId  Int
+  awayClubId  Int
+  stadiumId   Int?
+  matchDate   DateTime
+  roundNumber Int?
+  status      String   @default("scheduled") // scheduled, live, completed, postponed, cancelled
+  homeScore   Int      @default(0)
+  awayScore   Int      @default(0)
+  attendance  Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  // Relations
-  season   Season       @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  homeClub Club         @relation("HomeClub", fields: [homeClubId], references: [id])
-  awayClub Club         @relation("AwayClub", fields: [awayClubId], references: [id])
-  referee  Referee?     @relation(fields: [refereeId], references: [id])
-  events   MatchEvent[]
-  lineups  Lineup[]
+  season        Season         @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  homeClub      Club           @relation("HomeClub", fields: [homeClubId], references: [id])
+  awayClub      Club           @relation("AwayClub", fields: [awayClubId], references: [id])
+  stadium       Stadium?       @relation(fields: [stadiumId], references: [id])
+  matchEvents   MatchEvent[]
+  matchReferees MatchReferee[]
+  matchLineups  MatchLineup[]
 
   @@map("matches")
 }
 
-model MatchEvent {
-  id        Int       @id @default(autoincrement())
-  matchId   Int
-  playerId  Int
-  type      EventType
-  minute    Int
-  detail    String?
-  createdAt DateTime  @default(now())
+model RefereeLeague {
+  id           Int      @id @default(autoincrement())
+  refereeId    Int
+  seasonId     Int
+  roleLevel    String?  // main_referee, assistant_referee, var_referee
+  approvedDate DateTime?
+  status       String   @default("active")
 
-  // Relations
-  match  Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  player Player @relation(fields: [playerId], references: [id])
+  referee Referee @relation(fields: [refereeId], references: [id], onDelete: Cascade)
+  season  Season  @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([refereeId, seasonId])
+  @@map("referee_leagues")
+}
+
+model MatchEvent {
+  id              Int      @id @default(autoincrement())
+  matchId         Int
+  eventTypeId     Int
+  playerId        Int
+  relatedPlayerId Int?
+  clubId          Int?
+  minute          Int
+  extraTime       Int?
+  description     String?
+  createdAt       DateTime @default(now())
+
+  match         Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  eventType     EventType @relation(fields: [eventTypeId], references: [id])
+  player        Player    @relation("EventPlayer", fields: [playerId], references: [id])
+  relatedPlayer Player?   @relation("RelatedPlayer", fields: [relatedPlayerId], references: [id])
+  club          Club?     @relation(fields: [clubId], references: [id])
 
   @@map("match_events")
 }
 
-model Lineup {
-  id        Int     @id @default(autoincrement())
-  matchId   Int
-  playerId  Int
-  isStarter Boolean @default(true)
+model MatchReferee {
+  id         Int      @id @default(autoincrement())
+  matchId    Int
+  refereeId  Int
+  role       String   // main_referee, assistant_referee, fourth_official, var
+  assignedAt DateTime @default(now())
 
-  // Relations
-  match  Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  player Player @relation(fields: [playerId], references: [id])
+  match   Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  referee Referee @relation(fields: [refereeId], references: [id])
 
-  @@unique([matchId, playerId])
-  @@map("lineups")
+  @@unique([matchId, refereeId])
+  @@map("match_referees")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// D. MORE RELATED / JUNCTION TABLES
+// ═══════════════════════════════════════════════════════════════
+
+model UserRoleScope {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  roleId         Int
+  organizationId Int?
+  seasonId       Int?
+  clubId         Int?
+  assignedAt     DateTime @default(now())
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         Role          @relation(fields: [roleId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  season       Season?       @relation(fields: [seasonId], references: [id])
+  club         Club?         @relation(fields: [clubId], references: [id])
+
+  @@map("user_role_scopes")
+}
+
+model SeasonClub {
+  id               Int      @id @default(autoincrement())
+  seasonId         Int
+  clubId           Int
+  registrationDate DateTime @default(now())
+  status           String   @default("active") // active, withdrawn, relegated, promoted
+  createdAt        DateTime @default(now())
+
+  season  Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  club    Club   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  players SeasonClubPlayer[]
+  coaches SeasonClubCoach[]
+
+  @@unique([seasonId, clubId])
+  @@map("season_clubs")
+}
+
+model SeasonClubPlayer {
+  id            Int       @id @default(autoincrement())
+  seasonClubId  Int
+  playerId      Int
+  jerseyNumber  Int?
+  positionId    Int?
+  contractStart DateTime?
+  contractEnd   DateTime?
+  status        String    @default("active") // active, injured, suspended, released
+  createdAt     DateTime  @default(now())
+
+  seasonClub   SeasonClub   @relation(fields: [seasonClubId], references: [id], onDelete: Cascade)
+  player       Player       @relation(fields: [playerId], references: [id])
+  position     Position?    @relation(fields: [positionId], references: [id])
+  matchLineups MatchLineup[]
+
+  @@unique([seasonClubId, playerId])
+  @@map("season_club_players")
+}
+
+model SeasonClubCoach {
+  id           Int       @id @default(autoincrement())
+  seasonClubId Int
+  coachId      Int
+  role         String    @default("head_coach") // head_coach, assistant_coach, goalkeeping_coach, fitness_coach
+  startDate    DateTime?
+  endDate      DateTime?
+  status       String    @default("active")
+  createdAt    DateTime  @default(now())
+
+  seasonClub SeasonClub @relation(fields: [seasonClubId], references: [id], onDelete: Cascade)
+  coach      Coach      @relation(fields: [coachId], references: [id])
+
+  @@unique([seasonClubId, coachId])
+  @@map("season_club_coaches")
+}
+
+model MatchLineup {
+  id                  Int     @id @default(autoincrement())
+  matchId             Int
+  seasonClubPlayerId  Int
+  clubId              Int?
+  positionId          Int?
+  lineupType          String  @default("starting") // starting, substitute, bench
+  shirtNumber         Int?
+  isCaptain           Boolean @default(false)
+  createdAt           DateTime @default(now())
+
+  match             Match             @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  seasonClubPlayer  SeasonClubPlayer  @relation(fields: [seasonClubPlayerId], references: [id])
+  position          Position?         @relation(fields: [positionId], references: [id])
+
+  @@unique([matchId, seasonClubPlayerId])
+  @@map("match_lineups")
 }
 
 model Standing {
@@ -307,7 +417,6 @@ model Standing {
   goalDifference Int @default(0)
   points         Int @default(0)
 
-  // Relations
   season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   club   Club   @relation(fields: [clubId], references: [id], onDelete: Cascade)
 
@@ -323,7 +432,6 @@ model Notification {
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("notifications")

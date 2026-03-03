@@ -15,9 +15,20 @@ export async function POST(req: NextRequest) {
       return badRequest("Email and password are required");
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: {
+        userRoleScopes: {
+          include: { role: true },
+        },
+      },
+    });
     if (!user) {
       return badRequest("Invalid email or password");
+    }
+
+    if (user.status !== "active") {
+      return badRequest("Account is not active");
     }
 
     const valid = await verifyPassword(password, user.passwordHash);
@@ -25,7 +36,7 @@ export async function POST(req: NextRequest) {
       return badRequest("Invalid email or password");
     }
 
-    const payload = { userId: user.id, email: user.email, role: user.role };
+    const payload = { userId: user.id, email: user.email };
     const accessToken = signAccessToken(payload);
     const refreshToken = signRefreshToken(payload);
 
@@ -35,8 +46,15 @@ export async function POST(req: NextRequest) {
       user: {
         id: user.id,
         email: user.email,
-        name: user.name,
-        role: user.role,
+        fullName: user.fullName,
+        phone: user.phone,
+        status: user.status,
+        roles: user.userRoleScopes.map((s) => ({
+          role: s.role.name,
+          organizationId: s.organizationId,
+          seasonId: s.seasonId,
+          clubId: s.clubId,
+        })),
       },
     });
   } catch (error) {

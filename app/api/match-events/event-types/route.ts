@@ -1,13 +1,13 @@
 import prisma from "@/lib/prisma";
 import { success, serverError } from "@/lib/api-helpers";
 
-// GET /api/users/roles — list all available roles from DB
+// GET /api/match-events/event-types — list all event types (enum table)
 export async function GET() {
   try {
-    const roles = await prisma.role.findMany({
+    const eventTypes = await prisma.eventType.findMany({
       orderBy: { id: "asc" },
     });
-    return success(roles);
+    return success(eventTypes);
   } catch (error) {
     return serverError(error);
   }

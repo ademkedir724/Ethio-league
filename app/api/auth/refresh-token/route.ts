@@ -22,15 +22,17 @@ export async function POST(req: NextRequest) {
       return badRequest("Invalid or expired refresh token");
     }
 
-    // Ensure user still exists
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
     });
     if (!user) {
       return badRequest("User no longer exists");
     }
+    if (user.status !== "active") {
+      return badRequest("Account is not active");
+    }
 
-    const payload = { userId: user.id, email: user.email, role: user.role };
+    const payload = { userId: user.id, email: user.email };
     const newAccessToken = signAccessToken(payload);
     const newRefreshToken = signRefreshToken(payload);
 

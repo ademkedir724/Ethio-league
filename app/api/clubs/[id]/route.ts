@@ -1,16 +1,10 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireAuth, isAuthError, hasRole, hasOrgRole } from "@/lib/auth";
-import {
-  success,
-  badRequest,
-  notFound,
-  serverError,
-  parseId,
-} from "@/lib/api-helpers";
+import { requireAuth, isAuthError, hasRole, hasClubRole } from "@/lib/auth";
+import { success, badRequest, notFound, serverError, parseId } from "@/lib/api-helpers";
 import { NextResponse } from "next/server";
 
-// GET /api/organizations/:id
+// GET /api/clubs/:id
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -21,23 +15,29 @@ export async function GET(
 
     const { id: idStr } = await params;
     const id = parseId({ id: idStr });
-    if (!id) return badRequest("Invalid organization ID");
+    if (!id) return badRequest("Invalid club ID");
 
-    const org = await prisma.organization.findUnique({
+    const club = await prisma.club.findUnique({
       where: { id },
       include: {
-        seasons: true,
+        primaryStadium: true,
+        ownedStadiums: true,
+        seasonClubs: {
+          include: {
+            season: { select: { id: true, name: true, leagueName: true } },
+          },
+        },
       },
     });
 
-    if (!org) return notFound("Organization not found");
-    return success(org);
+    if (!club) return notFound("Club not found");
+    return success(club);
   } catch (error) {
     return serverError(error);
   }
 }
 
-// PATCH /api/organizations/:id — update org (super_admin or org's organization_admin)
+// PATCH /api/clubs/:id
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -48,47 +48,38 @@ export async function PATCH(
 
     const { id: idStr } = await params;
     const id = parseId({ id: idStr });
-    if (!id) return badRequest("Invalid organization ID");
+    if (!id) return badRequest("Invalid club ID");
 
     const isSuperAdmin = hasRole(auth, ["super_admin"]);
-    const isOrgAdmin = hasOrgRole(auth, "organization_admin", id);
+    const isClubAdmin = hasClubRole(auth, "club_admin", id);
+    const isOrgAdmin = hasRole(auth, ["organization_admin"]);
 
-    if (!isSuperAdmin && !isOrgAdmin) {
+    if (!isSuperAdmin && !isClubAdmin && !isOrgAdmin) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const data = await req.json();
     const allowedFields = [
-      "name",
-      "country",
-      "city",
-      "foundedYear",
-      "logoUrl",
-      "description",
-      "status",
+      "name", "shortName", "country", "city", "foundedYear",
+      "logoUrl", "primaryStadiumId", "website", "description", "status",
     ];
     const updateData: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (data[field] !== undefined) updateData[field] = data[field];
     }
 
-    // Only super_admin can change status
-    if (updateData.status && !isSuperAdmin) {
-      delete updateData.status;
-    }
-
-    const org = await prisma.organization.update({
+    const club = await prisma.club.update({
       where: { id },
       data: updateData,
     });
 
-    return success(org);
+    return success(club);
   } catch (error) {
     return serverError(error);
   }
 }
 
-// DELETE /api/organizations/:id — super_admin only
+// DELETE /api/clubs/:id
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -99,10 +90,10 @@ export async function DELETE(
 
     const { id: idStr } = await params;
     const id = parseId({ id: idStr });
-    if (!id) return badRequest("Invalid organization ID");
+    if (!id) return badRequest("Invalid club ID");
 
-    await prisma.organization.delete({ where: { id } });
-    return success({ message: "Organization deleted" });
+    await prisma.club.delete({ where: { id } });
+    return success({ message: "Club deleted" });
   } catch (error) {
     return serverError(error);
   }

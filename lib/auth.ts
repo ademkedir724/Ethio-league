@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { NextRequest, NextResponse } from "next/server";
-import type { Role } from "@/app/generated/prisma/client";
+import prisma from "@/lib/prisma";
 
 const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production";
 const JWT_REFRESH_SECRET =
@@ -23,13 +23,25 @@ export async function verifyPassword(
   return bcrypt.compare(password, hash);
 }
 
-// ─── Token Helpers ──────────────────────────────────────────
+// ─── Token Types ────────────────────────────────────────────
 
 export interface TokenPayload {
   userId: number;
   email: string;
-  role: Role;
 }
+
+export interface RoleScope {
+  roleName: string;
+  organizationId?: number | null;
+  seasonId?: number | null;
+  clubId?: number | null;
+}
+
+export interface AuthUser extends TokenPayload {
+  roles: RoleScope[];
+}
+
+// ─── Token Helpers ──────────────────────────────────────────
 
 export function signAccessToken(payload: TokenPayload): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRES });
@@ -59,35 +71,108 @@ export function getTokenFromRequest(req: NextRequest): string | null {
   return null;
 }
 
-export function authenticate(req: NextRequest): TokenPayload | null {
+/**
+ * Authenticate the request and load the user's scoped roles from the DB.
+ */
+export async function authenticate(
+  req: NextRequest
+): Promise<AuthUser | null> {
   const token = getTokenFromRequest(req);
   if (!token) return null;
+
   try {
-    return verifyAccessToken(token);
+    const payload = verifyAccessToken(token);
+
+    // Load scoped roles from user_role_scopes
+    const scopes = await prisma.userRoleScope.findMany({
+      where: { userId: payload.userId },
+      include: { role: true },
+    });
+
+    const roles: RoleScope[] = scopes.map((s) => ({
+      roleName: s.role.name,
+      organizationId: s.organizationId,
+      seasonId: s.seasonId,
+      clubId: s.clubId,
+    }));
+
+    return { ...payload, roles };
   } catch {
     return null;
   }
 }
 
-// ─── Role Guard ─────────────────────────────────────────────
+// ─── Role / Scope Guards ────────────────────────────────────
 
-export function requireAuth(
+/**
+ * Check if a user has any of the allowed role names (system-wide check).
+ */
+export function hasRole(user: AuthUser, allowedRoles: string[]): boolean {
+  return user.roles.some((r) => allowedRoles.includes(r.roleName));
+}
+
+/**
+ * Check if a user has a specific role scoped to an organization.
+ */
+export function hasOrgRole(
+  user: AuthUser,
+  roleName: string,
+  organizationId: number
+): boolean {
+  return user.roles.some(
+    (r) => r.roleName === roleName && r.organizationId === organizationId
+  );
+}
+
+/**
+ * Check if a user has a specific role scoped to a season.
+ */
+export function hasSeasonRole(
+  user: AuthUser,
+  roleName: string,
+  seasonId: number
+): boolean {
+  return user.roles.some(
+    (r) => r.roleName === roleName && r.seasonId === seasonId
+  );
+}
+
+/**
+ * Check if a user has a specific role scoped to a club.
+ */
+export function hasClubRole(
+  user: AuthUser,
+  roleName: string,
+  clubId: number
+): boolean {
+  return user.roles.some(
+    (r) => r.roleName === roleName && r.clubId === clubId
+  );
+}
+
+/**
+ * Require authentication. Returns the AuthUser or a 401/403 NextResponse.
+ * Optionally pass allowedRoles for a system-wide role check.
+ */
+export async function requireAuth(
   req: NextRequest,
-  allowedRoles?: Role[]
-): TokenPayload | NextResponse {
-  const user = authenticate(req);
+  allowedRoles?: string[]
+): Promise<AuthUser | NextResponse> {
+  const user = await authenticate(req);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
+  if (allowedRoles && !hasRole(user, allowedRoles)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   return user;
 }
 
-// Type guard to check if requireAuth returned an error response
+/**
+ * Type guard to check if requireAuth returned an error response.
+ */
 export function isAuthError(
-  result: TokenPayload | NextResponse
+  result: AuthUser | NextResponse
 ): result is NextResponse {
   return result instanceof NextResponse;
 }

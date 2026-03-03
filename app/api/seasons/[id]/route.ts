@@ -1,16 +1,10 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError, hasRole, hasOrgRole } from "@/lib/auth";
-import {
-  success,
-  badRequest,
-  notFound,
-  serverError,
-  parseId,
-} from "@/lib/api-helpers";
+import { success, badRequest, notFound, serverError, parseId } from "@/lib/api-helpers";
 import { NextResponse } from "next/server";
 
-// GET /api/organizations/:id
+// GET /api/seasons/:id
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -21,23 +15,28 @@ export async function GET(
 
     const { id: idStr } = await params;
     const id = parseId({ id: idStr });
-    if (!id) return badRequest("Invalid organization ID");
+    if (!id) return badRequest("Invalid season ID");
 
-    const org = await prisma.organization.findUnique({
+    const season = await prisma.season.findUnique({
       where: { id },
       include: {
-        seasons: true,
+        organization: { select: { id: true, name: true } },
+        leagueType: true,
+        seasonClubs: {
+          include: { club: true },
+        },
+        _count: { select: { matches: true } },
       },
     });
 
-    if (!org) return notFound("Organization not found");
-    return success(org);
+    if (!season) return notFound("Season not found");
+    return success(season);
   } catch (error) {
     return serverError(error);
   }
 }
 
-// PATCH /api/organizations/:id — update org (super_admin or org's organization_admin)
+// PATCH /api/seasons/:id
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -48,47 +47,46 @@ export async function PATCH(
 
     const { id: idStr } = await params;
     const id = parseId({ id: idStr });
-    if (!id) return badRequest("Invalid organization ID");
+    if (!id) return badRequest("Invalid season ID");
+
+    const season = await prisma.season.findUnique({ where: { id } });
+    if (!season) return notFound("Season not found");
 
     const isSuperAdmin = hasRole(auth, ["super_admin"]);
-    const isOrgAdmin = hasOrgRole(auth, "organization_admin", id);
-
+    const isOrgAdmin = hasOrgRole(auth, "organization_admin", season.organizationId);
     if (!isSuperAdmin && !isOrgAdmin) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const data = await req.json();
     const allowedFields = [
-      "name",
-      "country",
-      "city",
-      "foundedYear",
-      "logoUrl",
-      "description",
-      "status",
+      "name", "leagueName", "leagueTypeId", "genderCategory",
+      "ageCategory", "divisionLevel", "startDate", "endDate",
+      "pointsWin", "pointsDraw", "pointsLoss", "status",
     ];
     const updateData: Record<string, unknown> = {};
     for (const field of allowedFields) {
-      if (data[field] !== undefined) updateData[field] = data[field];
+      if (data[field] !== undefined) {
+        if (field === "startDate" || field === "endDate") {
+          updateData[field] = new Date(data[field]);
+        } else {
+          updateData[field] = data[field];
+        }
+      }
     }
 
-    // Only super_admin can change status
-    if (updateData.status && !isSuperAdmin) {
-      delete updateData.status;
-    }
-
-    const org = await prisma.organization.update({
+    const updated = await prisma.season.update({
       where: { id },
       data: updateData,
     });
 
-    return success(org);
+    return success(updated);
   } catch (error) {
     return serverError(error);
   }
 }
 
-// DELETE /api/organizations/:id — super_admin only
+// DELETE /api/seasons/:id
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -99,10 +97,10 @@ export async function DELETE(
 
     const { id: idStr } = await params;
     const id = parseId({ id: idStr });
-    if (!id) return badRequest("Invalid organization ID");
+    if (!id) return badRequest("Invalid season ID");
 
-    await prisma.organization.delete({ where: { id } });
-    return success({ message: "Organization deleted" });
+    await prisma.season.delete({ where: { id } });
+    return success({ message: "Season deleted" });
   } catch (error) {
     return serverError(error);
   }

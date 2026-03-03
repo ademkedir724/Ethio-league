@@ -24,10 +24,13 @@ export async function GET(
       select: {
         id: true,
         email: true,
-        name: true,
-        role: true,
-        avatarUrl: true,
+        fullName: true,
+        phone: true,
+        status: true,
         createdAt: true,
+        userRoleScopes: {
+          include: { role: true },
+        },
       },
     });
 
@@ -38,21 +41,31 @@ export async function GET(
   }
 }
 
-// PATCH /api/users/:id
+// PATCH /api/users/:id — update user (super_admin only, or self for profile fields)
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = requireAuth(req, ["SUPER_ADMIN"]);
+    const auth = await requireAuth(req);
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
     const id = parseId({ id: idStr });
     if (!id) return badRequest("Invalid user ID");
 
+    const isSuperAdmin = auth.roles.some((r) => r.roleName === "super_admin");
+    const isSelf = auth.userId === id;
+
+    if (!isSuperAdmin && !isSelf) {
+      return badRequest("Forbidden");
+    }
+
     const data = await req.json();
-    const allowedFields = ["name", "role", "avatarUrl"];
+    const allowedFields = isSuperAdmin
+      ? ["fullName", "phone", "status"]
+      : ["fullName", "phone"];
+
     const updateData: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (data[field] !== undefined) updateData[field] = data[field];
@@ -64,9 +77,9 @@ export async function PATCH(
       select: {
         id: true,
         email: true,
-        name: true,
-        role: true,
-        avatarUrl: true,
+        fullName: true,
+        phone: true,
+        status: true,
       },
     });
 
@@ -76,13 +89,13 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/users/:id
+// DELETE /api/users/:id — super_admin only
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = requireAuth(req, ["SUPER_ADMIN"]);
+    const auth = await requireAuth(req, ["super_admin"]);
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
