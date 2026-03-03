@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     if (!matchId) return badRequest("matchId query param is required");
 
     const events = await prisma.matchEvent.findMany({
-      where: { matchId: Number(matchId) },
+      where: { matchId },
       include: {
         eventType: true,
         player: { select: { id: true, firstName: true, lastName: true } },

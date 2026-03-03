@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError, hasRole, hasOrgRole } from "@/lib/auth";
-import { success, badRequest, notFound, serverError, parseId } from "@/lib/api-helpers";
+import { success, badRequest, notFound, serverError, parseUUID } from "@/lib/api-helpers";
 import { NextResponse } from "next/server";
 
 // GET /api/seasons/:id
@@ -14,7 +14,7 @@ export async function GET(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const id = parseId({ id: idStr });
+    const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid season ID");
 
     const season = await prisma.season.findUnique({
@@ -46,7 +46,7 @@ export async function PATCH(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const id = parseId({ id: idStr });
+    const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid season ID");
 
     const season = await prisma.season.findUnique({ where: { id } });
@@ -96,7 +96,7 @@ export async function DELETE(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const id = parseId({ id: idStr });
+    const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid season ID");
 
     await prisma.season.delete({ where: { id } });

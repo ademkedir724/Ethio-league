@@ -26,15 +26,15 @@ export async function verifyPassword(
 // ─── Token Types ────────────────────────────────────────────
 
 export interface TokenPayload {
-  userId: number;
+  userId: string;
   email: string;
 }
 
 export interface RoleScope {
   roleName: string;
-  organizationId?: number | null;
-  seasonId?: number | null;
-  clubId?: number | null;
+  organizationId?: string | null;
+  seasonId?: string | null;
+  clubId?: string | null;
 }
 
 export interface AuthUser extends TokenPayload {
@@ -117,7 +117,7 @@ export function hasRole(user: AuthUser, allowedRoles: string[]): boolean {
 export function hasOrgRole(
   user: AuthUser,
   roleName: string,
-  organizationId: number
+  organizationId: string
 ): boolean {
   return user.roles.some(
     (r) => r.roleName === roleName && r.organizationId === organizationId
@@ -130,7 +130,7 @@ export function hasOrgRole(
 export function hasSeasonRole(
   user: AuthUser,
   roleName: string,
-  seasonId: number
+  seasonId: string
 ): boolean {
   return user.roles.some(
     (r) => r.roleName === roleName && r.seasonId === seasonId
@@ -143,7 +143,7 @@ export function hasSeasonRole(
 export function hasClubRole(
   user: AuthUser,
   roleName: string,
-  clubId: number
+  clubId: string
 ): boolean {
   return user.roles.some(
     (r) => r.roleName === roleName && r.clubId === clubId

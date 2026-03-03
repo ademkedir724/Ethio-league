@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       return badRequest("userIds (array), title, and body are required");
     }
 
-    const data = userIds.map((userId: number) => ({
+    const data = userIds.map((userId: string) => ({
       userId,
       title,
       body,

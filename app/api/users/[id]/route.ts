@@ -6,7 +6,7 @@ import {
   badRequest,
   notFound,
   serverError,
-  parseId,
+  parseUUID,
 } from "@/lib/api-helpers";
 
 // GET /api/users/:id
@@ -16,7 +16,7 @@ export async function GET(
 ) {
   try {
     const { id: idStr } = await params;
-    const id = parseId({ id: idStr });
+    const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid user ID");
 
     const user = await prisma.user.findUnique({
@@ -51,7 +51,7 @@ export async function PATCH(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const id = parseId({ id: idStr });
+    const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid user ID");
 
     const isSuperAdmin = auth.roles.some((r) => r.roleName === "super_admin");
@@ -99,7 +99,7 @@ export async function DELETE(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const id = parseId({ id: idStr });
+    const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid user ID");
 
     await prisma.user.delete({ where: { id } });

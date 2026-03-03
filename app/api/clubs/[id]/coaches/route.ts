@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError, hasRole, hasClubRole } from "@/lib/auth";
-import { success, created, badRequest, notFound, serverError, parseId } from "@/lib/api-helpers";
+import { success, created, badRequest, notFound, serverError, parseUUID } from "@/lib/api-helpers";
 import { NextResponse } from "next/server";
 
 // GET /api/clubs/:id/coaches?seasonId=X — list coaches for a club in a season
@@ -14,14 +14,14 @@ export async function GET(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const clubId = parseId({ id: idStr });
+    const clubId = parseUUID(idStr);
     if (!clubId) return badRequest("Invalid club ID");
 
     const seasonId = req.nextUrl.searchParams.get("seasonId");
     if (!seasonId) return badRequest("seasonId query param is required");
 
     const seasonClub = await prisma.seasonClub.findUnique({
-      where: { seasonId_clubId: { seasonId: Number(seasonId), clubId } },
+      where: { seasonId_clubId: { seasonId, clubId } },
     });
     if (!seasonClub) return notFound("Club not registered in this season");
 
@@ -47,7 +47,7 @@ export async function POST(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const clubId = parseId({ id: idStr });
+    const clubId = parseUUID(idStr);
     if (!clubId) return badRequest("Invalid club ID");
 
     const isSuperAdmin = hasRole(auth, ["super_admin"]);

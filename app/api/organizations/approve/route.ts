@@ -36,17 +36,23 @@ export async function POST(req: NextRequest) {
         where: { name: "organization_admin" },
       });
       if (orgAdminRole) {
-        await prisma.userRoleScope.upsert({
+        // Check if role scope already exists
+        const existing = await prisma.userRoleScope.findFirst({
           where: {
-            id: 0, // force create path
-          },
-          create: {
             userId: adminUserId,
             roleId: orgAdminRole.id,
             organizationId: organizationId,
           },
-          update: {},
         });
+        if (!existing) {
+          await prisma.userRoleScope.create({
+            data: {
+              userId: adminUserId,
+              roleId: orgAdminRole.id,
+              organizationId: organizationId,
+            },
+          });
+        }
       }
     }
 

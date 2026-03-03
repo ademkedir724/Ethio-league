@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError, hasRole, hasOrgRole } from "@/lib/auth";
-import { success, created, badRequest, notFound, serverError, parseId } from "@/lib/api-helpers";
+import { success, created, badRequest, notFound, serverError, parseUUID } from "@/lib/api-helpers";
 import { NextResponse } from "next/server";
 
 // GET /api/seasons/:id/clubs — list clubs in a season
@@ -14,7 +14,7 @@ export async function GET(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const seasonId = parseId({ id: idStr });
+    const seasonId = parseUUID(idStr);
     if (!seasonId) return badRequest("Invalid season ID");
 
     const seasonClubs = await prisma.seasonClub.findMany({
@@ -41,7 +41,7 @@ export async function POST(
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
-    const seasonId = parseId({ id: idStr });
+    const seasonId = parseUUID(idStr);
     if (!seasonId) return badRequest("Invalid season ID");
 
     const { clubId } = await req.json();
@@ -65,13 +65,6 @@ export async function POST(
     const seasonClub = await prisma.seasonClub.create({
       data: { seasonId, clubId },
       include: { club: true },
-    });
-
-    // Auto-create standing entry
-    await prisma.standing.upsert({
-      where: { seasonId_clubId: { seasonId, clubId } },
-      create: { seasonId, clubId },
-      update: {},
     });
 
     return created(seasonClub);
