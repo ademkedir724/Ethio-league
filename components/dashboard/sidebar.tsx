@@ -9,7 +9,7 @@ import {
   Users,
   Shield,
   UserCircle,
-  Whistle,
+  Megaphone,
   Swords,
   Calendar,
   Bell,
@@ -61,7 +61,7 @@ const navItems = [
   {
     title: "Referees",
     href: "/dashboard/referees",
-    icon: Whistle,
+    icon: Megaphone,
   },
   {
     title: "Seasons",
