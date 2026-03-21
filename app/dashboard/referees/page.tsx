@@ -27,7 +27,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Whistle, Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Megaphone, Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 interface Referee {
   id: string;
@@ -229,9 +229,9 @@ export default function RefereesPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard title="Total Referees" value={stats.total} icon={Whistle} />
-        <StatCard title="FIFA Licensed" value={stats.fifa} icon={Whistle} description="International grade" />
-        <StatCard title="Total Matches" value={stats.totalMatches} icon={Whistle} description="Officiated across all" />
+        <StatCard title="Total Referees" value={stats.total} icon={Megaphone} />
+        <StatCard title="FIFA Licensed" value={stats.fifa} icon={Megaphone} description="International grade" />
+        <StatCard title="Total Matches" value={stats.totalMatches} icon={Megaphone} description="Officiated across all" />
       </div>
 
       {/* Table */}
