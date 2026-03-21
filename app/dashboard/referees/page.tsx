@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import useSWR from "swr";
 import { authFetcher } from "@/lib/fetch-client";
+import { usePermissions } from "@/lib/use-permissions";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { FormDialog } from "@/components/dashboard/form-dialog";
@@ -77,6 +78,8 @@ export default function RefereesPage() {
   });
 
   const referees: Referee[] = data || mockReferees;
+  const { canManage } = usePermissions();
+  const canEdit = canManage("referees");
 
   const [search, setSearch] = useState("");
   const [licenseFilter, setLicenseFilter] = useState("all");
@@ -187,44 +190,50 @@ export default function RefereesPage() {
         <span className="text-sm text-muted-foreground">{r.nationality}</span>
       ),
     },
-    {
-      key: "actions",
-      header: "",
-      className: "w-12",
-      render: (r) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-              <MoreHorizontal className="h-4 w-4" />
-              <span className="sr-only">Actions</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem onClick={() => openEdit(r)}>
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => setDeleteTarget(r)}
-              className="text-destructive focus:text-destructive"
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
-    },
+    ...(canEdit
+      ? [
+          {
+            key: "actions",
+            header: "",
+            className: "w-12",
+            render: (r: Referee) => (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                    <MoreHorizontal className="h-4 w-4" />
+                    <span className="sr-only">Actions</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => openEdit(r)}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => setDeleteTarget(r)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Referees" description="Manage match officials and their certifications.">
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" />
-          Add Referee
-        </Button>
+      <PageHeader title="Referees" description={canEdit ? "Manage match officials and their certifications." : "View match officials and their certifications."}>
+        {canEdit && (
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            Add Referee
+          </Button>
+        )}
       </PageHeader>
 
       {/* Stats */}

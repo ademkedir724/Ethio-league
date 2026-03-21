@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import useSWR from "swr";
 import { authFetcher } from "@/lib/fetch-client";
+import { usePermissions } from "@/lib/use-permissions";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -67,6 +68,8 @@ export default function SeasonsPage() {
   });
 
   const seasons: Season[] = data || mockSeasons;
+  const { canManage } = usePermissions();
+  const canEdit = canManage("seasons");
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -178,44 +181,50 @@ export default function SeasonsPage() {
       header: "Status",
       render: (s) => <StatusBadge status={s.status} />,
     },
-    {
-      key: "actions",
-      header: "",
-      className: "w-12",
-      render: (s) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-              <MoreHorizontal className="h-4 w-4" />
-              <span className="sr-only">Actions</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem onClick={() => openEdit(s)}>
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => setDeleteTarget(s)}
-              className="text-destructive focus:text-destructive"
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
-    },
+    ...(canEdit
+      ? [
+          {
+            key: "actions",
+            header: "",
+            className: "w-12",
+            render: (s: Season) => (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                    <MoreHorizontal className="h-4 w-4" />
+                    <span className="sr-only">Actions</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => openEdit(s)}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => setDeleteTarget(s)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Seasons" description="Manage league seasons and their configurations.">
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" />
-          Add Season
-        </Button>
+      <PageHeader title="Seasons" description={canEdit ? "Manage league seasons and their configurations." : "View league seasons and their configurations."}>
+        {canEdit && (
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            Add Season
+          </Button>
+        )}
       </PageHeader>
 
       {/* Stats */}

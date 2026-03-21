@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import useSWR from "swr";
 import { authFetcher } from "@/lib/fetch-client";
+import { usePermissions } from "@/lib/use-permissions";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -70,6 +71,8 @@ export default function MatchesPage() {
   });
 
   const matches: Match[] = data || mockMatches;
+  const { canManage } = usePermissions();
+  const canEdit = canManage("matches");
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -190,56 +193,62 @@ export default function MatchesPage() {
       header: "Status",
       render: (m) => <StatusBadge status={m.status} />,
     },
-    {
-      key: "actions",
-      header: "",
-      className: "w-12",
-      render: (m) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-              <MoreHorizontal className="h-4 w-4" />
-              <span className="sr-only">Actions</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem onClick={() => openEdit(m)}>
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit
-            </DropdownMenuItem>
-            {(m.status === "scheduled" || m.status === "upcoming") && (
-              <DropdownMenuItem className="text-emerald-400 focus:text-emerald-400">
-                <Play className="mr-2 h-4 w-4" />
-                Start Match
-              </DropdownMenuItem>
-            )}
-            {m.status === "live" && (
-              <DropdownMenuItem className="text-blue-400 focus:text-blue-400">
-                <CheckCircle className="mr-2 h-4 w-4" />
-                End Match
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => setDeleteTarget(m)}
-              className="text-destructive focus:text-destructive"
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
-    },
+    ...(canEdit
+      ? [
+          {
+            key: "actions",
+            header: "",
+            className: "w-12",
+            render: (m: Match) => (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                    <MoreHorizontal className="h-4 w-4" />
+                    <span className="sr-only">Actions</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => openEdit(m)}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit
+                  </DropdownMenuItem>
+                  {(m.status === "scheduled" || m.status === "upcoming") && (
+                    <DropdownMenuItem className="text-emerald-400 focus:text-emerald-400">
+                      <Play className="mr-2 h-4 w-4" />
+                      Start Match
+                    </DropdownMenuItem>
+                  )}
+                  {m.status === "live" && (
+                    <DropdownMenuItem className="text-blue-400 focus:text-blue-400">
+                      <CheckCircle className="mr-2 h-4 w-4" />
+                      End Match
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => setDeleteTarget(m)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Matches" description="Manage match fixtures, scores, and results.">
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" />
-          Add Match
-        </Button>
+      <PageHeader title="Matches" description={canEdit ? "Manage match fixtures, scores, and results." : "View match fixtures, scores, and results."}>
+        {canEdit && (
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            Add Match
+          </Button>
+        )}
       </PageHeader>
 
       {/* Stats */}

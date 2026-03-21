@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import useSWR from "swr";
 import { authFetcher } from "@/lib/fetch-client";
+import { usePermissions } from "@/lib/use-permissions";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -82,6 +83,8 @@ export default function PlayersPage() {
   });
 
   const players: Player[] = data || mockPlayers;
+  const { canManage } = usePermissions();
+  const canEdit = canManage("players");
 
   const [search, setSearch] = useState("");
   const [positionFilter, setPositionFilter] = useState("all");
@@ -207,44 +210,50 @@ export default function PlayersPage() {
       header: "Status",
       render: (p) => <StatusBadge status={p.status} />,
     },
-    {
-      key: "actions",
-      header: "",
-      className: "w-12",
-      render: (p) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-              <MoreHorizontal className="h-4 w-4" />
-              <span className="sr-only">Actions</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem onClick={() => openEdit(p)}>
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => setDeleteTarget(p)}
-              className="text-destructive focus:text-destructive"
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
-    },
+    ...(canEdit
+      ? [
+          {
+            key: "actions",
+            header: "",
+            className: "w-12",
+            render: (p: Player) => (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                    <MoreHorizontal className="h-4 w-4" />
+                    <span className="sr-only">Actions</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => openEdit(p)}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => setDeleteTarget(p)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Players" description="Manage registered players across all clubs.">
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" />
-          Add Player
-        </Button>
+      <PageHeader title="Players" description={canEdit ? "Manage registered players across all clubs." : "View registered players across all clubs."}>
+        {canEdit && (
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            Add Player
+          </Button>
+        )}
       </PageHeader>
 
       {/* Stats */}

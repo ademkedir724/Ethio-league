@@ -1,16 +1,21 @@
 import { NextRequest } from "next/server";
+import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, badRequest, notFound, serverError } from "@/lib/api-helpers";
 
+// Helper to generate a secure random token
+function generateSecureToken(): string {
+  return crypto.randomBytes(32).toString("hex");
+}
+
 // POST /api/organizations/approve — super_admin approves or rejects an org
-// Also assigns organization_admin role to requesting user when approved
 export async function POST(req: NextRequest) {
   try {
     const auth = await requireAuth(req, ["super_admin"]);
     if (isAuthError(auth)) return auth;
 
-    const { organizationId, status, adminUserId } = await req.json();
+    const { organizationId, status } = await req.json();
 
     if (!organizationId || !status) {
       return badRequest("organizationId and status are required");
@@ -20,43 +25,99 @@ export async function POST(req: NextRequest) {
       return badRequest('Status must be "approved" or "rejected"');
     }
 
+    // Find the organization
     const org = await prisma.organization.findUnique({
       where: { id: organizationId },
     });
     if (!org) return notFound("Organization not found");
 
-    const updated = await prisma.organization.update({
-      where: { id: organizationId },
-      data: { status },
+    // Find the user associated with this organization (via UserRoleScope)
+    const userRoleScope = await prisma.userRoleScope.findFirst({
+      where: { organizationId: organizationId },
+      include: {
+        user: true,
+        role: true,
+      },
     });
 
-    // If approved and adminUserId provided, assign organization_admin role
-    if (status === "approved" && adminUserId) {
-      const orgAdminRole = await prisma.role.findUnique({
-        where: { name: "organization_admin" },
+    if (status === "approved") {
+      // Update organization status
+      await prisma.organization.update({
+        where: { id: organizationId },
+        data: { status: "approved" },
       });
-      if (orgAdminRole) {
-        // Check if role scope already exists
-        const existing = await prisma.userRoleScope.findFirst({
-          where: {
-            userId: adminUserId,
-            roleId: orgAdminRole.id,
-            organizationId: organizationId,
+
+      // If there's an associated user, activate them and generate password reset token
+      if (userRoleScope?.user) {
+        const token = generateSecureToken();
+        const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+
+        await prisma.user.update({
+          where: { id: userRoleScope.user.id },
+          data: {
+            status: "active",
+            passwordResetToken: token,
+            passwordResetExpires: expires,
           },
         });
-        if (!existing) {
-          await prisma.userRoleScope.create({
-            data: {
-              userId: adminUserId,
-              roleId: orgAdminRole.id,
-              organizationId: organizationId,
-            },
-          });
-        }
-      }
-    }
 
-    return success(updated);
+        // In production, send email here with the password setup link
+        // For now, we'll return the token info in the response
+        // Email would contain: /set-password?token=${token}
+        console.log(
+          `[v0] Password setup link for ${userRoleScope.user.email}: /set-password?token=${token}`
+        );
+
+        return success({
+          message: "Organization approved successfully",
+          organization: {
+            id: org.id,
+            name: org.name,
+            status: "approved",
+          },
+          user: {
+            id: userRoleScope.user.id,
+            email: userRoleScope.user.email,
+            fullName: userRoleScope.user.fullName,
+          },
+          // In production, don't return the token - it would be sent via email
+          passwordSetupLink: `/set-password?token=${token}`,
+          expiresAt: expires.toISOString(),
+        });
+      }
+
+      return success({
+        message: "Organization approved successfully",
+        organization: {
+          id: org.id,
+          name: org.name,
+          status: "approved",
+        },
+      });
+    } else {
+      // Rejected - update organization status
+      await prisma.organization.update({
+        where: { id: organizationId },
+        data: { status: "rejected" },
+      });
+
+      // Optionally deactivate the associated user
+      if (userRoleScope?.user) {
+        await prisma.user.update({
+          where: { id: userRoleScope.user.id },
+          data: { status: "inactive" },
+        });
+      }
+
+      return success({
+        message: "Organization rejected",
+        organization: {
+          id: org.id,
+          name: org.name,
+          status: "rejected",
+        },
+      });
+    }
   } catch (error) {
     return serverError(error);
   }

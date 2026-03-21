@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import useSWR from "swr";
 import { authFetcher } from "@/lib/fetch-client";
+import { usePermissions } from "@/lib/use-permissions";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { FormDialog } from "@/components/dashboard/form-dialog";
@@ -69,6 +70,8 @@ export default function ClubsPage() {
   });
 
   const clubs: Club[] = data || mockClubs;
+  const { canManage } = usePermissions();
+  const canEdit = canManage("clubs");
 
   const [search, setSearch] = useState("");
   const [cityFilter, setCityFilter] = useState("all");
@@ -198,44 +201,50 @@ export default function ClubsPage() {
         <span className="text-sm text-muted-foreground">{club.stadium}</span>
       ),
     },
-    {
-      key: "actions",
-      header: "",
-      className: "w-12",
-      render: (club) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-              <MoreHorizontal className="h-4 w-4" />
-              <span className="sr-only">Actions</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem onClick={() => openEdit(club)}>
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => setDeleteTarget(club)}
-              className="text-destructive focus:text-destructive"
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
-    },
+    ...(canEdit
+      ? [
+          {
+            key: "actions",
+            header: "",
+            className: "w-12",
+            render: (club: Club) => (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                    <MoreHorizontal className="h-4 w-4" />
+                    <span className="sr-only">Actions</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => openEdit(club)}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => setDeleteTarget(club)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Clubs" description="Manage registered football clubs and their details.">
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" />
-          Add Club
-        </Button>
+      <PageHeader title="Clubs" description={canEdit ? "Manage registered football clubs and their details." : "View registered football clubs and their details."}>
+        {canEdit && (
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            Add Club
+          </Button>
+        )}
       </PageHeader>
 
       {/* Stats */}
