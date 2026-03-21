@@ -168,3 +168,220 @@ Here’s a **comprehensive list of all functional features** for your **administ
 
 - Live updates (via Socket.IO)
 - Historical statistics per season, club, player
+
+jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
+JJJJJJJJJJJJJJJJJJJJJJJJJJ
+JJJJJJJJJJJJJJJJJJJ
+JJJJJJJJJJJJJJJJJJJJJJJJJJJ
+JJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJ
+
+Build a secure organization onboarding system with public pages and admin approval flow for this platform. The implementation must follow modern security best practices and maintain a clean, reusable architecture.
+
+---
+
+## 🔹 1. Public Pages (Before Login)
+
+Modify the app so it no longer opens directly to login.
+
+### Create a Landing Page (/)
+
+This is the default entry point of the application.
+
+Include:
+
+- System introduction (what the platform does)
+- Key features overview (league management, live match tracking, analytics, etc.)
+- Clean, modern UI (dark blue theme consistent with dashboard)
+
+Add clear Call-To-Actions:
+
+- “Login” → redirects to /login
+- “Request Organization” → redirects to /request-organization
+
+---
+
+### Create Organization Request Page (/request-organization)
+
+Build a public form with the following fields:
+
+- Organization Name
+- Country
+- City
+- Description
+- Applicant Full Name
+- Email
+- Phone
+
+### On Submit:
+
+System must:
+
+1. Create a new Organization:
+   - status = "pending"
+
+2. Create a new User:
+   - status = "inactive"
+   - passwordHash = null (no password yet)
+
+3. Store applicant info and link the user to the organization
+
+4. Do NOT allow login for this user yet
+
+---
+
+## 🔹 2. Secure Organization Approval Flow (Core Logic)
+
+When a Super Admin approves an organization, implement the following secure onboarding process:
+
+### System Actions:
+
+1. Update:
+   - Organization → status = "approved"
+   - User → status = "active"
+
+2. Generate a secure random token:
+   - Use cryptographically secure method (e.g., crypto.randomBytes)
+   - Token must be long and unpredictable
+
+3. Store in database:
+   - passwordResetToken
+   - passwordResetExpires (1 hour expiry)
+
+4. Send email to the user containing:
+
+A secure link:
+
+/set-password?token=YOUR_SECURE_TOKEN
+
+---
+
+## 🔹 3. Password Setup Flow
+
+Create page: /set-password
+
+### Behavior:
+
+- Extract token from URL
+- Show form:
+  - New Password
+  - Confirm Password
+
+### On Submit:
+
+Backend must:
+
+1. Validate token:
+   - Exists
+   - Not expired
+
+2. If valid:
+   - Hash new password using bcrypt
+   - Save as passwordHash
+   - Clear:
+     - passwordResetToken
+     - passwordResetExpires
+
+3. Allow user to login normally after this
+
+---
+
+## 🔹 4. Login Security Rules
+
+When user attempts login:
+
+- Check:
+  - If status !== "active" → deny access
+  - Return error:
+    "Your account is not active. Please wait for approval."
+
+---
+
+## 🔹 5. UI Behavior for Super Admin
+
+After login:
+
+Super Admin can:
+
+### Full Access:
+
+- Organizations:
+  - View pending requests
+  - Approve / Reject
+
+- Users:
+  - Create
+  - Edit
+  - Assign roles
+
+### View-Only Pages:
+
+- Clubs
+- Players
+- Coaches
+- Referees
+- Seasons
+- Matches
+- Notifications
+
+### IMPORTANT:
+
+- Remove all “Add” buttons from view-only pages
+- No create/edit actions outside Users and Organizations
+
+---
+
+## 🔹 6. Organization Approval UI
+
+On Organizations page:
+
+- Show two sections:
+  - Pending Requests
+  - Approved Organizations
+
+Each pending item must have:
+
+- View details
+- Approve button
+- Reject button
+
+---
+
+## 🔹 7. Email Requirements
+
+Send email after approval:
+
+- Subject: “Organization Approved”
+- Include:
+  - Welcome message
+  - Secure password setup link
+  - Expiration notice (1 hour)
+
+---
+
+## 🔹 8. Architecture Requirements
+
+- Use reusable components (forms, cards, tables)
+- Maintain consistent dark theme UI
+- Separate concerns:
+  - API layer
+  - Service logic
+  - UI components
+
+- Ensure clean folder structure
+
+---
+
+Then:
+
+- Implement all features step by step
+
+---
+
+Final Goal
+
+This system must behave like a modern SaaS onboarding flow, where:
+
+Users never receive passwords via email
+Accounts are activated securely
+Access is strictly controlled
+UI is clean, consistent, and role-aware
