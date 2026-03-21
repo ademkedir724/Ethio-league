@@ -28,7 +28,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (user.status !== "active") {
-      return badRequest("Account is not active");
+      return badRequest("Your account is not active. Please wait for approval.");
+    }
+
+    // Check if user has set a password (passwordHash is not empty)
+    if (!user.passwordHash || user.passwordHash === "") {
+      return badRequest("Please set your password using the link sent to your email.");
     }
 
     const valid = await verifyPassword(password, user.passwordHash);

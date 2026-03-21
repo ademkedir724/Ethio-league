@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Shield } from "lucide-react";
+import { Shield, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -105,6 +106,18 @@ export default function LoginPage() {
           >
             {isLoading ? "Signing in..." : "Sign In"}
           </Button>
+          <div className="flex flex-col items-center gap-2 pt-2">
+            <p className="text-sm text-muted-foreground">
+              Need an account?{" "}
+              <Link href="/request-organization" className="text-primary hover:underline">
+                Request organization access
+              </Link>
+            </p>
+            <Link href="/" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+              <ArrowLeft className="h-3 w-3" />
+              Back to home
+            </Link>
+          </div>
         </form>
       </CardContent>
     </Card>
