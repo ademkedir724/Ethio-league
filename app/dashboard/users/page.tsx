@@ -153,7 +153,7 @@ export default function UsersPage() {
       className: "hidden md:table-cell",
       render: (u) => (
         <div className="flex flex-wrap gap-1">
-          {u.roles.map((role) => (
+          {u.roles?.map((role) => (
             <Badge key={role} variant="outline" className={`text-[10px] capitalize ${roleColors[role] || ""}`}>
               {role.replace(/_/g, " ").toLowerCase()}
             </Badge>
