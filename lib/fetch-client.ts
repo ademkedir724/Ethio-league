@@ -57,3 +57,18 @@ export const authFetcher = async (url: string) => {
   }
   return res.json();
 };
+
+/**
+ * Generic typed fetch client with auth.
+ */
+export async function fetchClient<T>(
+  url: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const res = await fetchWithAuth(url, options);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Request failed");
+  }
+  return res.json();
+}

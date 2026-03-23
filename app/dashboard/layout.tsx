@@ -3,6 +3,7 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { OrganizationProvider } from "@/lib/org-context";
 import { DashboardSidebar } from "@/components/dashboard/sidebar";
 import { Topbar } from "@/components/dashboard/topbar";
 import { cn } from "@/lib/utils";
@@ -84,7 +85,9 @@ function DashboardShell({ children }: { children: ReactNode }) {
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <AuthProvider>
-      <DashboardShell>{children}</DashboardShell>
+      <OrganizationProvider>
+        <DashboardShell>{children}</DashboardShell>
+      </OrganizationProvider>
     </AuthProvider>
   );
 }

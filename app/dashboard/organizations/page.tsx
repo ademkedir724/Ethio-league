@@ -4,12 +4,17 @@ import { useState, useMemo } from "react";
 import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
+import { useAuth } from "@/lib/auth-context";
+import { useOrganization } from "@/lib/org-context";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -28,11 +33,13 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Building2,
   MoreHorizontal,
@@ -47,6 +54,8 @@ import {
   Calendar,
   Link as LinkIcon,
   Copy,
+  Pencil,
+  Globe,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -68,7 +77,276 @@ interface Organization {
   };
 }
 
-export default function OrganizationsPage() {
+// ─── Organization Admin View ─────────────────────────────────────────────────
+// Shows only the current user's organization with edit capability
+
+function OrgAdminOrganizationsView() {
+  const { organization, isLoading, refetch } = useOrganization();
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    country: "",
+    city: "",
+    description: "",
+  });
+
+  const openEditDialog = () => {
+    if (organization) {
+      setEditForm({
+        name: organization.name || "",
+        country: organization.country || "",
+        city: organization.city || "",
+        description: organization.description || "",
+      });
+      setIsEditOpen(true);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!organization) return;
+    setIsSaving(true);
+
+    try {
+      const response = await fetchWithAuth(`/api/organizations/${organization.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to update organization");
+      }
+
+      toast.success("Organization updated successfully");
+      setIsEditOpen(false);
+      refetch();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update organization"
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader
+          title="My Organization"
+          description="View and manage your organization details."
+        />
+        <Card className="border-border bg-card">
+          <CardContent className="p-6">
+            <div className="space-y-4">
+              <Skeleton className="h-8 w-1/3" />
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-20 w-full" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!organization) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader
+          title="My Organization"
+          description="View and manage your organization details."
+        />
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Building2 className="mb-4 h-12 w-12 text-muted-foreground/50" />
+            <h3 className="mb-1 text-lg font-medium text-foreground">
+              No organization found
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              You are not associated with any organization.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="My Organization"
+        description="View and manage your organization details."
+      />
+
+      {/* Organization Details Card */}
+      <Card className="border-border bg-card">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-xl font-semibold">
+            {organization.name}
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <StatusBadge status={organization.status} />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={openEditDialog}
+            >
+              <Pencil className="mr-2 h-4 w-4" />
+              Edit
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Left Column - Details */}
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
+                <h4 className="mb-3 text-sm font-medium text-foreground">
+                  Organization Information
+                </h4>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">{organization.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">
+                      {organization.city || "N/A"}, {organization.country || "N/A"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Globe className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">{organization.country || "N/A"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {organization.description && (
+                <div className="rounded-lg border border-border bg-muted/30 p-4">
+                  <h4 className="mb-2 text-sm font-medium text-foreground">
+                    Description
+                  </h4>
+                  <p className="text-sm text-muted-foreground">
+                    {organization.description}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Right Column - Meta Info */}
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
+                <h4 className="mb-3 text-sm font-medium text-foreground">
+                  Account Details
+                </h4>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Status</span>
+                    <StatusBadge status={organization.status} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Created</span>
+                    <span className="text-sm">
+                      {format(new Date(organization.createdAt), "PPP")}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Last Updated</span>
+                    <span className="text-sm">
+                      {format(new Date(organization.updatedAt), "PPP")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Edit Organization Dialog */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Organization</DialogTitle>
+            <DialogDescription>
+              Update your organization details.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Organization Name</Label>
+              <Input
+                id="name"
+                value={editForm.name}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, name: e.target.value })
+                }
+                placeholder="Enter organization name"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="country">Country</Label>
+                <Input
+                  id="country"
+                  value={editForm.country}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, country: e.target.value })
+                  }
+                  placeholder="Country"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="city">City</Label>
+                <Input
+                  id="city"
+                  value={editForm.city}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, city: e.target.value })
+                  }
+                  placeholder="City"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={editForm.description}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, description: e.target.value })
+                }
+                placeholder="Describe your organization..."
+                rows={4}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsEditOpen(false)}
+              disabled={isSaving}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ─── Super Admin View ────────────────────────────────────────────────────────
+// Full organizations management with approve/reject capabilities
+
+function SuperAdminOrganizationsView() {
   const { data, isLoading } = useSWR<Organization[]>(
     "/api/organizations",
     authFetcher
@@ -623,4 +901,17 @@ export default function OrganizationsPage() {
       </Dialog>
     </div>
   );
+}
+
+// ─── Main Page Router ────────────────────────────────────────────────────────
+// Routes to appropriate view based on user role
+
+export default function OrganizationsPage() {
+  const { isOrgAdmin } = useAuth();
+
+  if (isOrgAdmin()) {
+    return <OrgAdminOrganizationsView />;
+  }
+
+  return <SuperAdminOrganizationsView />;
 }

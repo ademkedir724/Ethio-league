@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import useSWR from "swr";
-import { authFetcher } from "@/lib/fetch-client";
+import useSWR, { mutate } from "swr";
+import { toast } from "sonner";
+import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
+import { useAuth } from "@/lib/auth-context";
+import { useOrganization } from "@/lib/org-context";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -13,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -21,6 +26,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -28,7 +41,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Users, Plus, MoreHorizontal, Pencil, Trash2, ShieldCheck, UserX } from "lucide-react";
+import { Users, Plus, MoreHorizontal, Pencil, Trash2, ShieldCheck, UserX, Link as LinkIcon, Copy } from "lucide-react";
 
 interface User {
   id: string;
@@ -62,7 +75,432 @@ const roleColors: Record<string, string> = {
 
 const emptyForm = { fullName: "", email: "", phone: "", password: "", role: "" };
 
-export default function UsersPage() {
+// ─── Organization Admin View ─────────────────────────────────────────────────
+// View users in their organization and create Match Event Admins only
+
+function OrgAdminUsersView() {
+  const { organization, isLoading: orgLoading } = useOrganization();
+  const { getOrganizationId } = useAuth();
+  const orgId = getOrganizationId();
+
+  const { data, isLoading: usersLoading } = useSWR<User[]>(
+    orgId ? `/api/users?organizationId=${orgId}` : null,
+    authFetcher,
+    {
+      fallbackData: mockUsers.filter((u) =>
+        ["ORGANIZATION_ADMIN", "LEAGUE_ADMIN", "CLUB_ADMIN", "MATCH_EVENT_ADMIN"].some((r) =>
+          u.roles.includes(r)
+        )
+      ),
+      onError: () => {},
+    }
+  );
+
+  const users: User[] = data || [];
+  const isLoading = orgLoading || usersLoading;
+
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [form, setForm] = useState({ fullName: "", email: "", phone: "" });
+  const [isSaving, setIsSaving] = useState(false);
+  const [passwordSetupLink, setPasswordSetupLink] = useState<string | null>(null);
+
+  // Filter users that belong to this organization
+  const orgUsers = useMemo(() => {
+    return users.filter((u) =>
+      ["ORGANIZATION_ADMIN", "LEAGUE_ADMIN", "CLUB_ADMIN", "MATCH_EVENT_ADMIN"].some((r) =>
+        u.roles?.includes(r)
+      )
+    );
+  }, [users]);
+
+  const filtered = useMemo(() => {
+    return orgUsers.filter((u) => {
+      const matchesSearch =
+        u.fullName.toLowerCase().includes(search.toLowerCase()) ||
+        u.email.toLowerCase().includes(search.toLowerCase());
+      const matchesRole = roleFilter === "all" || u.roles?.includes(roleFilter);
+      const matchesStatus = statusFilter === "all" || u.status === statusFilter;
+      return matchesSearch && matchesRole && matchesStatus;
+    });
+  }, [orgUsers, search, roleFilter, statusFilter]);
+
+  const stats = useMemo(() => {
+    const orgAdmins = orgUsers.filter((u) => u.roles?.includes("ORGANIZATION_ADMIN")).length;
+    const leagueAdmins = orgUsers.filter((u) => u.roles?.includes("LEAGUE_ADMIN")).length;
+    const clubAdmins = orgUsers.filter((u) => u.roles?.includes("CLUB_ADMIN")).length;
+    const matchEventAdmins = orgUsers.filter((u) => u.roles?.includes("MATCH_EVENT_ADMIN")).length;
+    return { total: orgUsers.length, orgAdmins, leagueAdmins, clubAdmins, matchEventAdmins };
+  }, [orgUsers]);
+
+  const openCreateMatchEventAdmin = () => {
+    setEditingUser(null);
+    setForm({ fullName: "", email: "", phone: "" });
+    setFormOpen(true);
+  };
+
+  const openEdit = (user: User) => {
+    setEditingUser(user);
+    setForm({
+      fullName: user.fullName,
+      email: user.email,
+      phone: user.phone,
+    });
+    setFormOpen(true);
+  };
+
+  const handleSubmit = async () => {
+    setIsSaving(true);
+    try {
+      if (editingUser) {
+        // Update existing user
+        const response = await fetchWithAuth(`/api/users/${editingUser.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fullName: form.fullName,
+            phone: form.phone,
+          }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || "Failed to update user");
+        }
+
+        toast.success("User updated successfully");
+      } else {
+        // Create new Match Event Admin
+        const response = await fetchWithAuth("/api/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fullName: form.fullName,
+            email: form.email,
+            phone: form.phone,
+            role: "MATCH_EVENT_ADMIN",
+            organizationId: orgId,
+          }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || "Failed to create user");
+        }
+
+        const data = await response.json();
+        if (data.passwordSetupLink) {
+          setPasswordSetupLink(data.passwordSetupLink);
+        }
+        toast.success("Match Event Admin created successfully");
+      }
+
+      setFormOpen(false);
+      mutate(orgId ? `/api/users?organizationId=${orgId}` : null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Operation failed");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggleStatus = async (user: User) => {
+    try {
+      const newStatus = user.status === "active" ? "inactive" : "active";
+      const response = await fetchWithAuth(`/api/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to update user status");
+      }
+
+      toast.success(`User ${newStatus === "active" ? "activated" : "deactivated"}`);
+      mutate(orgId ? `/api/users?organizationId=${orgId}` : null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Operation failed");
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success("Link copied to clipboard");
+  };
+
+  const getInitials = (name: string) =>
+    name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+
+  const columns: Column<User>[] = [
+    {
+      key: "user",
+      header: "User",
+      render: (u) => (
+        <div className="flex items-center gap-3">
+          <Avatar className="h-9 w-9">
+            <AvatarFallback className="bg-primary/10 text-xs text-primary">
+              {getInitials(u.fullName)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium text-foreground">{u.fullName}</span>
+            <span className="text-xs text-muted-foreground">{u.email}</span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "roles",
+      header: "Role",
+      className: "hidden md:table-cell",
+      render: (u) => (
+        <div className="flex flex-wrap gap-1">
+          {u.roles?.map((role) => (
+            <Badge key={role} variant="outline" className={`text-[10px] capitalize ${roleColors[role] || ""}`}>
+              {role.replace(/_/g, " ").toLowerCase()}
+            </Badge>
+          ))}
+        </div>
+      ),
+    },
+    {
+      key: "phone",
+      header: "Phone",
+      className: "hidden lg:table-cell",
+      render: (u) => <span className="text-sm text-muted-foreground">{u.phone || "N/A"}</span>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (u) => <StatusBadge status={u.status} />,
+    },
+    {
+      key: "actions",
+      header: "",
+      className: "w-12",
+      render: (u) => {
+        // Only allow editing Match Event Admins
+        const canEdit = u.roles?.includes("MATCH_EVENT_ADMIN");
+        if (!canEdit) return null;
+
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                <MoreHorizontal className="h-4 w-4" />
+                <span className="sr-only">Actions</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => openEdit(u)}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {u.status === "active" ? (
+                <DropdownMenuItem
+                  onClick={() => handleToggleStatus(u)}
+                  className="text-amber-400 focus:text-amber-400"
+                >
+                  <UserX className="mr-2 h-4 w-4" />
+                  Deactivate
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem
+                  onClick={() => handleToggleStatus(u)}
+                  className="text-emerald-400 focus:text-emerald-400"
+                >
+                  <ShieldCheck className="mr-2 h-4 w-4" />
+                  Activate
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={organization ? `${organization.name} - Users` : "Users"}
+        description="View users in your organization and manage Match Event Admins."
+      >
+        <Button onClick={openCreateMatchEventAdmin}>
+          <Plus className="h-4 w-4" />
+          Add Match Event Admin
+        </Button>
+      </PageHeader>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+        <StatCard title="Total Users" value={stats.total} icon={Users} />
+        <StatCard title="Org Admins" value={stats.orgAdmins} icon={Users} />
+        <StatCard title="League Admins" value={stats.leagueAdmins} icon={Users} />
+        <StatCard title="Club Admins" value={stats.clubAdmins} icon={Users} />
+        <StatCard title="Match Admins" value={stats.matchEventAdmins} icon={Users} />
+      </div>
+
+      {/* Tabs by Role */}
+      <Tabs defaultValue="all" className="w-full">
+        <TabsList className="mb-4">
+          <TabsTrigger value="all">All Users</TabsTrigger>
+          <TabsTrigger value="ORGANIZATION_ADMIN">Org Admins</TabsTrigger>
+          <TabsTrigger value="LEAGUE_ADMIN">League Admins</TabsTrigger>
+          <TabsTrigger value="CLUB_ADMIN">Club Admins</TabsTrigger>
+          <TabsTrigger value="MATCH_EVENT_ADMIN">Match Admins</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="all">
+          <DataTable
+            columns={columns}
+            data={filtered}
+            isLoading={isLoading}
+            searchValue={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search users..."
+            emptyMessage="No users found in your organization."
+            filterSlot={
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            }
+          />
+        </TabsContent>
+
+        {["ORGANIZATION_ADMIN", "LEAGUE_ADMIN", "CLUB_ADMIN", "MATCH_EVENT_ADMIN"].map((role) => (
+          <TabsContent key={role} value={role}>
+            <DataTable
+              columns={columns}
+              data={orgUsers.filter((u) => u.roles?.includes(role))}
+              isLoading={isLoading}
+              searchPlaceholder="Search users..."
+              emptyMessage={`No ${role.replace(/_/g, " ").toLowerCase()}s found.`}
+            />
+          </TabsContent>
+        ))}
+      </Tabs>
+
+      {/* Create / Edit Match Event Admin Dialog */}
+      <FormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        title={editingUser ? "Edit User" : "Add Match Event Admin"}
+        description={
+          editingUser
+            ? "Update user details."
+            : "Create a new Match Event Admin for your organization. They will receive an email to set their password."
+        }
+        submitLabel={isSaving ? "Saving..." : editingUser ? "Update" : "Create"}
+        onSubmit={handleSubmit}
+      >
+        <div className="grid gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="me-name">Full Name</Label>
+            <Input
+              id="me-name"
+              value={form.fullName}
+              onChange={(e) => setForm({ ...form, fullName: e.target.value })}
+              placeholder="Abebe Kebede"
+            />
+          </div>
+          {!editingUser && (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="me-email">Email</Label>
+              <Input
+                id="me-email"
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="abebe@ethioleague.com"
+              />
+            </div>
+          )}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="me-phone">Phone</Label>
+            <Input
+              id="me-phone"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              placeholder="+251 911 234 567"
+            />
+          </div>
+          {!editingUser && (
+            <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+              The user will be assigned the <strong>Match Event Admin</strong> role and linked to your organization. A password setup email will be sent.
+            </div>
+          )}
+        </div>
+      </FormDialog>
+
+      {/* Password Setup Link Dialog */}
+      <Dialog open={!!passwordSetupLink} onOpenChange={() => setPasswordSetupLink(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-400">
+              <ShieldCheck className="h-5 w-5" />
+              User Created
+            </DialogTitle>
+            <DialogDescription>
+              The Match Event Admin has been created. In production, the following password setup link would be sent via email.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-border bg-muted/50 p-3">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+                <LinkIcon className="h-4 w-4" />
+                Password Setup Link
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded bg-background px-2 py-1 text-xs text-muted-foreground break-all">
+                  {passwordSetupLink}
+                </code>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8 shrink-0"
+                  onClick={() => copyToClipboard(window.location.origin + passwordSetupLink)}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              This link will expire in 1 hour.
+            </p>
+            <Button className="w-full" onClick={() => setPasswordSetupLink(null)}>
+              Done
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ─── Super Admin View ────────────────────────────────────────────────────────
+// Full user management across all organizations
+
+function SuperAdminUsersView() {
   const { data, isLoading } = useSWR("/api/users", authFetcher, {
     fallbackData: mockUsers,
     onError: () => {},

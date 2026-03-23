@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/lib/use-permissions";
 import {
   LayoutDashboard,
   Building2,
@@ -16,6 +17,7 @@ import {
   Trophy,
   ChevronLeft,
   ChevronRight,
+  Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,56 +29,72 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 
-const navItems = [
+const allNavItems = [
   {
     title: "Overview",
     href: "/dashboard",
     icon: LayoutDashboard,
+    key: "overview",
   },
   {
     title: "Organizations",
     href: "/dashboard/organizations",
     icon: Building2,
+    key: "organizations",
   },
   {
     title: "Users",
     href: "/dashboard/users",
     icon: Users,
+    key: "users",
+  },
+  {
+    title: "Leagues",
+    href: "/dashboard/leagues",
+    icon: Layers,
+    key: "leagues",
   },
   {
     title: "Clubs",
     href: "/dashboard/clubs",
     icon: Shield,
+    key: "clubs",
   },
   {
     title: "Players",
     href: "/dashboard/players",
     icon: UserCircle,
+    key: "players",
   },
   {
     title: "Coaches",
     href: "/dashboard/coaches",
     icon: Trophy,
+    key: "coaches",
   },
   {
     title: "Referees",
     href: "/dashboard/referees",
     icon: Megaphone,
+    key: "referees",
   },
   {
     title: "Seasons",
     href: "/dashboard/seasons",
     icon: Calendar,
+    key: "seasons",
   },
   {
     title: "Matches",
     href: "/dashboard/matches",
     icon: Swords,
+    key: "matches",
   },
   {
     title: "Notifications",
     href: "/dashboard/notifications",
     icon: Bell,
+    key: "notifications",
   },
 ];
 
@@ -85,8 +103,15 @@ interface DashboardSidebarProps {
   onToggle: () => void;
 }
 
-export function DashboardSidebar({ collapsed, onToggle }: DashboardSidebarProps) {
+export function DashboardSidebar({
+  collapsed,
+  onToggle,
+}: DashboardSidebarProps) {
   const pathname = usePathname();
+  const { canViewNavItem } = usePermissions();
+
+  // Filter nav items based on user permissions
+  const navItems = allNavItems.filter((item) => canViewNavItem(item.href));
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -126,7 +151,12 @@ export function DashboardSidebar({ collapsed, onToggle }: DashboardSidebarProps)
                       : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                   )}
                 >
-                  <item.icon className={cn("h-4.5 w-4.5 shrink-0", isActive && "text-sidebar-primary")} />
+                  <item.icon
+                    className={cn(
+                      "h-4.5 w-4.5 shrink-0",
+                      isActive && "text-sidebar-primary"
+                    )}
+                  />
                   {!collapsed && <span>{item.title}</span>}
                 </Link>
               );
@@ -135,7 +165,10 @@ export function DashboardSidebar({ collapsed, onToggle }: DashboardSidebarProps)
                 return (
                   <Tooltip key={item.href}>
                     <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                    <TooltipContent side="right" className="bg-popover text-popover-foreground">
+                    <TooltipContent
+                      side="right"
+                      className="bg-popover text-popover-foreground"
+                    >
                       {item.title}
                     </TooltipContent>
                   </Tooltip>

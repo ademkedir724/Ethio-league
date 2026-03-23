@@ -5,7 +5,14 @@ import { useAuth } from "./auth-context";
 // Define which pages each role can manage (create/edit/delete)
 const ROLE_PERMISSIONS = {
   super_admin: ["organizations", "users"],
-  organization_admin: ["seasons", "clubs", "players", "coaches", "referees", "matches", "notifications"],
+  organization_admin: [
+    "leagues",
+    "seasons",
+    "clubs",
+    "referees",
+    "notifications",
+    "users", // Can create Match Event Admins only
+  ],
   league_admin: ["matches", "notifications"],
   club_admin: ["players", "coaches"],
   match_event_admin: ["matches"],
@@ -18,23 +25,38 @@ const SUPER_ADMIN_VIEW_ONLY = [
   "coaches",
   "referees",
   "seasons",
+  "leagues",
   "matches",
   "notifications",
 ] as const;
 
-export type ManageableResource = 
-  | "organizations" 
-  | "users" 
-  | "clubs" 
-  | "players" 
-  | "coaches" 
-  | "referees" 
-  | "seasons" 
-  | "matches" 
+// Pages that are view-only for organization_admin
+const ORG_ADMIN_VIEW_ONLY = [
+  "players",
+  "coaches",
+  "matches",
+] as const;
+
+// Nav items hidden for organization_admin (they see Leagues instead of Seasons)
+export const ORG_ADMIN_HIDDEN_NAV = ["seasons"] as const;
+
+// Nav items only visible to organization_admin
+export const ORG_ADMIN_ONLY_NAV = ["leagues"] as const;
+
+export type ManageableResource =
+  | "organizations"
+  | "users"
+  | "clubs"
+  | "players"
+  | "coaches"
+  | "referees"
+  | "seasons"
+  | "leagues"
+  | "matches"
   | "notifications";
 
 export function usePermissions() {
-  const { user, hasRole } = useAuth();
+  const { user, hasRole, isSuperAdmin, isOrgAdmin, getOrganizationId } = useAuth();
 
   /**
    * Check if the current user can manage (create/edit/delete) a resource
@@ -44,27 +66,30 @@ export function usePermissions() {
 
     // Super admin has limited write access - only to organizations and users
     if (hasRole(["super_admin"])) {
-      return ROLE_PERMISSIONS.super_admin.includes(resource as "organizations" | "users");
+      return ROLE_PERMISSIONS.super_admin.includes(
+        resource as "organizations" | "users"
+      );
+    }
+
+    // Organization admin permissions
+    if (hasRole(["organization_admin"])) {
+      return (
+        ROLE_PERMISSIONS.organization_admin as readonly string[]
+      ).includes(resource);
     }
 
     // Check other roles
     const userRoles = user.roles.map((r) => r.roleName);
-    
+
     for (const role of userRoles) {
-      const permissions = ROLE_PERMISSIONS[role as keyof typeof ROLE_PERMISSIONS];
+      const permissions =
+        ROLE_PERMISSIONS[role as keyof typeof ROLE_PERMISSIONS];
       if (permissions && (permissions as readonly string[]).includes(resource)) {
         return true;
       }
     }
 
     return false;
-  };
-
-  /**
-   * Check if the current user is a super admin
-   */
-  const isSuperAdmin = (): boolean => {
-    return hasRole(["super_admin"]);
   };
 
   /**
@@ -78,13 +103,51 @@ export function usePermissions() {
       return (SUPER_ADMIN_VIEW_ONLY as readonly string[]).includes(resource);
     }
 
+    // Organization admin has view-only access to players, coaches, matches
+    if (hasRole(["organization_admin"])) {
+      return (ORG_ADMIN_VIEW_ONLY as readonly string[]).includes(resource);
+    }
+
     // For other users, check if they can manage
     return !canManage(resource);
+  };
+
+  /**
+   * Check if a nav item should be visible for the current user
+   */
+  const canViewNavItem = (navHref: string): boolean => {
+    if (!user) return false;
+
+    const navKey = navHref.replace("/dashboard/", "").replace("/dashboard", "overview");
+
+    // Super admin can see everything except leagues (uses seasons instead)
+    if (isSuperAdmin()) {
+      return !(ORG_ADMIN_ONLY_NAV as readonly string[]).includes(navKey);
+    }
+
+    // Org admin cannot see standalone seasons (integrated in leagues)
+    if (isOrgAdmin()) {
+      return !(ORG_ADMIN_HIDDEN_NAV as readonly string[]).includes(navKey);
+    }
+
+    // Other roles see default nav
+    return true;
+  };
+
+  /**
+   * Get the organization ID scope for the current user
+   * Used for filtering data in API calls
+   */
+  const getOrganizationScope = (): string | null => {
+    return getOrganizationId();
   };
 
   return {
     canManage,
     isSuperAdmin,
+    isOrgAdmin,
     isViewOnly,
+    canViewNavItem,
+    getOrganizationScope,
   };
 }
