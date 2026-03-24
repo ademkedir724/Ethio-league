@@ -3,6 +3,8 @@
 import { useState, useMemo } from "react";
 import useSWR from "swr";
 import { authFetcher } from "@/lib/fetch-client";
+import { useAuth } from "@/lib/auth-context";
+import { useOrganization } from "@/lib/org-context";
 import { usePermissions } from "@/lib/use-permissions";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
@@ -29,7 +31,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { UserCircle, Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { UserCircle, Plus, MoreHorizontal, Pencil, Trash2, Eye } from "lucide-react";
 
 interface Player {
   id: string;
@@ -77,22 +79,41 @@ const emptyForm = {
 };
 
 export default function PlayersPage() {
-  const { data, isLoading } = useSWR("/api/players", authFetcher, {
+  const { organization, isLoading: orgLoading } = useOrganization();
+  const { getOrganizationId, isOrgAdmin, isSuperAdmin } = useAuth();
+  const { canManage, isViewOnly } = usePermissions();
+  const orgId = getOrganizationId();
+
+  // Org admins see players from clubs in their org, super admins see all
+  const apiUrl = isOrgAdmin() && orgId
+    ? `/api/players?organizationId=${orgId}`
+    : "/api/players";
+
+  const { data, isLoading: playersLoading } = useSWR(apiUrl, authFetcher, {
     fallbackData: mockPlayers,
     onError: () => {},
   });
 
   const players: Player[] = data || mockPlayers;
-  const { canManage } = usePermissions();
+  const isLoading = orgLoading || playersLoading;
+
+  // Both org admin and super admin are view-only for players
+  // Only club admins can manage players
   const canEdit = canManage("players");
 
   const [search, setSearch] = useState("");
   const [positionFilter, setPositionFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [clubFilter, setClubFilter] = useState("all");
   const [formOpen, setFormOpen] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Player | null>(null);
   const [form, setForm] = useState(emptyForm);
+
+  const clubs = useMemo(() => {
+    const set = new Set(players.map((p) => p.club));
+    return Array.from(set).sort();
+  }, [players]);
 
   const filtered = useMemo(() => {
     return players.filter((p) => {
@@ -102,14 +123,16 @@ export default function PlayersPage() {
         p.club.toLowerCase().includes(search.toLowerCase());
       const matchesPosition = positionFilter === "all" || p.position === positionFilter;
       const matchesStatus = statusFilter === "all" || p.status === statusFilter;
-      return matchesSearch && matchesPosition && matchesStatus;
+      const matchesClub = clubFilter === "all" || p.club === clubFilter;
+      return matchesSearch && matchesPosition && matchesStatus && matchesClub;
     });
-  }, [players, search, positionFilter, statusFilter]);
+  }, [players, search, positionFilter, statusFilter, clubFilter]);
 
   const stats = useMemo(() => {
     const active = players.filter((p) => p.status === "active").length;
     const forwards = players.filter((p) => p.position === "Forward").length;
-    return { total: players.length, active, forwards };
+    const midfielders = players.filter((p) => p.position === "Midfielder").length;
+    return { total: players.length, active, forwards, midfielders };
   }, [players]);
 
   const openCreate = () => {
@@ -210,6 +233,7 @@ export default function PlayersPage() {
       header: "Status",
       render: (p) => <StatusBadge status={p.status} />,
     },
+    // Only show actions if user can edit (club admin)
     ...(canEdit
       ? [
           {
@@ -242,12 +266,35 @@ export default function PlayersPage() {
             ),
           },
         ]
-      : []),
+      : [
+          // View-only action for org admin / super admin
+          {
+            key: "actions",
+            header: "",
+            className: "w-12",
+            render: (p: Player) => (
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                <Eye className="h-4 w-4" />
+                <span className="sr-only">View</span>
+              </Button>
+            ),
+          },
+        ]),
   ];
+
+  const pageTitle = isOrgAdmin() && organization
+    ? `${organization.name} - Players`
+    : "Players";
+
+  const pageDescription = isOrgAdmin()
+    ? "View players from clubs in your organization."
+    : canEdit
+    ? "Manage registered players across all clubs."
+    : "View registered players across all clubs.";
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Players" description={canEdit ? "Manage registered players across all clubs." : "View registered players across all clubs."}>
+      <PageHeader title={pageTitle} description={pageDescription}>
         {canEdit && (
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" />
@@ -257,10 +304,11 @@ export default function PlayersPage() {
       </PageHeader>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard title="Total Players" value={stats.total} icon={UserCircle} />
-        <StatCard title="Active Players" value={stats.active} icon={UserCircle} description="Currently active" />
+        <StatCard title="Active" value={stats.active} icon={UserCircle} description="Currently active" />
         <StatCard title="Forwards" value={stats.forwards} icon={UserCircle} description="Attack position" />
+        <StatCard title="Midfielders" value={stats.midfielders} icon={UserCircle} description="Midfield position" />
       </div>
 
       {/* Table */}
@@ -273,9 +321,22 @@ export default function PlayersPage() {
         searchPlaceholder="Search players..."
         emptyMessage="No players found."
         filterSlot={
-          <div className="flex items-center gap-2">
-            <Select value={positionFilter} onValueChange={setPositionFilter}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={clubFilter} onValueChange={setClubFilter}>
               <SelectTrigger className="w-40">
+                <SelectValue placeholder="Club" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Clubs</SelectItem>
+                {clubs.map((club) => (
+                  <SelectItem key={club} value={club}>
+                    {club}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={positionFilter} onValueChange={setPositionFilter}>
+              <SelectTrigger className="w-36">
                 <SelectValue placeholder="Position" />
               </SelectTrigger>
               <SelectContent>
@@ -287,7 +348,7 @@ export default function PlayersPage() {
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-36">
+              <SelectTrigger className="w-32">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -301,80 +362,84 @@ export default function PlayersPage() {
         }
       />
 
-      {/* Create / Edit Dialog */}
-      <FormDialog
-        open={formOpen}
-        onOpenChange={setFormOpen}
-        title={editingPlayer ? "Edit Player" : "Add Player"}
-        description={editingPlayer ? "Update player details." : "Register a new player."}
-        submitLabel={editingPlayer ? "Update" : "Create"}
-        onSubmit={handleSubmit}
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="player-first">First Name</Label>
-            <Input id="player-first" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="Abebe" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="player-last">Last Name</Label>
-            <Input id="player-last" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Bikila" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="player-dob">Date of Birth</Label>
-            <Input id="player-dob" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="player-nat">Nationality</Label>
-            <Input id="player-nat" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} placeholder="Ethiopian" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="player-pos">Position</Label>
-            <Select value={form.position} onValueChange={(val) => setForm({ ...form, position: val })}>
-              <SelectTrigger id="player-pos">
-                <SelectValue placeholder="Select position" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Forward">Forward</SelectItem>
-                <SelectItem value="Midfielder">Midfielder</SelectItem>
-                <SelectItem value="Defender">Defender</SelectItem>
-                <SelectItem value="Goalkeeper">Goalkeeper</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="player-foot">Preferred Foot</Label>
-            <Select value={form.preferredFoot} onValueChange={(val) => setForm({ ...form, preferredFoot: val })}>
-              <SelectTrigger id="player-foot">
-                <SelectValue placeholder="Select foot" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Right">Right</SelectItem>
-                <SelectItem value="Left">Left</SelectItem>
-                <SelectItem value="Both">Both</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="player-height">Height (cm)</Label>
-            <Input id="player-height" type="number" value={form.heightCm} onChange={(e) => setForm({ ...form, heightCm: e.target.value })} placeholder="178" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="player-weight">Weight (kg)</Label>
-            <Input id="player-weight" type="number" value={form.weightKg} onChange={(e) => setForm({ ...form, weightKg: e.target.value })} placeholder="72" />
-          </div>
-        </div>
-      </FormDialog>
+      {/* Create / Edit Dialog (only shown if canEdit) */}
+      {canEdit && (
+        <>
+          <FormDialog
+            open={formOpen}
+            onOpenChange={setFormOpen}
+            title={editingPlayer ? "Edit Player" : "Add Player"}
+            description={editingPlayer ? "Update player details." : "Register a new player."}
+            submitLabel={editingPlayer ? "Update" : "Create"}
+            onSubmit={handleSubmit}
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="player-first">First Name</Label>
+                <Input id="player-first" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="Abebe" />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="player-last">Last Name</Label>
+                <Input id="player-last" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Bikila" />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="player-dob">Date of Birth</Label>
+                <Input id="player-dob" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="player-nat">Nationality</Label>
+                <Input id="player-nat" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} placeholder="Ethiopian" />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="player-pos">Position</Label>
+                <Select value={form.position} onValueChange={(val) => setForm({ ...form, position: val })}>
+                  <SelectTrigger id="player-pos">
+                    <SelectValue placeholder="Select position" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Forward">Forward</SelectItem>
+                    <SelectItem value="Midfielder">Midfielder</SelectItem>
+                    <SelectItem value="Defender">Defender</SelectItem>
+                    <SelectItem value="Goalkeeper">Goalkeeper</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="player-foot">Preferred Foot</Label>
+                <Select value={form.preferredFoot} onValueChange={(val) => setForm({ ...form, preferredFoot: val })}>
+                  <SelectTrigger id="player-foot">
+                    <SelectValue placeholder="Select foot" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Right">Right</SelectItem>
+                    <SelectItem value="Left">Left</SelectItem>
+                    <SelectItem value="Both">Both</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="player-height">Height (cm)</Label>
+                <Input id="player-height" type="number" value={form.heightCm} onChange={(e) => setForm({ ...form, heightCm: e.target.value })} placeholder="178" />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="player-weight">Weight (kg)</Label>
+                <Input id="player-weight" type="number" value={form.weightKg} onChange={(e) => setForm({ ...form, weightKg: e.target.value })} placeholder="72" />
+              </div>
+            </div>
+          </FormDialog>
 
-      {/* Delete Confirmation */}
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title="Delete Player"
-        description={`Are you sure you want to delete "${deleteTarget?.firstName} ${deleteTarget?.lastName}"? This action cannot be undone.`}
-        confirmLabel="Delete"
-        variant="destructive"
-        onConfirm={handleDelete}
-      />
+          {/* Delete Confirmation */}
+          <ConfirmDialog
+            open={!!deleteTarget}
+            onOpenChange={(open) => !open && setDeleteTarget(null)}
+            title="Delete Player"
+            description={`Are you sure you want to delete "${deleteTarget?.firstName} ${deleteTarget?.lastName}"? This action cannot be undone.`}
+            confirmLabel="Delete"
+            variant="destructive"
+            onConfirm={handleDelete}
+          />
+        </>
+      )}
     </div>
   );
 }

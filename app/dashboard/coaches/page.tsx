@@ -3,6 +3,8 @@
 import { useState, useMemo } from "react";
 import useSWR from "swr";
 import { authFetcher } from "@/lib/fetch-client";
+import { useAuth } from "@/lib/auth-context";
+import { useOrganization } from "@/lib/org-context";
 import { usePermissions } from "@/lib/use-permissions";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
@@ -28,7 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Trophy, Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Trophy, Plus, MoreHorizontal, Pencil, Trash2, Eye } from "lucide-react";
 
 interface Coach {
   id: string;
@@ -72,21 +74,40 @@ const emptyForm = {
 };
 
 export default function CoachesPage() {
-  const { data, isLoading } = useSWR("/api/coaches", authFetcher, {
+  const { organization, isLoading: orgLoading } = useOrganization();
+  const { getOrganizationId, isOrgAdmin, isSuperAdmin } = useAuth();
+  const { canManage, isViewOnly } = usePermissions();
+  const orgId = getOrganizationId();
+
+  // Org admins see coaches from clubs in their org, super admins see all
+  const apiUrl = isOrgAdmin() && orgId
+    ? `/api/coaches?organizationId=${orgId}`
+    : "/api/coaches";
+
+  const { data, isLoading: coachesLoading } = useSWR(apiUrl, authFetcher, {
     fallbackData: mockCoaches,
     onError: () => {},
   });
 
   const coaches: Coach[] = data || mockCoaches;
-  const { canManage } = usePermissions();
+  const isLoading = orgLoading || coachesLoading;
+
+  // Both org admin and super admin are view-only for coaches
+  // Only club admins can manage coaches
   const canEdit = canManage("coaches");
 
   const [search, setSearch] = useState("");
   const [licenseFilter, setLicenseFilter] = useState("all");
+  const [clubFilter, setClubFilter] = useState("all");
   const [formOpen, setFormOpen] = useState(false);
   const [editingCoach, setEditingCoach] = useState<Coach | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Coach | null>(null);
   const [form, setForm] = useState(emptyForm);
+
+  const clubs = useMemo(() => {
+    const set = new Set(coaches.map((c) => c.club));
+    return Array.from(set).sort();
+  }, [coaches]);
 
   const filtered = useMemo(() => {
     return coaches.filter((c) => {
@@ -95,16 +116,20 @@ export default function CoachesPage() {
         fullName.includes(search.toLowerCase()) ||
         c.club.toLowerCase().includes(search.toLowerCase());
       const matchesLicense = licenseFilter === "all" || c.licenseLevel === licenseFilter;
-      return matchesSearch && matchesLicense;
+      const matchesClub = clubFilter === "all" || c.club === clubFilter;
+      return matchesSearch && matchesLicense && matchesClub;
     });
-  }, [coaches, search, licenseFilter]);
+  }, [coaches, search, licenseFilter, clubFilter]);
 
   const stats = useMemo(() => {
     const headCoaches = coaches.filter((c) => c.role === "Head Coach").length;
     const avgExperience = coaches.length
       ? Math.round(coaches.reduce((s, c) => s + c.experienceYears, 0) / coaches.length)
       : 0;
-    return { total: coaches.length, headCoaches, avgExperience };
+    const proCertified = coaches.filter((c) => 
+      c.licenseLevel === "CAF Pro" || c.licenseLevel === "FIFA Pro"
+    ).length;
+    return { total: coaches.length, headCoaches, avgExperience, proCertified };
   }, [coaches]);
 
   const openCreate = () => {
@@ -192,6 +217,7 @@ export default function CoachesPage() {
         <span className="text-sm text-muted-foreground">{c.nationality}</span>
       ),
     },
+    // Only show actions if user can edit (club admin)
     ...(canEdit
       ? [
           {
@@ -224,12 +250,35 @@ export default function CoachesPage() {
             ),
           },
         ]
-      : []),
+      : [
+          // View-only action for org admin / super admin
+          {
+            key: "actions",
+            header: "",
+            className: "w-12",
+            render: (c: Coach) => (
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                <Eye className="h-4 w-4" />
+                <span className="sr-only">View</span>
+              </Button>
+            ),
+          },
+        ]),
   ];
+
+  const pageTitle = isOrgAdmin() && organization
+    ? `${organization.name} - Coaches`
+    : "Coaches";
+
+  const pageDescription = isOrgAdmin()
+    ? "View coaching staff from clubs in your organization."
+    : canEdit
+    ? "Manage coaching staff across all clubs."
+    : "View coaching staff across all clubs.";
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Coaches" description={canEdit ? "Manage coaching staff across all clubs." : "View coaching staff across all clubs."}>
+      <PageHeader title={pageTitle} description={pageDescription}>
         {canEdit && (
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" />
@@ -239,10 +288,11 @@ export default function CoachesPage() {
       </PageHeader>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard title="Total Coaches" value={stats.total} icon={Trophy} />
         <StatCard title="Head Coaches" value={stats.headCoaches} icon={Trophy} description="Leading their clubs" />
         <StatCard title="Avg. Experience" value={`${stats.avgExperience} yrs`} icon={Trophy} description="Years of coaching" />
+        <StatCard title="Pro Certified" value={stats.proCertified} icon={Trophy} description="CAF/FIFA Pro" />
       </div>
 
       {/* Table */}
@@ -255,55 +305,26 @@ export default function CoachesPage() {
         searchPlaceholder="Search coaches..."
         emptyMessage="No coaches found."
         filterSlot={
-          <Select value={licenseFilter} onValueChange={setLicenseFilter}>
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder="License" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Licenses</SelectItem>
-              <SelectItem value="FIFA Pro">FIFA Pro</SelectItem>
-              <SelectItem value="CAF Pro">CAF Pro</SelectItem>
-              <SelectItem value="CAF A">CAF A</SelectItem>
-              <SelectItem value="CAF B">CAF B</SelectItem>
-              <SelectItem value="CAF C">CAF C</SelectItem>
-            </SelectContent>
-          </Select>
-        }
-      />
-
-      {/* Create / Edit Dialog */}
-      <FormDialog
-        open={formOpen}
-        onOpenChange={setFormOpen}
-        title={editingCoach ? "Edit Coach" : "Add Coach"}
-        description={editingCoach ? "Update coach details." : "Register a new coach."}
-        submitLabel={editingCoach ? "Update" : "Create"}
-        onSubmit={handleSubmit}
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="coach-first">First Name</Label>
-            <Input id="coach-first" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="Wubetu" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="coach-last">Last Name</Label>
-            <Input id="coach-last" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Abate" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="coach-dob">Date of Birth</Label>
-            <Input id="coach-dob" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="coach-nat">Nationality</Label>
-            <Input id="coach-nat" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} placeholder="Ethiopian" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="coach-license">License Level</Label>
-            <Select value={form.licenseLevel} onValueChange={(val) => setForm({ ...form, licenseLevel: val })}>
-              <SelectTrigger id="coach-license">
-                <SelectValue placeholder="Select license" />
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={clubFilter} onValueChange={setClubFilter}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Club" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">All Clubs</SelectItem>
+                {clubs.map((club) => (
+                  <SelectItem key={club} value={club}>
+                    {club}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={licenseFilter} onValueChange={setLicenseFilter}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="License" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Licenses</SelectItem>
                 <SelectItem value="FIFA Pro">FIFA Pro</SelectItem>
                 <SelectItem value="CAF Pro">CAF Pro</SelectItem>
                 <SelectItem value="CAF A">CAF A</SelectItem>
@@ -312,38 +333,86 @@ export default function CoachesPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="coach-exp">Experience (Years)</Label>
-            <Input id="coach-exp" type="number" value={form.experienceYears} onChange={(e) => setForm({ ...form, experienceYears: e.target.value })} placeholder="10" />
-          </div>
-          <div className="flex flex-col gap-2 sm:col-span-2">
-            <Label htmlFor="coach-role">Coaching Role</Label>
-            <Select value={form.role} onValueChange={(val) => setForm({ ...form, role: val })}>
-              <SelectTrigger id="coach-role">
-                <SelectValue placeholder="Select role" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Head Coach">Head Coach</SelectItem>
-                <SelectItem value="Assistant Coach">Assistant Coach</SelectItem>
-                <SelectItem value="Goalkeeping Coach">Goalkeeping Coach</SelectItem>
-                <SelectItem value="Fitness Coach">Fitness Coach</SelectItem>
-                <SelectItem value="Youth Coach">Youth Coach</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </FormDialog>
-
-      {/* Delete Confirmation */}
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title="Delete Coach"
-        description={`Are you sure you want to delete "${deleteTarget?.firstName} ${deleteTarget?.lastName}"? This action cannot be undone.`}
-        confirmLabel="Delete"
-        variant="destructive"
-        onConfirm={handleDelete}
+        }
       />
+
+      {/* Create / Edit Dialog (only shown if canEdit) */}
+      {canEdit && (
+        <>
+          <FormDialog
+            open={formOpen}
+            onOpenChange={setFormOpen}
+            title={editingCoach ? "Edit Coach" : "Add Coach"}
+            description={editingCoach ? "Update coach details." : "Register a new coach."}
+            submitLabel={editingCoach ? "Update" : "Create"}
+            onSubmit={handleSubmit}
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="coach-first">First Name</Label>
+                <Input id="coach-first" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="Wubetu" />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="coach-last">Last Name</Label>
+                <Input id="coach-last" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Abate" />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="coach-dob">Date of Birth</Label>
+                <Input id="coach-dob" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="coach-nat">Nationality</Label>
+                <Input id="coach-nat" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} placeholder="Ethiopian" />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="coach-license">License Level</Label>
+                <Select value={form.licenseLevel} onValueChange={(val) => setForm({ ...form, licenseLevel: val })}>
+                  <SelectTrigger id="coach-license">
+                    <SelectValue placeholder="Select license" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FIFA Pro">FIFA Pro</SelectItem>
+                    <SelectItem value="CAF Pro">CAF Pro</SelectItem>
+                    <SelectItem value="CAF A">CAF A</SelectItem>
+                    <SelectItem value="CAF B">CAF B</SelectItem>
+                    <SelectItem value="CAF C">CAF C</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="coach-exp">Experience (Years)</Label>
+                <Input id="coach-exp" type="number" value={form.experienceYears} onChange={(e) => setForm({ ...form, experienceYears: e.target.value })} placeholder="10" />
+              </div>
+              <div className="flex flex-col gap-2 sm:col-span-2">
+                <Label htmlFor="coach-role">Coaching Role</Label>
+                <Select value={form.role} onValueChange={(val) => setForm({ ...form, role: val })}>
+                  <SelectTrigger id="coach-role">
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Head Coach">Head Coach</SelectItem>
+                    <SelectItem value="Assistant Coach">Assistant Coach</SelectItem>
+                    <SelectItem value="Goalkeeping Coach">Goalkeeping Coach</SelectItem>
+                    <SelectItem value="Fitness Coach">Fitness Coach</SelectItem>
+                    <SelectItem value="Youth Coach">Youth Coach</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </FormDialog>
+
+          {/* Delete Confirmation */}
+          <ConfirmDialog
+            open={!!deleteTarget}
+            onOpenChange={(open) => !open && setDeleteTarget(null)}
+            title="Delete Coach"
+            description={`Are you sure you want to delete "${deleteTarget?.firstName} ${deleteTarget?.lastName}"? This action cannot be undone.`}
+            confirmLabel="Delete"
+            variant="destructive"
+            onConfirm={handleDelete}
+          />
+        </>
+      )}
     </div>
   );
 }
