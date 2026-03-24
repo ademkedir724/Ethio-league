@@ -2,6 +2,8 @@
 
 import useSWR from "swr";
 import { authFetcher } from "@/lib/fetch-client";
+import { useAuth } from "@/lib/auth-context";
+import { useOrganization } from "@/lib/org-context";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -22,10 +24,13 @@ import {
   UserCircle,
   Calendar,
   Swords,
+  Layers,
+  Clock,
+  Megaphone,
 } from "lucide-react";
 
-// Mock data to display when API is not yet connected
-const mockStats = {
+// Mock data for Super Admin
+const mockSuperAdminStats = {
   organizations: 4,
   clubs: 32,
   players: 640,
@@ -34,28 +39,127 @@ const mockStats = {
   matches: 248,
 };
 
+// Mock data for Organization Admin
+const mockOrgAdminStats = {
+  totalLeagues: 3,
+  activeLeagues: 2,
+  totalClubs: 12,
+  pendingClubs: 2,
+  totalReferees: 8,
+  totalMatchEventAdmins: 5,
+  upcomingMatches: 15,
+};
+
 const mockRecentMatches = [
-  { id: 1, homeClub: "Ethio Electric SC", awayClub: "St. George FC", score: "2 - 1", status: "completed", date: "2026-03-01" },
-  { id: 2, homeClub: "Fasil Kenema FC", awayClub: "Hawassa Ketema FC", score: "0 - 0", status: "live", date: "2026-03-03" },
-  { id: 3, homeClub: "Adama Ketema FC", awayClub: "Dire Dawa Ketema FC", score: "- vs -", status: "scheduled", date: "2026-03-06" },
-  { id: 4, homeClub: "Wolaita Dicha FC", awayClub: "Sidama Bunna FC", score: "3 - 2", status: "completed", date: "2026-02-28" },
-  { id: 5, homeClub: "Bahir Dar Ketema FC", awayClub: "Jimma Aba Jifar FC", score: "- vs -", status: "upcoming", date: "2026-03-08" },
+  {
+    id: 1,
+    homeClub: "Ethio Electric SC",
+    awayClub: "St. George FC",
+    score: "2 - 1",
+    status: "completed",
+    date: "2026-03-01",
+  },
+  {
+    id: 2,
+    homeClub: "Fasil Kenema FC",
+    awayClub: "Hawassa Ketema FC",
+    score: "0 - 0",
+    status: "live",
+    date: "2026-03-03",
+  },
+  {
+    id: 3,
+    homeClub: "Adama Ketema FC",
+    awayClub: "Dire Dawa Ketema FC",
+    score: "- vs -",
+    status: "scheduled",
+    date: "2026-03-06",
+  },
+  {
+    id: 4,
+    homeClub: "Wolaita Dicha FC",
+    awayClub: "Sidama Bunna FC",
+    score: "3 - 2",
+    status: "completed",
+    date: "2026-02-28",
+  },
+  {
+    id: 5,
+    homeClub: "Bahir Dar Ketema FC",
+    awayClub: "Jimma Aba Jifar FC",
+    score: "- vs -",
+    status: "upcoming",
+    date: "2026-03-08",
+  },
 ];
 
 const mockRecentUsers = [
-  { id: 1, fullName: "Abebe Kebede", email: "abebe@ethioleague.com", role: "Organization Admin", status: "active" },
-  { id: 2, fullName: "Tigist Haile", email: "tigist@ethioleague.com", role: "Club Admin", status: "active" },
-  { id: 3, fullName: "Dawit Mengistu", email: "dawit@ethioleague.com", role: "League Admin", status: "pending" },
-  { id: 4, fullName: "Sara Tesfaye", email: "sara@ethioleague.com", role: "Match Event Admin", status: "active" },
+  {
+    id: 1,
+    fullName: "Abebe Kebede",
+    email: "abebe@ethioleague.com",
+    role: "Organization Admin",
+    status: "active",
+  },
+  {
+    id: 2,
+    fullName: "Tigist Haile",
+    email: "tigist@ethioleague.com",
+    role: "Club Admin",
+    status: "active",
+  },
+  {
+    id: 3,
+    fullName: "Dawit Mengistu",
+    email: "dawit@ethioleague.com",
+    role: "League Admin",
+    status: "pending",
+  },
+  {
+    id: 4,
+    fullName: "Sara Tesfaye",
+    email: "sara@ethioleague.com",
+    role: "Match Event Admin",
+    status: "active",
+  },
 ];
 
-export default function DashboardOverview() {
-  const { data: stats, isLoading } = useSWR("/api/dashboard/stats", authFetcher, {
-    fallbackData: mockStats,
-    onError: () => {},
-  });
+// Mock recent activity for org admin
+const mockOrgAdminActivity = [
+  {
+    id: 1,
+    type: "club_registration",
+    title: "New Club Registration",
+    description: "Addis Ababa FC submitted registration",
+    date: "2026-03-20",
+  },
+  {
+    id: 2,
+    type: "league_created",
+    title: "League Created",
+    description: "Premier League 2026 has been created",
+    date: "2026-03-18",
+  },
+  {
+    id: 3,
+    type: "referee_added",
+    title: "Referee Added",
+    description: "Referee Tesfaye Bekele has been added",
+    date: "2026-03-15",
+  },
+];
 
-  const displayStats = stats || mockStats;
+function SuperAdminOverview() {
+  const { data: stats, isLoading } = useSWR(
+    "/api/dashboard/stats",
+    authFetcher,
+    {
+      fallbackData: mockSuperAdminStats,
+      onError: () => {},
+    }
+  );
+
+  const displayStats = stats || mockSuperAdminStats;
 
   return (
     <div className="flex flex-col gap-6">
@@ -204,4 +308,189 @@ export default function DashboardOverview() {
       </div>
     </div>
   );
+}
+
+function OrgAdminOverview() {
+  const { organization, isLoading: orgLoading } = useOrganization();
+
+  const { data: stats, isLoading: statsLoading } = useSWR(
+    organization ? `/api/dashboard/stats?organizationId=${organization.id}` : null,
+    authFetcher,
+    {
+      fallbackData: mockOrgAdminStats,
+      onError: () => {},
+    }
+  );
+
+  const displayStats = stats || mockOrgAdminStats;
+  const isLoading = orgLoading || statsLoading;
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={organization ? `${organization.name} Dashboard` : "Dashboard Overview"}
+        description={
+          organization
+            ? `Manage leagues, clubs, and referees for ${organization.name}.`
+            : "Welcome to your organization dashboard."
+        }
+      />
+
+      {/* Org Admin Stat Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {isLoading ? (
+          Array.from({ length: 7 }).map((_, i) => (
+            <Card key={i} className="border-border bg-card">
+              <CardContent className="p-6">
+                <Skeleton className="h-16 w-full" />
+              </CardContent>
+            </Card>
+          ))
+        ) : (
+          <>
+            <StatCard
+              title="Total Leagues"
+              value={displayStats.totalLeagues}
+              icon={Layers}
+              description="Managed leagues"
+            />
+            <StatCard
+              title="Active Leagues"
+              value={displayStats.activeLeagues}
+              icon={Layers}
+              description="Currently running"
+            />
+            <StatCard
+              title="Total Clubs"
+              value={displayStats.totalClubs}
+              icon={Shield}
+              description="Registered clubs"
+            />
+            <StatCard
+              title="Pending Clubs"
+              value={displayStats.pendingClubs}
+              icon={Clock}
+              description="Awaiting approval"
+            />
+            <StatCard
+              title="Referees"
+              value={displayStats.totalReferees}
+              icon={Megaphone}
+              description="Active referees"
+            />
+            <StatCard
+              title="Match Admins"
+              value={displayStats.totalMatchEventAdmins}
+              icon={Users}
+              description="Event administrators"
+            />
+            <StatCard
+              title="Upcoming Matches"
+              value={displayStats.upcomingMatches}
+              icon={Swords}
+              description="Scheduled matches"
+            />
+          </>
+        )}
+      </div>
+
+      {/* Recent Activity Grid */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Recent Matches */}
+        <Card className="border-border bg-card">
+          <CardHeader>
+            <CardTitle className="text-base font-semibold text-card-foreground">
+              Recent Matches
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Match</TableHead>
+                  <TableHead>Score</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {mockRecentMatches.slice(0, 4).map((match) => (
+                  <TableRow key={match.id}>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium text-foreground">
+                          {match.homeClub}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          vs {match.awayClub}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-mono text-sm text-foreground">
+                      {match.score}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={match.status} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        {/* Recent Activity */}
+        <Card className="border-border bg-card">
+          <CardHeader>
+            <CardTitle className="text-base font-semibold text-card-foreground">
+              Recent Activity
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {mockOrgAdminActivity.map((activity) => (
+                <div
+                  key={activity.id}
+                  className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3"
+                >
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                    {activity.type === "club_registration" && (
+                      <Shield className="h-4 w-4 text-primary" />
+                    )}
+                    {activity.type === "league_created" && (
+                      <Layers className="h-4 w-4 text-primary" />
+                    )}
+                    {activity.type === "referee_added" && (
+                      <Megaphone className="h-4 w-4 text-primary" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      {activity.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {activity.description}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {activity.date}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+export default function DashboardOverview() {
+  const { isSuperAdmin, isOrgAdmin } = useAuth();
+
+  if (isOrgAdmin()) {
+    return <OrgAdminOverview />;
+  }
+
+  // Default to Super Admin view (or any other role)
+  return <SuperAdminOverview />;
 }

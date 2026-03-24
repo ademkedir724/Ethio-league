@@ -31,6 +31,9 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   hasRole: (roleNames: string[]) => boolean;
+  isSuperAdmin: () => boolean;
+  isOrgAdmin: () => boolean;
+  getOrganizationId: () => string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -101,9 +104,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user]
   );
 
+  const isSuperAdmin = useCallback(() => {
+    return hasRole(["super_admin"]);
+  }, [hasRole]);
+
+  const isOrgAdmin = useCallback(() => {
+    return hasRole(["organization_admin"]);
+  }, [hasRole]);
+
+  const getOrganizationId = useCallback((): string | null => {
+    if (!user) return null;
+    // Find the organization_admin role scope to get the organizationId
+    const orgAdminRole = user.roles.find(
+      (r) => r.roleName === "organization_admin" && r.organizationId
+    );
+    if (orgAdminRole?.organizationId) {
+      return orgAdminRole.organizationId;
+    }
+    // Fallback: check any role with organizationId
+    const anyRoleWithOrg = user.roles.find((r) => r.organizationId);
+    return anyRoleWithOrg?.organizationId || null;
+  }, [user]);
+
   return (
     <AuthContext.Provider
-      value={{ user, token, isLoading, login, logout, hasRole }}
+      value={{
+        user,
+        token,
+        isLoading,
+        login,
+        logout,
+        hasRole,
+        isSuperAdmin,
+        isOrgAdmin,
+        getOrganizationId,
+      }}
     >
       {children}
     </AuthContext.Provider>
