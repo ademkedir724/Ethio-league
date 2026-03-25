@@ -32,6 +32,10 @@ export function parseId(params: { id: string }): number | null {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export function forbidden(message = "Forbidden") {
+  return NextResponse.json({ error: message }, { status: 403 });
+}
+
 export function parseUUID(params: { id?: string } | string): string | null {
   const raw = typeof params === "string" ? params : params.id;
   if (!raw) return null;

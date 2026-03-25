@@ -34,6 +34,11 @@ interface AuthContextType {
   isSuperAdmin: () => boolean;
   isOrgAdmin: () => boolean;
   getOrganizationId: () => string | null;
+  isLeagueAdmin: () => boolean;
+  isClubAdmin: () => boolean;
+  isMEA: () => boolean;
+  getSeasonId: () => string | null;
+  getClubId: () => string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -112,6 +117,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return hasRole(["organization_admin"]);
   }, [hasRole]);
 
+  const isLeagueAdmin = useCallback(() => {
+    return hasRole(["league_admin"]);
+  }, [hasRole]);
+
+  const isClubAdmin = useCallback(() => {
+    return hasRole(["club_admin"]);
+  }, [hasRole]);
+
+  const isMEA = useCallback(() => {
+    return hasRole(["match_event_admin"]);
+  }, [hasRole]);
+
+  const getSeasonId = useCallback((): string | null => {
+    if (!user) return null;
+    const role = user.roles.find(
+      (r) =>
+        (r.roleName === "league_admin" || r.roleName === "match_event_admin") &&
+        r.seasonId
+    );
+    return role?.seasonId || null;
+  }, [user]);
+
+  const getClubId = useCallback((): string | null => {
+    if (!user) return null;
+    const role = user.roles.find(
+      (r) => r.roleName === "club_admin" && r.clubId
+    );
+    return role?.clubId || null;
+  }, [user]);
+
   const getOrganizationId = useCallback((): string | null => {
     if (!user) return null;
     // Find the organization_admin role scope to get the organizationId
@@ -138,6 +173,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isSuperAdmin,
         isOrgAdmin,
         getOrganizationId,
+        isLeagueAdmin,
+        isClubAdmin,
+        isMEA,
+        getSeasonId,
+        getClubId,
       }}
     >
       {children}
