@@ -3,6 +3,8 @@ import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError, hasRole } from "@/lib/auth";
 import { success, badRequest, notFound, serverError, parseUUID } from "@/lib/api-helpers";
 import { NextResponse } from "next/server";
+import { assertMEASeasonScope } from "@/lib/scope-guard";
+import { logAudit } from "@/lib/audit";
 
 const TEN_MINUTES_MS = 10 * 60 * 1000;
 
@@ -26,8 +28,18 @@ export async function PATCH(
     const event = await prisma.matchEvent.findUnique({ where: { id } });
     if (!event) return notFound("Match event not found");
 
-    // Check 10-minute window for match_event_admin
+    const match = await prisma.match.findUnique({ where: { id: event.matchId }, select: { seasonId: true } });
+    if (!match) return notFound("Match not found");
+
+    // For match_event_admin: enforce season scope before time window check
     const isLeagueAdminOrHigher = hasRole(auth, ["super_admin", "league_admin"]);
+    if (!isLeagueAdminOrHigher) {
+      if (!assertMEASeasonScope(auth, match.seasonId)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
+
+    // Check 10-minute window for match_event_admin
     if (!isLeagueAdminOrHigher) {
       const elapsed = Date.now() - event.createdAt.getTime();
       if (elapsed > TEN_MINUTES_MS) {
@@ -55,6 +67,14 @@ export async function PATCH(
         eventType: true,
         player: { select: { id: true, firstName: true, lastName: true } },
       },
+    });
+
+    await logAudit({
+      userId: auth.userId,
+      actionType: 'match_event_edited',
+      targetId: id,
+      targetType: 'match_event',
+      description: 'Match event edited',
     });
 
     return success(updated);

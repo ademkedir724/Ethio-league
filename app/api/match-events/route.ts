@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { success, created, badRequest, notFound, serverError } from "@/lib/api-helpers";
+import { success, created, badRequest, notFound, forbidden, serverError } from "@/lib/api-helpers";
+import { assertMEASeasonScope } from "@/lib/scope-guard";
+import { logAudit } from "@/lib/audit";
 
 // GET /api/match-events?matchId=X — list events for a match
 export async function GET(req: NextRequest) {
@@ -55,6 +57,21 @@ export async function POST(req: NextRequest) {
       return badRequest("Can only log events for live matches");
     }
 
+    // Scope check: user must be scoped to this season
+    if (!assertMEASeasonScope(auth, match.seasonId)) return forbidden();
+
+    // Look up event type before creating the event
+    const eventType = await prisma.eventType.findUnique({
+      where: { id: eventTypeId },
+      select: { name: true },
+    });
+    if (!eventType) return notFound("Event type not found");
+
+    // Substitution requires relatedPlayerId
+    if (eventType.name === "substitution" && !relatedPlayerId) {
+      return badRequest("relatedPlayerId is required for substitution events");
+    }
+
     const event = await prisma.matchEvent.create({
       data: {
         matchId,
@@ -70,6 +87,51 @@ export async function POST(req: NextRequest) {
         eventType: true,
         player: { select: { id: true, firstName: true, lastName: true } },
       },
+    });
+
+    // Auto-increment score based on event type
+    if (eventType.name === "goal" || eventType.name === "penalty_goal") {
+      if (clubId === match.homeClubId) {
+        await prisma.match.update({ where: { id: matchId }, data: { homeScore: { increment: 1 } } });
+      } else if (clubId === match.awayClubId) {
+        await prisma.match.update({ where: { id: matchId }, data: { awayScore: { increment: 1 } } });
+      }
+    } else if (eventType.name === "own_goal") {
+      if (clubId === match.homeClubId) {
+        // Own goal by home team — increment away score
+        await prisma.match.update({ where: { id: matchId }, data: { awayScore: { increment: 1 } } });
+      } else if (clubId === match.awayClubId) {
+        // Own goal by away team — increment home score
+        await prisma.match.update({ where: { id: matchId }, data: { homeScore: { increment: 1 } } });
+      }
+    }
+
+    // Notify league admin for this season
+    const leagueAdminScope = await prisma.userRoleScope.findFirst({
+      where: {
+        seasonId: match.seasonId,
+        role: { name: "league_admin" },
+      },
+      include: { role: true },
+    });
+
+    if (leagueAdminScope) {
+      await prisma.notification.create({
+        data: {
+          userId: leagueAdminScope.userId,
+          title: "Match Event Logged",
+          body: `A ${eventType.name} event was logged for match ${matchId}`,
+        },
+      });
+    }
+
+    // Audit log
+    await logAudit({
+      userId: auth.userId,
+      actionType: "match_event_created",
+      targetId: event.id,
+      targetType: "match_event",
+      description: "Match event logged",
     });
 
     return created(event);
