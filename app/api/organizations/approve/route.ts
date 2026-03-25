@@ -3,6 +3,8 @@ import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, badRequest, notFound, serverError } from "@/lib/api-helpers";
+import { sendPasswordSetupEmail } from "@/lib/email";
+import { logAudit } from "@/lib/audit";
 
 // Helper to generate a secure random token
 function generateSecureToken(): string {
@@ -61,14 +63,28 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        // In production, send email here with the password setup link
-        // For now, we'll return the token info in the response
-        // Email would contain: /set-password?token=${token}
-        console.log(
-          `[v0] Password setup link for ${userRoleScope.user.email}: /set-password?token=${token}`
-        );
+        try {
+          await sendPasswordSetupEmail(userRoleScope.user.email, token);
+        } catch {
+          await logAudit({
+            userId: auth.userId,
+            actionType: "email_failure",
+            targetId: userRoleScope.user.id,
+            targetType: "user",
+            description: "Password setup email failed",
+          });
+          return serverError("User activated but email delivery failed");
+        }
 
-        return success({
+        await logAudit({
+          userId: auth.userId,
+          actionType: "organization_approved",
+          targetId: org.id,
+          targetType: "organization",
+          description: "Organization approved",
+        });
+
+        const responseBody: Record<string, unknown> = {
           message: "Organization approved successfully",
           organization: {
             id: org.id,
@@ -80,11 +96,23 @@ export async function POST(req: NextRequest) {
             email: userRoleScope.user.email,
             fullName: userRoleScope.user.fullName,
           },
-          // In production, don't return the token - it would be sent via email
-          passwordSetupLink: `/set-password?token=${token}`,
           expiresAt: expires.toISOString(),
-        });
+        };
+
+        if (process.env.NODE_ENV !== "production") {
+          responseBody.passwordSetupLink = `/set-password?token=${token}`;
+        }
+
+        return success(responseBody);
       }
+
+      await logAudit({
+        userId: auth.userId,
+        actionType: "organization_approved",
+        targetId: org.id,
+        targetType: "organization",
+        description: "Organization approved",
+      });
 
       return success({
         message: "Organization approved successfully",
@@ -108,6 +136,14 @@ export async function POST(req: NextRequest) {
           data: { status: "inactive" },
         });
       }
+
+      await logAudit({
+        userId: auth.userId,
+        actionType: "organization_rejected",
+        targetId: org.id,
+        targetType: "organization",
+        description: "Organization rejected",
+      });
 
       return success({
         message: "Organization rejected",
