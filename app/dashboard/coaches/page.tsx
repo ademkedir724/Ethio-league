@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import useSWR from "swr";
-import { authFetcher } from "@/lib/fetch-client";
+import useSWR, { mutate } from "swr";
+import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
 import { useOrganization } from "@/lib/org-context";
 import { usePermissions } from "@/lib/use-permissions";
@@ -30,7 +30,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Trophy, Plus, MoreHorizontal, Pencil, Trash2, Eye } from "lucide-react";
+import { Trophy, Plus, MoreHorizontal, Pencil, Trash2, Eye, UserX } from "lucide-react";
+import { toast } from "sonner";
 
 interface Coach {
   id: string;
@@ -51,17 +52,6 @@ const licenseLevelColors: Record<string, string> = {
   "CAF Pro": "bg-primary/15 text-primary border-primary/20",
   "FIFA Pro": "bg-red-500/15 text-red-400 border-red-500/20",
 };
-
-const mockCoaches: Coach[] = [
-  { id: "1", firstName: "Wubetu", lastName: "Abate", dateOfBirth: "1978-03-15", nationality: "Ethiopian", licenseLevel: "CAF A", experienceYears: 15, club: "St. George FC", role: "Head Coach" },
-  { id: "2", firstName: "Abraham", lastName: "Mebratu", dateOfBirth: "1980-07-22", nationality: "Ethiopian", licenseLevel: "CAF B", experienceYears: 12, club: "Ethio Electric SC", role: "Head Coach" },
-  { id: "3", firstName: "Gebremedhin", lastName: "Haile", dateOfBirth: "1975-11-08", nationality: "Ethiopian", licenseLevel: "CAF Pro", experienceYears: 20, club: "Fasil Kenema FC", role: "Head Coach" },
-  { id: "4", firstName: "Tilahun", lastName: "Bekele", dateOfBirth: "1985-05-30", nationality: "Ethiopian", licenseLevel: "CAF B", experienceYears: 8, club: "Hawassa Ketema FC", role: "Assistant Coach" },
-  { id: "5", firstName: "Solomon", lastName: "Birhan", dateOfBirth: "1982-09-12", nationality: "Ethiopian", licenseLevel: "CAF A", experienceYears: 14, club: "Adama Ketema FC", role: "Head Coach" },
-  { id: "6", firstName: "Yonas", lastName: "Tesfu", dateOfBirth: "1988-01-25", nationality: "Ethiopian", licenseLevel: "CAF C", experienceYears: 5, club: "Dire Dawa Ketema FC", role: "Goalkeeping Coach" },
-  { id: "7", firstName: "Mulugeta", lastName: "Ashenafi", dateOfBirth: "1976-04-18", nationality: "Ethiopian", licenseLevel: "CAF A", experienceYears: 18, club: "Wolaita Dicha FC", role: "Head Coach" },
-  { id: "8", firstName: "Tesfaye", lastName: "Dagne", dateOfBirth: "1990-08-03", nationality: "Ethiopian", licenseLevel: "CAF C", experienceYears: 3, club: "Sidama Bunna FC", role: "Fitness Coach" },
-];
 
 const emptyForm = {
   firstName: "",
@@ -84,12 +74,11 @@ export default function CoachesPage() {
     ? `/api/coaches?organizationId=${orgId}`
     : "/api/coaches";
 
-  const { data, isLoading: coachesLoading } = useSWR(apiUrl, authFetcher, {
-    fallbackData: mockCoaches,
-    onError: () => {},
+  const { data, isLoading: coachesLoading, error } = useSWR(apiUrl, authFetcher, {
+    fallbackData: undefined,
   });
 
-  const coaches: Coach[] = data || mockCoaches;
+  const coaches: Coach[] = data || [];
   const isLoading = orgLoading || coachesLoading;
 
   // Both org admin and super admin are view-only for coaches
@@ -103,6 +92,7 @@ export default function CoachesPage() {
   const [editingCoach, setEditingCoach] = useState<Coach | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Coach | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [isSaving, setIsSaving] = useState(false);
 
   const clubs = useMemo(() => {
     const set = new Set(coaches.map((c) => c.club));
@@ -126,7 +116,7 @@ export default function CoachesPage() {
     const avgExperience = coaches.length
       ? Math.round(coaches.reduce((s, c) => s + c.experienceYears, 0) / coaches.length)
       : 0;
-    const proCertified = coaches.filter((c) => 
+    const proCertified = coaches.filter((c) =>
       c.licenseLevel === "CAF Pro" || c.licenseLevel === "FIFA Pro"
     ).length;
     return { total: coaches.length, headCoaches, avgExperience, proCertified };
@@ -153,11 +143,72 @@ export default function CoachesPage() {
   };
 
   const handleSubmit = async () => {
-    await new Promise((r) => setTimeout(r, 500));
+    const body = JSON.stringify({
+      ...form,
+      experienceYears: parseInt(form.experienceYears) || 0,
+    });
+
+    let res: Response;
+    if (editingCoach) {
+      res = await fetchWithAuth(`/api/coaches/${editingCoach.id}`, {
+        method: "PATCH",
+        body,
+      });
+    } else {
+      res = await fetchWithAuth("/api/coaches", {
+        method: "POST",
+        body,
+      });
+    }
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const msg = data.error || "Request failed";
+      toast.error(msg);
+      throw new Error(msg);
+    }
+
+    toast.success(editingCoach ? "Coach updated successfully." : "Coach created successfully.");
+    mutate(apiUrl);
   };
 
   const handleDelete = async () => {
-    await new Promise((r) => setTimeout(r, 500));
+    if (!deleteTarget) return;
+    try {
+      const res = await fetchWithAuth(`/api/coaches/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Request failed");
+      }
+
+      toast.success(`${deleteTarget.firstName} ${deleteTarget.lastName} deleted.`);
+      setDeleteTarget(null);
+      mutate(apiUrl);
+    } catch (err: any) {
+      toast.error(err.message || "Something went wrong.");
+    }
+  };
+
+  const handleDeactivate = async (coach: Coach) => {
+    try {
+      const res = await fetchWithAuth(`/api/coaches/${coach.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "inactive" }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Request failed");
+      }
+
+      toast.success(`${coach.firstName} ${coach.lastName} deactivated.`);
+      mutate(apiUrl);
+    } catch (err: any) {
+      toast.error(err.message || "Something went wrong.");
+    }
   };
 
   const getInitials = (first: string, last: string) =>
@@ -220,50 +271,54 @@ export default function CoachesPage() {
     // Only show actions if user can edit (club admin)
     ...(canEdit
       ? [
-          {
-            key: "actions",
-            header: "",
-            className: "w-12",
-            render: (c: Coach) => (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-                    <MoreHorizontal className="h-4 w-4" />
-                    <span className="sr-only">Actions</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => openEdit(c)}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => setDeleteTarget(c)}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ),
-          },
-        ]
+        {
+          key: "actions",
+          header: "",
+          className: "w-12",
+          render: (c: Coach) => (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                  <MoreHorizontal className="h-4 w-4" />
+                  <span className="sr-only">Actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => openEdit(c)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleDeactivate(c)}>
+                  <UserX className="mr-2 h-4 w-4" />
+                  Deactivate
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setDeleteTarget(c)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ),
+        },
+      ]
       : [
-          // View-only action for org admin / super admin
-          {
-            key: "actions",
-            header: "",
-            className: "w-12",
-            render: (c: Coach) => (
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-                <Eye className="h-4 w-4" />
-                <span className="sr-only">View</span>
-              </Button>
-            ),
-          },
-        ]),
+        // View-only action for org admin / super admin
+        {
+          key: "actions",
+          header: "",
+          className: "w-12",
+          render: (c: Coach) => (
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+              <Eye className="h-4 w-4" />
+              <span className="sr-only">View</span>
+            </Button>
+          ),
+        },
+      ]),
   ];
 
   const pageTitle = isOrgAdmin() && organization
@@ -273,8 +328,8 @@ export default function CoachesPage() {
   const pageDescription = isOrgAdmin()
     ? "View coaching staff from clubs in your organization."
     : canEdit
-    ? "Manage coaching staff across all clubs."
-    : "View coaching staff across all clubs.";
+      ? "Manage coaching staff across all clubs."
+      : "View coaching staff across all clubs.";
 
   return (
     <div className="flex flex-col gap-6">
@@ -286,6 +341,12 @@ export default function CoachesPage() {
           </Button>
         )}
       </PageHeader>
+
+      {error && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          Failed to load coaches. Please try again.
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">

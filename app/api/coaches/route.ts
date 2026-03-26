@@ -3,13 +3,31 @@ import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, created, badRequest, serverError } from "@/lib/api-helpers";
 
-// GET /api/coaches — list all coaches
+// GET /api/coaches — list coaches (scope-filtered by role)
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req);
     if (isAuthError(auth)) return auth;
 
+    const where: Record<string, unknown> = {};
+
+    const isClubAdmin = auth.roles.some((r) => r.roleName === "club_admin");
+    const isOrgAdmin = auth.roles.some((r) => r.roleName === "organization_admin");
+
+    if (isClubAdmin) {
+      const clubId = auth.roles.find((r) => r.roleName === "club_admin")?.clubId;
+      if (clubId) {
+        where.seasonClubCoaches = { some: { seasonClub: { clubId } } };
+      }
+    } else if (isOrgAdmin) {
+      const orgId = auth.roles.find((r) => r.roleName === "organization_admin")?.organizationId;
+      if (orgId) {
+        where.seasonClubCoaches = { some: { seasonClub: { season: { organizationId: orgId } } } };
+      }
+    }
+
     const coaches = await prisma.coach.findMany({
+      where,
       orderBy: { lastName: "asc" },
     });
     return success(coaches);
