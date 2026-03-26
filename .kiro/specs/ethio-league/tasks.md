@@ -296,7 +296,7 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
   - Remove `fallbackData: mockSeasons`; show `ErrorState` on SWR error
   - _Requirements: 16.1_
 
-- [ ] 34. Wire `app/dashboard/organizations/page.tsx` — remove mock fallback
+- [x] 34. Wire `app/dashboard/organizations/page.tsx` — remove mock fallback
   - Organizations page is already wired to real API for approve/reject
   - Remove any remaining mock data fallbacks; show `ErrorState` on SWR error
   - Wire `GET /api/dashboard/stats` for the Super Admin overview stats
@@ -306,7 +306,7 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
 
 ## Phase 8: Profile Management
 
-- [ ] 35. Create `app/dashboard/profile/page.tsx` — profile view and edit
+- [x] 35. Create `app/dashboard/profile/page.tsx` — profile view and edit
   - Fetch `GET /api/users/me`; display full name, email, phone, role(s), and scope info (org name, season name, or club name as applicable)
   - Allow editing `fullName` and `phone` via `PATCH /api/users/me`
   - Password change section: fields for current password, new password, confirm new password; calls `POST /api/users/me/change-password`
@@ -314,42 +314,42 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
   - Show `ErrorState` on fetch failure
   - _Requirements: 12.1–12.6_
 
-- [ ] 36. Checkpoint — verify all pages load without errors and all wired actions work end-to-end
+- [x] 36. Checkpoint — verify all pages load without errors and all wired actions work end-to-end
 
 ---
 
 ## Phase 9: Property-Based Tests
 
-- [ ] 37. Set up fast-check test infrastructure
+- [x] 37. Set up fast-check test infrastructure
   - Install `fast-check` as a dev dependency
   - Create `__tests__/` directory; configure Jest or Vitest to pick it up
   - Add a shared test helper for seeding minimal Prisma test data (use a test database or mock Prisma client)
   - _Requirements: design section "Property-Based Testing"_
 
-- [ ] 38. Write property tests for `lib/standings.ts`
-  - [ ] 38.1 Property 10: Standings computation correctness
+- [x] 38. Write property tests for `lib/standings.ts`
+  - [x] 38.1 Property 10: Standings computation correctness
     - Generate random sets of completed matches with arbitrary scores; assert: every participating club appears, `played = won + drawn + lost`, `goalDifference = goalsFor - goalsAgainst`, `points = won×pointsWin + drawn×pointsDraw`, rows sorted by points DESC then GD DESC
     - Tag: `// Feature: ethio-league, Property 10: Standings computation correctness`
     - **Validates: Requirements 11.1, 11.2**
 
-- [ ] 39. Write property tests for `lib/scope-guard.ts`
-  - [ ] 39.1 Property 11: Scope enforcement — 403 on out-of-scope access
+- [x] 39. Write property tests for `lib/scope-guard.ts`
+  - [x] 39.1 Property 11: Scope enforcement — 403 on out-of-scope access
     - Generate random scoped `AuthUser` objects and resource IDs from different scopes; assert scope guards return `false` for mismatched IDs and `true` for matching IDs; assert `super_admin` always returns `true`
     - Tag: `// Feature: ethio-league, Property 11: Scope enforcement — 403 on out-of-scope access`
     - **Validates: Requirements 15.1–15.6**
 
-- [ ] 40. Write property tests for password token and user creation
-  - [ ] 40.1 Property 1: Password token is set on user approval
+- [x] 40. Write property tests for password token and user creation
+  - [x] 40.1 Property 1: Password token is set on user approval
     - Tag: `// Feature: ethio-league, Property 1: Password token is set on user approval`
     - **Validates: Requirements 1.1–1.4**
-  - [ ] 40.2 Property 2: Club creation atomicity
+  - [x] 40.2 Property 2: Club creation atomicity
     - Tag: `// Feature: ethio-league, Property 2: Club creation atomicity`
     - **Validates: Requirements 2.1, 2.4**
-  - [ ] 40.3 Property 3: Duplicate email rejection
+  - [x] 40.3 Property 3: Duplicate email rejection
     - Tag: `// Feature: ethio-league, Property 3: Duplicate email rejection`
     - **Validates: Requirements 2.5**
 
-- [ ] 41. Write property tests for season player assignment
+- [-] 41. Write property tests for season player assignment
   - [ ] 41.1 Property 4: Season player assignment round trip
     - Tag: `// Feature: ethio-league, Property 4: Season player assignment round trip`
     - **Validates: Requirements 6.1, 6.3**
