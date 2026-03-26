@@ -37,11 +37,8 @@ const ORG_ADMIN_VIEW_ONLY = [
   "matches",
 ] as const;
 
-// Nav items hidden for organization_admin (they see Leagues instead of Seasons)
-export const ORG_ADMIN_HIDDEN_NAV = ["seasons"] as const;
-
-// Nav items only visible to organization_admin
-export const ORG_ADMIN_ONLY_NAV = ["leagues"] as const;
+// Nav items hidden for all roles (seasons accessed via Leagues page)
+export const HIDDEN_NAV_FOR_ALL = ["seasons"] as const;
 
 export type ManageableResource =
   | "organizations"
@@ -120,17 +117,11 @@ export function usePermissions() {
 
     const navKey = navHref.replace("/dashboard/", "").replace("/dashboard", "overview");
 
-    // Super admin can see everything except leagues (uses seasons instead)
-    if (isSuperAdmin()) {
-      return !(ORG_ADMIN_ONLY_NAV as readonly string[]).includes(navKey);
+    // All roles: hide standalone seasons page (seasons accessed via Leagues)
+    if ((HIDDEN_NAV_FOR_ALL as readonly string[]).includes(navKey)) {
+      return false;
     }
 
-    // Org admin cannot see standalone seasons (integrated in leagues)
-    if (isOrgAdmin()) {
-      return !(ORG_ADMIN_HIDDEN_NAV as readonly string[]).includes(navKey);
-    }
-
-    // Other roles see default nav
     return true;
   };
 

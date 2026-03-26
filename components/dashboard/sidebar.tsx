@@ -15,7 +15,6 @@ import {
   UserCircle,
   Megaphone,
   Swords,
-  Calendar,
   Bell,
   Trophy,
   ChevronLeft,
@@ -86,12 +85,6 @@ const allNavItems = [
     key: "referees",
   },
   {
-    title: "Seasons",
-    href: "/dashboard/seasons",
-    icon: Calendar,
-    key: "seasons",
-  },
-  {
     title: "Matches",
     href: "/dashboard/matches",
     icon: Swords,
@@ -126,15 +119,7 @@ export function DashboardSidebar({
   const leagueName: string | undefined = leagueData?.name;
 
   // Filter nav items based on user permissions
-  const navItems = allNavItems
-    .filter((item) => canViewNavItem(item.href))
-    .map((item) => {
-      // For league_admin, point Seasons to their specific league's seasons page
-      if (item.key === "seasons" && isLeagueAdmin() && leagueId) {
-        return { ...item, href: `/dashboard/leagues/${leagueId}/seasons` };
-      }
-      return item;
-    });
+  const navItems = allNavItems.filter((item) => canViewNavItem(item.href));
 
   // Role-specific nav items
   const roleNavItems = [

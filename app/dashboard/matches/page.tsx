@@ -130,29 +130,22 @@ export default function MatchesPage() {
       matchDate: match.matchDate.slice(0, 16),
       stadium: match.stadium,
       season: match.season,
-      roundNumber: match.roundNumber?.toString() || "",
+      roundNumber: match.roundNumber?.toString() ?? "",
     });
     setFormOpen(true);
   };
 
   const handleGenerateFixtures = () => {
-    if (matches.length > 0) {
-      setGenerateConfirmOpen(true);
-    } else {
-      doGenerateFixtures();
-    }
+    setGenerateConfirmOpen(true);
   };
 
   const doGenerateFixtures = async () => {
+    if (!leagueId) return;
     try {
-      if (!leagueId) {
-        toast.error("No league assigned to your account.");
-        return;
-      }
-      // Fetch the active/upcoming season for this league
+      // Find active/upcoming season for this league
       const seasonsRes = await fetchWithAuth(`/api/leagues/${leagueId}/seasons`);
       const seasonsData = await seasonsRes.json();
-      const activeSeason = (seasonsData.data || []).find(
+      const activeSeason = (seasonsData.data || seasonsData || []).find(
         (s: { status: string; id: string }) => s.status === "upcoming" || s.status === "active"
       );
       if (!activeSeason) {
