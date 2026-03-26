@@ -139,19 +139,19 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
   - `POST /api/users/me/change-password` — require `{ currentPassword, newPassword, confirmPassword }`; verify current password with bcrypt; validate new password >= 8 chars; update hash; call `logAudit`
   - _Requirements: 12.1–12.6_
 
-- [ ] 16. Add Super Admin system config endpoints
+- [x] 16. Add Super Admin system config endpoints
   - `POST /api/league-types`, `PATCH /api/league-types/[id]` — require `super_admin`; create/edit `LeagueType`
   - Extend `POST /api/match-events/event-types`, add `PATCH /api/match-events/event-types/[id]` — require `super_admin`
   - Extend `POST /api/players/positions`, add `PATCH /api/players/positions/[id]` — require `super_admin`
   - For delete operations: check for referencing records; return 400 with descriptive error if referenced
   - _Requirements: 14.1–14.5_
 
-- [ ] 17. Add `GET /api/audit-logs` — Super Admin audit log
+- [x] 17. Add `GET /api/audit-logs` — Super Admin audit log
   - Require `super_admin`; support query params: `actionType`, `fromDate`, `toDate`, `userId`
   - Return paginated results ordered by `timestamp DESC`
   - _Requirements: 13.3, 13.4, 13.5_
 
-- [ ] 18. Apply scope filters to existing GET list endpoints
+- [x] 18. Apply scope filters to existing GET list endpoints
   - `GET /api/matches` — filter by `seasonId` for `league_admin`; filter by assigned season IDs for `match_event_admin`
   - `GET /api/players` — filter to club's players for `club_admin`; filter to org's clubs for `organization_admin`
   - `GET /api/coaches` — same scoping pattern as players
@@ -159,7 +159,7 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
   - `GET /api/clubs` — filter to org's clubs for `organization_admin`; filter to assigned season's clubs for `league_admin`
   - _Requirements: 15.1–15.6_
 
-- [ ] 19. Add `GET /api/dashboard/stats` — scoped aggregate stats endpoint
+- [x] 19. Add `GET /api/dashboard/stats` — scoped aggregate stats endpoint
   - For `super_admin`: return counts of orgs, clubs, players, users, seasons, matches
   - For `organization_admin`: return counts of leagues, clubs (total + pending), referees, MEAs, upcoming matches scoped to org
   - For `league_admin`: return counts of clubs, matches by status, top standings preview scoped to season
@@ -170,7 +170,7 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
 
 ## Phase 3: Club Admin Features
 
-- [ ] 20. Add Club Admin and League Admin and MEA overview branches to `app/dashboard/page.tsx`
+- [x] 20. Add Club Admin and League Admin and MEA overview branches to `app/dashboard/page.tsx`
   - Add `isClubAdmin()` branch rendering `<ClubAdminOverview />` — club profile summary, player/coach counts, upcoming fixtures
   - Add `isLeagueAdmin()` branch rendering `<LeagueAdminOverview />` — season stats, standings preview (top 3), upcoming fixtures
   - Add `isMEA()` branch rendering `<MEAOverview />` — matches needing approval within 24h, live matches
@@ -178,7 +178,7 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
   - Show `ErrorState` if any fetch fails
   - _Requirements: 3.1, 8.1, 11.5_
 
-- [ ] 21. Create `app/dashboard/clubs/[id]/page.tsx` — Club Admin club profile editor
+- [x] 21. Create `app/dashboard/clubs/[id]/page.tsx` — Club Admin club profile editor
   - Fetch club by `getClubId()` from auth context via `GET /api/clubs/[id]`
   - Display: name, logo URL, stadium, description, contact info, current status badge
   - Allow editing name, logoUrl, stadiumId, description, website, city, country via `PATCH /api/clubs/[id]`
@@ -186,7 +186,7 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
   - Disable lineup submission link/button while `club.status === 'pending'`
   - _Requirements: 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 22. Wire `app/dashboard/players/page.tsx` for Club Admin — create/edit/delete with real API
+- [x] 22. Wire `app/dashboard/players/page.tsx` for Club Admin — create/edit/delete with real API
   - Replace mock `handleSubmit` with real `POST /api/players` and `PATCH /api/players/[id]` calls
   - Replace mock `handleDelete` with real `DELETE /api/players/[id]` call
   - On create: set `clubId` from `getClubId()`; default `status` to `active`
@@ -194,14 +194,14 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
   - Remove `fallbackData: mockPlayers`; show `ErrorState` on SWR fetch failure
   - _Requirements: 4.1–4.6, 16.3_
 
-- [ ] 23. Wire `app/dashboard/coaches/page.tsx` for Club Admin — create/edit/deactivate with real API
+- [x] 23. Wire `app/dashboard/coaches/page.tsx` for Club Admin — create/edit/deactivate with real API
   - Replace mock handlers with real `POST /api/coaches` and `PATCH /api/coaches/[id]` calls
   - Add coaching role field to the form: `head_coach`, `assistant_coach`, `goalkeeping_coach`, `fitness_coach`, `medical_staff`
   - Add deactivate action (PATCH status to `inactive`) in the actions dropdown
   - Remove `fallbackData: mockCoaches`; show `ErrorState` on SWR fetch failure
   - _Requirements: 5.1–5.4, 16.4_
 
-- [ ] 24. Create `app/dashboard/lineups/page.tsx` — lineup submission UI
+- [x] 24. Create `app/dashboard/lineups/page.tsx` — lineup submission UI
   - List upcoming matches for the club (fetched from `GET /api/matches?clubId=<clubId>`)
   - For each match, show a "Submit Lineup" button that opens a dialog
   - Dialog: select 11 starters with position assignments, select substitutes, designate captain — all from the club's `SeasonClubPlayer` list fetched via `GET /api/seasons/[id]/players`
@@ -213,7 +213,7 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
 
 ## Phase 4: League Admin Features
 
-- [ ] 25. Create `app/dashboard/standings/page.tsx` — standings and analytics
+- [x] 25. Create `app/dashboard/standings/page.tsx` — standings and analytics
   - Standings tab: fetch `GET /api/seasons/[seasonId]/standings`; render full table with columns: rank, club, P, W, D, L, GF, GA, GD, Pts
   - Top Scorers tab: fetch `GET /api/seasons/[seasonId]/top-scorers`; render player name, club, goals
   - Discipline tab: fetch `GET /api/seasons/[seasonId]/discipline`; render yellow/red cards per player and per club
@@ -221,7 +221,7 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
   - Show `ErrorState` on any fetch failure
   - _Requirements: 11.1–11.6_
 
-- [ ] 26. Create `app/dashboard/seasons/[id]/players/page.tsx` — season player assignment
+- [x] 26. Create `app/dashboard/seasons/[id]/players/page.tsx` — season player assignment
   - Fetch all clubs in the season via `GET /api/seasons/[id]/clubs`
   - For each club, list its players and their assignment status
   - Allow League Admin to assign a player (jersey number + position) via `POST /api/seasons/[id]/players`
@@ -229,7 +229,7 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
   - Show error if player's club `SeasonClub.status` is not `active`
   - _Requirements: 6.1–6.5_
 
-- [ ] 27. Wire fixture generation and match management for League Admin in `app/dashboard/matches/page.tsx`
+- [x] 27. Wire fixture generation and match management for League Admin in `app/dashboard/matches/page.tsx`
   - Add "Generate Fixtures" button visible to `league_admin`; calls `POST /api/matches/fixtures`
   - If fixtures already exist, show a confirm dialog warning about deletion before regenerating
   - Add "Assign Officials" action per match row: opens a dialog to assign referee, 2 assistants, fourth official, MEA from season-assigned officials
@@ -243,7 +243,7 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
 
 ## Phase 5: Match Event Admin Features
 
-- [ ] 28. Create `app/dashboard/matches/[id]/page.tsx` — match detail and live event logging
+- [x] 28. Create `app/dashboard/matches/[id]/page.tsx` — match detail and live event logging
   - Fetch match details, lineups, and events via `GET /api/matches/[id]`, `GET /api/matches/[id]/lineups`, `GET /api/match-events?matchId=[id]`
   - Show match header: teams, score, status, date, stadium
   - Show lineup panels for both clubs
@@ -258,21 +258,21 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
 
 ## Phase 6: Super Admin Features
 
-- [ ] 29. Create `app/dashboard/audit-log/page.tsx` — audit log viewer
+- [x] 29. Create `app/dashboard/audit-log/page.tsx` — audit log viewer
   - Fetch `GET /api/audit-logs` with filter params: `actionType`, `fromDate`, `toDate`, `userId`
   - Render filterable table: timestamp, acting user, action type, target type/ID, description
   - Redirect non-super-admin users to `/dashboard`
   - Show `ErrorState` on fetch failure
   - _Requirements: 13.1–13.5_
 
-- [ ] 30. Create `app/dashboard/system-config/page.tsx` — system configuration
+- [x] 30. Create `app/dashboard/system-config/page.tsx` — system configuration
   - Three tabs: League Types, Event Types, Positions
   - Each tab: list existing records, allow create and edit via inline dialogs
   - Delete button: calls DELETE endpoint; on 400 (referenced record), show descriptive error toast
   - Redirect non-super-admin users to `/dashboard`
   - _Requirements: 14.1–14.5_
 
-- [ ] 31. Update sidebar navigation in `components/dashboard/sidebar.tsx`
+- [x] 31. Update sidebar navigation in `components/dashboard/sidebar.tsx`
   - Add nav items conditionally by role:
     - "Standings" → visible to `league_admin`
     - "Lineups" → visible to `club_admin`
@@ -285,12 +285,12 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
 
 ## Phase 7: Real API Wiring for Remaining Mock-Data Pages
 
-- [ ] 32. Create `components/dashboard/error-state.tsx` — shared error component
+- [x] 32. Create `components/dashboard/error-state.tsx` — shared error component
   - Render a card with an error icon, a message prop, and an optional "Retry" button
   - Used by all dashboard pages on SWR fetch failure
   - _Requirements: 16.6_
 
-- [ ] 33. Wire `app/dashboard/seasons/page.tsx` to real API
+- [x] 33. Wire `app/dashboard/seasons/page.tsx` to real API
   - Replace mock `handleSubmit` with `POST /api/seasons` (create) and `PATCH /api/seasons/[id]` (edit)
   - Replace mock `handleDelete` with `DELETE /api/seasons/[id]`
   - Remove `fallbackData: mockSeasons`; show `ErrorState` on SWR error
