@@ -4,15 +4,30 @@ import { requireAuth, isAuthError, hasRole, hasOrgRole } from "@/lib/auth";
 import { success, created, badRequest, serverError } from "@/lib/api-helpers";
 import { NextResponse } from "next/server";
 
-// GET /api/seasons?organizationId=X — list seasons, optionally filter by org
+// GET /api/seasons?organizationId=X — list seasons (scope-filtered by role)
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req);
     if (isAuthError(auth)) return auth;
 
     const orgId = req.nextUrl.searchParams.get("organizationId");
+    const where: Record<string, unknown> = {};
 
-    const where = orgId ? { organizationId: orgId } : {};
+    if (orgId) {
+      where.organizationId = orgId;
+    } else {
+      // Auto-scope by role
+      const isOrgAdmin = auth.roles.some((r) => r.roleName === "organization_admin");
+      const isLeagueAdmin = auth.roles.some((r) => r.roleName === "league_admin");
+
+      if (isOrgAdmin) {
+        const scopedOrgId = auth.roles.find((r) => r.roleName === "organization_admin")?.organizationId;
+        if (scopedOrgId) where.organizationId = scopedOrgId;
+      } else if (isLeagueAdmin) {
+        const seasonId = auth.roles.find((r) => r.roleName === "league_admin")?.seasonId;
+        if (seasonId) where.id = seasonId;
+      }
+    }
 
     const seasons = await prisma.season.findMany({
       where,

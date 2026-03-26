@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import useSWR from "swr";
-import { authFetcher } from "@/lib/fetch-client";
+import useSWR, { mutate } from "swr";
+import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { usePermissions } from "@/lib/use-permissions";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { FormDialog } from "@/components/dashboard/form-dialog";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { ErrorState } from "@/components/dashboard/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Calendar, Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 interface Season {
   id: string;
@@ -41,15 +43,6 @@ interface Season {
   matchCount: number;
 }
 
-const mockSeasons: Season[] = [
-  { id: "1", name: "2025/26 Season", leagueName: "Ethiopian Premier League", organization: "EFF", startDate: "2025-09-01", endDate: "2026-06-30", status: "active", clubCount: 16, matchCount: 120 },
-  { id: "2", name: "2024/25 Season", leagueName: "Ethiopian Premier League", organization: "EFF", startDate: "2024-09-01", endDate: "2025-06-30", status: "completed", clubCount: 16, matchCount: 240 },
-  { id: "3", name: "2025/26 Super League", leagueName: "Super League", organization: "AAFA", startDate: "2025-10-01", endDate: "2026-05-30", status: "active", clubCount: 12, matchCount: 66 },
-  { id: "4", name: "2025 Youth Cup", leagueName: "Youth League", organization: "EFF", startDate: "2025-03-01", endDate: "2025-08-30", status: "completed", clubCount: 8, matchCount: 28 },
-  { id: "5", name: "2026/27 Season", leagueName: "Ethiopian Premier League", organization: "EFF", startDate: "2026-09-01", endDate: "2027-06-30", status: "draft", clubCount: 0, matchCount: 0 },
-  { id: "6", name: "2025/26 Division Two", leagueName: "Division Two League", organization: "EFF", startDate: "2025-10-15", endDate: "2026-05-15", status: "active", clubCount: 10, matchCount: 45 },
-];
-
 const emptyForm = {
   name: "",
   leagueName: "",
@@ -62,12 +55,11 @@ const emptyForm = {
 };
 
 export default function SeasonsPage() {
-  const { data, isLoading } = useSWR("/api/seasons", authFetcher, {
-    fallbackData: mockSeasons,
-    onError: () => {},
+  const { data, isLoading, error } = useSWR("/api/seasons", authFetcher, {
+    fallbackData: undefined,
   });
 
-  const seasons: Season[] = data || mockSeasons;
+  const seasons: Season[] = data || [];
   const { canManage } = usePermissions();
   const canEdit = canManage("seasons");
 
@@ -116,11 +108,62 @@ export default function SeasonsPage() {
   };
 
   const handleSubmit = async () => {
-    await new Promise((r) => setTimeout(r, 500));
+    if (editingSeason) {
+      const res = await fetchWithAuth(`/api/seasons/${editingSeason.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: form.name,
+          leagueName: form.leagueName,
+          organizationId: form.organization,
+          startDate: form.startDate,
+          endDate: form.endDate,
+          pointsWin: parseInt(form.pointsWin),
+          pointsDraw: parseInt(form.pointsDraw),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to update season");
+        throw new Error(data.error || "Failed to update season");
+      }
+      toast.success("Season updated");
+    } else {
+      const res = await fetchWithAuth("/api/seasons", {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.name,
+          leagueName: form.leagueName,
+          organizationId: form.organization,
+          startDate: form.startDate,
+          endDate: form.endDate,
+          pointsWin: parseInt(form.pointsWin),
+          pointsDraw: parseInt(form.pointsDraw),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to create season");
+        throw new Error(data.error || "Failed to create season");
+      }
+      toast.success("Season created");
+    }
+    setFormOpen(false);
+    mutate("/api/seasons");
   };
 
   const handleDelete = async () => {
-    await new Promise((r) => setTimeout(r, 500));
+    if (!deleteTarget) return;
+    const res = await fetchWithAuth(`/api/seasons/${deleteTarget.id}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.error || "Failed to delete season");
+      return;
+    }
+    toast.success("Season deleted");
+    setDeleteTarget(null);
+    mutate("/api/seasons");
   };
 
   const formatDate = (d: string) => {
@@ -183,41 +226,42 @@ export default function SeasonsPage() {
     },
     ...(canEdit
       ? [
-          {
-            key: "actions",
-            header: "",
-            className: "w-12",
-            render: (s: Season) => (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-                    <MoreHorizontal className="h-4 w-4" />
-                    <span className="sr-only">Actions</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => openEdit(s)}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => setDeleteTarget(s)}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ),
-          },
-        ]
+        {
+          key: "actions",
+          header: "",
+          className: "w-12",
+          render: (s: Season) => (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                  <MoreHorizontal className="h-4 w-4" />
+                  <span className="sr-only">Actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => openEdit(s)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setDeleteTarget(s)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ),
+        },
+      ]
       : []),
   ];
 
   return (
     <div className="flex flex-col gap-6">
+      {error && <ErrorState />}
       <PageHeader title="Seasons" description={canEdit ? "Manage league seasons and their configurations." : "View league seasons and their configurations."}>
         {canEdit && (
           <Button onClick={openCreate}>
