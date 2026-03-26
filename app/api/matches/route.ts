@@ -22,8 +22,8 @@ export async function GET(req: NextRequest) {
     const isClubAdmin = auth.roles.some((r) => r.roleName === "club_admin");
 
     if (isLeagueAdmin && !seasonId) {
-      const leagueSeasonId = auth.roles.find((r) => r.roleName === "league_admin")?.seasonId;
-      if (leagueSeasonId) where.seasonId = leagueSeasonId;
+      const leagueId = auth.roles.find((r) => r.roleName === "league_admin")?.leagueId;
+      if (leagueId) where.season = { leagueId };
     } else if (isMEA && !seasonId) {
       const meaSeasonIds = auth.roles
         .filter((r) => r.roleName === "match_event_admin" && r.seasonId)
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
         homeClub: { select: { id: true, name: true, shortName: true, logoUrl: true } },
         awayClub: { select: { id: true, name: true, shortName: true, logoUrl: true } },
         stadium: { select: { id: true, name: true } },
-        season: { select: { id: true, name: true, leagueName: true } },
+        season: { select: { id: true, name: true, leagueId: true } },
         _count: { select: { matchEvents: true, matchReferees: true } },
       },
       orderBy: { matchDate: "asc" },

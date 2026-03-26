@@ -22,7 +22,7 @@ export async function GET(
         homeClub: true,
         awayClub: true,
         stadium: true,
-        season: { select: { id: true, name: true, leagueName: true, organizationId: true } },
+        season: { select: { id: true, name: true, leagueId: true } },
         matchEvents: {
           include: {
             eventType: true,

@@ -166,23 +166,30 @@ export async function POST(
       createdLineups.push(lineup);
     }
 
-    // Notify league admin for this season
-    const leagueAdminScope = await prisma.userRoleScope.findFirst({
-      where: {
-        seasonId: match.seasonId,
-        role: { name: "league_admin" },
-      },
-      include: { role: true },
+    // Notify league admin for this season — find via season → league → league_admin scope
+    const season = await prisma.season.findUnique({
+      where: { id: match.seasonId },
+      select: { leagueId: true },
     });
 
-    if (leagueAdminScope) {
-      await prisma.notification.create({
-        data: {
-          userId: leagueAdminScope.userId,
-          title: "Lineup Submitted",
-          body: `A lineup has been submitted for match ${matchId} by club ${clubId}`,
+    if (season) {
+      const leagueAdminScope = await prisma.userRoleScope.findFirst({
+        where: {
+          leagueId: season.leagueId,
+          role: { name: "league_admin" },
         },
+        include: { role: true },
       });
+
+      if (leagueAdminScope) {
+        await prisma.notification.create({
+          data: {
+            userId: leagueAdminScope.userId,
+            title: "Lineup Submitted",
+            body: `A lineup has been submitted for match ${matchId} by club ${clubId}`,
+          },
+        });
+      }
     }
 
     // Audit log
