@@ -349,43 +349,43 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
     - Tag: `// Feature: ethio-league, Property 3: Duplicate email rejection`
     - **Validates: Requirements 2.5**
 
-- [-] 41. Write property tests for season player assignment
-  - [ ] 41.1 Property 4: Season player assignment round trip
+- [x] 41. Write property tests for season player assignment
+  - [x] 41.1 Property 4: Season player assignment round trip
     - Tag: `// Feature: ethio-league, Property 4: Season player assignment round trip`
     - **Validates: Requirements 6.1, 6.3**
-  - [ ] 41.2 Property 5: Only approved-club players can be season-assigned
+  - [x] 41.2 Property 5: Only approved-club players can be season-assigned
     - Tag: `// Feature: ethio-league, Property 5: Only approved-club players can be season-assigned`
     - **Validates: Requirements 6.4**
 
-- [ ] 42. Write property tests for match approval and event logging
-  - [ ] 42.1 Property 6: Match approval 24-hour window
+- [x] 42. Write property tests for match approval and event logging
+  - [x] 42.1 Property 6: Match approval 24-hour window
     - Tag: `// Feature: ethio-league, Property 6: Match approval 24-hour window`
     - **Validates: Requirements 8.2, 8.4**
-  - [ ] 42.2 Property 7: Goal event increments score
+  - [x] 42.2 Property 7: Goal event increments score
     - Tag: `// Feature: ethio-league, Property 7: Goal event increments score`
     - **Validates: Requirements 9.3**
-  - [ ] 42.3 Property 8: MEA event edit 10-minute window
+  - [x] 42.3 Property 8: MEA event edit 10-minute window
     - Tag: `// Feature: ethio-league, Property 8: MEA event edit 10-minute window`
     - **Validates: Requirements 9.4, 9.5**
 
-- [ ] 43. Write property tests for lineup validation
-  - [ ] 43.1 Property 9: Lineup validity invariants
+- [x] 43. Write property tests for lineup validation
+  - [x] 43.1 Property 9: Lineup validity invariants
     - Generate random lineup arrays with varying starter counts, captain counts, overlapping players, and out-of-scope player IDs; assert all invalid combinations are rejected and valid ones are accepted
     - Tag: `// Feature: ethio-league, Property 9: Lineup validity invariants`
     - **Validates: Requirements 10.1–10.4**
 
-- [ ] 44. Write property tests for password change and notification isolation
-  - [ ] 44.1 Property 12: Password change validation
+- [x] 44. Write property tests for password change and notification isolation
+  - [x] 44.1 Property 12: Password change validation
     - Tag: `// Feature: ethio-league, Property 12: Password change validation`
     - **Validates: Requirements 12.3–12.5**
-  - [ ] 44.2 Property 13: Notification isolation
+  - [x] 44.2 Property 13: Notification isolation
     - Tag: `// Feature: ethio-league, Property 13: Notification isolation`
     - **Validates: Requirements 18.8**
-  - [ ] 44.3 Property 14: Lineup submission triggers league admin notification
+  - [x] 44.3 Property 14: Lineup submission triggers league admin notification
     - Tag: `// Feature: ethio-league, Property 14: Lineup submission triggers league admin notification`
     - **Validates: Requirements 18.5**
 
-- [ ] 45. Final checkpoint — ensure all tests pass
+- [x] 45. Final checkpoint — ensure all tests pass
 
 ---
 
