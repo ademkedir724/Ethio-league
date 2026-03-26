@@ -59,14 +59,18 @@ const emptyForm = {
 export default function MatchesPage() {
   const router = useRouter();
   const { organization, isLoading: orgLoading } = useOrganization();
-  const { getOrganizationId, isOrgAdmin, isSuperAdmin, isLeagueAdmin, getSeasonId } = useAuth();
+  const { getOrganizationId, isOrgAdmin, isSuperAdmin, isLeagueAdmin, getLeagueId } = useAuth();
   const { canManage, isViewOnly } = usePermissions();
   const orgId = getOrganizationId();
 
-  // Org admins see matches from their organization's leagues, super admins see all
-  const apiUrl = isOrgAdmin() && orgId
-    ? `/api/matches?organizationId=${orgId}`
-    : "/api/matches";
+  const leagueId = getLeagueId();
+
+  // Build API URL based on role
+  const apiUrl = isLeagueAdmin() && leagueId
+    ? `/api/matches?leagueId=${leagueId}`
+    : isOrgAdmin() && orgId
+      ? `/api/matches?organizationId=${orgId}`
+      : "/api/matches";
 
   const { data, isLoading: matchesLoading, error } = useSWR(apiUrl, authFetcher, {
     fallbackData: undefined,
@@ -141,10 +145,23 @@ export default function MatchesPage() {
 
   const doGenerateFixtures = async () => {
     try {
-      const seasonId = getSeasonId();
+      if (!leagueId) {
+        toast.error("No league assigned to your account.");
+        return;
+      }
+      // Fetch the active/upcoming season for this league
+      const seasonsRes = await fetchWithAuth(`/api/leagues/${leagueId}/seasons`);
+      const seasonsData = await seasonsRes.json();
+      const activeSeason = (seasonsData.data || []).find(
+        (s: { status: string; id: string }) => s.status === "upcoming" || s.status === "active"
+      );
+      if (!activeSeason) {
+        toast.error("No active or upcoming season found for this league.");
+        return;
+      }
       const res = await fetchWithAuth("/api/matches/fixtures", {
         method: "POST",
-        body: JSON.stringify({ seasonId }),
+        body: JSON.stringify({ seasonId: activeSeason.id }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));

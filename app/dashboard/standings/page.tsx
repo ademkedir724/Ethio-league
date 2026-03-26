@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
 import { useAuth } from "@/lib/auth-context";
 import { authFetcher } from "@/lib/fetch-client";
@@ -69,8 +70,17 @@ function ErrorMessage({ message }: { message: string }) {
 }
 
 export default function StandingsPage() {
-    const { getSeasonId } = useAuth();
-    const seasonId = getSeasonId();
+    const { getLeagueId } = useAuth();
+    const leagueId = getLeagueId();
+
+    // Fetch seasons for this league so the admin can pick one
+    const { data: seasons } = useSWR<{ id: string; name: string }[]>(
+        leagueId ? `/api/leagues/${leagueId}/seasons` : null,
+        authFetcher
+    );
+
+    const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
+    const seasonId = selectedSeasonId ?? seasons?.[0]?.id ?? null;
 
     const {
         data: standings,
@@ -109,13 +119,13 @@ export default function StandingsPage() {
     const avgGoalsPerMatch =
         totalMatches > 0 ? (totalGoals / totalMatches).toFixed(2) : "0.00";
 
-    if (!seasonId) {
+    if (!leagueId) {
         return (
             <div className="flex flex-col gap-6">
                 <PageHeader title="League Standings" />
                 <Card>
                     <CardContent className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-                        No season assigned to your account.
+                        No league assigned to your account.
                     </CardContent>
                 </Card>
             </div>
@@ -124,7 +134,19 @@ export default function StandingsPage() {
 
     return (
         <div className="flex flex-col gap-6">
-            <PageHeader title="League Standings" />
+            <PageHeader title="League Standings">
+                {seasons && seasons.length > 1 && (
+                    <select
+                        className="rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+                        value={seasonId ?? ""}
+                        onChange={(e) => setSelectedSeasonId(e.target.value)}
+                    >
+                        {seasons.map((s) => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                    </select>
+                )}
+            </PageHeader>
 
             <Tabs defaultValue="standings">
                 <TabsList>

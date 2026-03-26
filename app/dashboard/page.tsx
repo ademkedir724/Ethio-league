@@ -29,27 +29,6 @@ import {
   Megaphone,
 } from "lucide-react";
 
-// Mock data for Super Admin
-const mockSuperAdminStats = {
-  organizations: 4,
-  clubs: 32,
-  players: 640,
-  users: 85,
-  seasons: 6,
-  matches: 248,
-};
-
-// Mock data for Organization Admin
-const mockOrgAdminStats = {
-  totalLeagues: 3,
-  activeLeagues: 2,
-  totalClubs: 12,
-  pendingClubs: 2,
-  totalReferees: 8,
-  totalMatchEventAdmins: 5,
-  upcomingMatches: 15,
-};
-
 const mockRecentMatches = [
   {
     id: 1,
@@ -121,31 +100,6 @@ const mockRecentUsers = [
     email: "sara@ethioleague.com",
     role: "Match Event Admin",
     status: "active",
-  },
-];
-
-// Mock recent activity for org admin
-const mockOrgAdminActivity = [
-  {
-    id: 1,
-    type: "club_registration",
-    title: "New Club Registration",
-    description: "Addis Ababa FC submitted registration",
-    date: "2026-03-20",
-  },
-  {
-    id: 2,
-    type: "league_created",
-    title: "League Created",
-    description: "Premier League 2026 has been created",
-    date: "2026-03-18",
-  },
-  {
-    id: 3,
-    type: "referee_added",
-    title: "Referee Added",
-    description: "Referee Tesfaye Bekele has been added",
-    date: "2026-03-15",
   },
 ];
 
@@ -313,11 +267,13 @@ function OrgAdminOverview() {
   const { organization, isLoading: orgLoading } = useOrganization();
 
   const { data: stats, isLoading: statsLoading } = useSWR(
-    organization ? `/api/dashboard/stats?organizationId=${organization.id}` : null,
-    authFetcher,
-    {
-      fallbackData: undefined,
-    }
+    "/api/dashboard/stats",
+    authFetcher
+  );
+
+  const { data: leagues, isLoading: leaguesLoading } = useSWR(
+    "/api/leagues",
+    authFetcher
   );
 
   const displayStats = stats || {};
@@ -348,43 +304,43 @@ function OrgAdminOverview() {
           <>
             <StatCard
               title="Total Leagues"
-              value={displayStats.totalLeagues}
+              value={displayStats.totalLeagues ?? 0}
               icon={Layers}
               description="Managed leagues"
             />
             <StatCard
               title="Active Leagues"
-              value={displayStats.activeLeagues}
+              value={displayStats.activeLeagues ?? 0}
               icon={Layers}
               description="Currently running"
             />
             <StatCard
               title="Total Clubs"
-              value={displayStats.totalClubs}
+              value={displayStats.totalClubs ?? 0}
               icon={Shield}
               description="Registered clubs"
             />
             <StatCard
               title="Pending Clubs"
-              value={displayStats.pendingClubs}
+              value={displayStats.pendingClubs ?? 0}
               icon={Clock}
               description="Awaiting approval"
             />
             <StatCard
               title="Referees"
-              value={displayStats.totalReferees}
+              value={displayStats.totalReferees ?? 0}
               icon={Megaphone}
               description="Active referees"
             />
             <StatCard
               title="Match Admins"
-              value={displayStats.totalMatchEventAdmins}
+              value={displayStats.totalMatchEventAdmins ?? 0}
               icon={Users}
               description="Event administrators"
             />
             <StatCard
               title="Upcoming Matches"
-              value={displayStats.upcomingMatches}
+              value={displayStats.upcomingMatches ?? 0}
               icon={Swords}
               description="Scheduled matches"
             />
@@ -392,92 +348,50 @@ function OrgAdminOverview() {
         )}
       </div>
 
-      {/* Recent Activity Grid */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Recent Matches */}
-        <Card className="border-border bg-card">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold text-card-foreground">
-              Recent Matches
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+      {/* Leagues with season counts */}
+      <Card className="border-border bg-card">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold text-card-foreground">
+            Leagues
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {leaguesLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
+            </div>
+          ) : leagues && leagues.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead>Match</TableHead>
-                  <TableHead>Score</TableHead>
+                  <TableHead>League</TableHead>
+                  <TableHead>Seasons</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {mockRecentMatches.slice(0, 4).map((match) => (
-                  <TableRow key={match.id}>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium text-foreground">
-                          {match.homeClub}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          vs {match.awayClub}
-                        </span>
-                      </div>
+                {leagues.map((league: { id: string; name: string; status: string; _count: { seasons: number } }) => (
+                  <TableRow key={league.id}>
+                    <TableCell className="font-medium text-foreground">
+                      {league.name}
                     </TableCell>
-                    <TableCell className="font-mono text-sm text-foreground">
-                      {match.score}
+                    <TableCell className="text-sm text-muted-foreground">
+                      {league._count.seasons}
                     </TableCell>
                     <TableCell>
-                      <StatusBadge status={match.status} />
+                      <StatusBadge status={league.status ?? "inactive"} />
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-
-        {/* Recent Activity */}
-        <Card className="border-border bg-card">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold text-card-foreground">
-              Recent Activity
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {mockOrgAdminActivity.map((activity) => (
-                <div
-                  key={activity.id}
-                  className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3"
-                >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                    {activity.type === "club_registration" && (
-                      <Shield className="h-4 w-4 text-primary" />
-                    )}
-                    {activity.type === "league_created" && (
-                      <Layers className="h-4 w-4 text-primary" />
-                    )}
-                    {activity.type === "referee_added" && (
-                      <Megaphone className="h-4 w-4 text-primary" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">
-                      {activity.title}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {activity.description}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {activity.date}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No leagues found.</p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -542,18 +456,37 @@ function ClubAdminOverview() {
 }
 
 function LeagueAdminOverview() {
-  const { data: stats, isLoading, error } = useSWR(
+  const { getLeagueId } = useAuth();
+  const leagueId = getLeagueId();
+
+  const { data: stats, isLoading: statsLoading, error: statsError } = useSWR(
     "/api/dashboard/stats",
     authFetcher
   );
 
+  const { data: league, isLoading: leagueLoading } = useSWR(
+    leagueId ? `/api/leagues/${leagueId}` : null,
+    authFetcher
+  );
+
+  const { data: seasons, isLoading: seasonsLoading } = useSWR(
+    leagueId ? `/api/leagues/${leagueId}/seasons` : null,
+    authFetcher
+  );
+
+  const isLoading = statsLoading || leagueLoading || seasonsLoading;
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="League Dashboard"
-        description="Overview of clubs, matches, and standings in your league."
+        title={league ? league.name : "League Dashboard"}
+        description={
+          league
+            ? `Overview of clubs, matches, and standings in ${league.name}.`
+            : "Overview of clubs, matches, and standings in your league."
+        }
       />
-      {error && (
+      {statsError && (
         <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
           Failed to load dashboard stats. Please try again.
         </div>
@@ -569,6 +502,12 @@ function LeagueAdminOverview() {
           ))
         ) : (
           <>
+            <StatCard
+              title="Total Seasons"
+              value={stats?.totalSeasons ?? 0}
+              icon={Calendar}
+              description="Seasons in league"
+            />
             <StatCard
               title="Clubs"
               value={stats?.clubs ?? 0}
@@ -602,6 +541,55 @@ function LeagueAdminOverview() {
           </>
         )}
       </div>
+
+      {/* Seasons list */}
+      <Card className="border-border bg-card">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold text-card-foreground">
+            Seasons
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {seasonsLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
+            </div>
+          ) : seasons && seasons.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Season</TableHead>
+                  <TableHead>Clubs</TableHead>
+                  <TableHead>Matches</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {seasons.map((season: { id: string; name: string; status: string; _count: { seasonClubs: number; matches: number } }) => (
+                  <TableRow key={season.id}>
+                    <TableCell className="font-medium text-foreground">
+                      {season.name}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {season._count.seasonClubs}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {season._count.matches}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={season.status} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <p className="text-sm text-muted-foreground">No seasons found for this league.</p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

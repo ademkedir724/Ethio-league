@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/lib/use-permissions";
 import { useAuth } from "@/lib/auth-context";
+import { authFetcher } from "@/lib/fetch-client";
+import useSWR from "swr";
 import {
   LayoutDashboard,
   Building2,
@@ -114,10 +116,25 @@ export function DashboardSidebar({
 }: DashboardSidebarProps) {
   const pathname = usePathname();
   const { canViewNavItem } = usePermissions();
-  const { isSuperAdmin, isLeagueAdmin, isClubAdmin, user } = useAuth();
+  const { isSuperAdmin, isLeagueAdmin, isClubAdmin, user, getLeagueId } = useAuth();
+
+  const leagueId = isLeagueAdmin() ? getLeagueId() : null;
+  const { data: leagueData } = useSWR(
+    leagueId ? `/api/leagues/${leagueId}` : null,
+    authFetcher
+  );
+  const leagueName: string | undefined = leagueData?.name;
 
   // Filter nav items based on user permissions
-  const navItems = allNavItems.filter((item) => canViewNavItem(item.href));
+  const navItems = allNavItems
+    .filter((item) => canViewNavItem(item.href))
+    .map((item) => {
+      // For league_admin, point Seasons to their specific league's seasons page
+      if (item.key === "seasons" && isLeagueAdmin() && leagueId) {
+        return { ...item, href: `/dashboard/leagues/${leagueId}/seasons` };
+      }
+      return item;
+    });
 
   // Role-specific nav items
   const roleNavItems = [
@@ -196,9 +213,16 @@ export function DashboardSidebar({
             <Trophy className="h-4 w-4" />
           </div>
           {!collapsed && (
-            <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
-              Ethio-League
-            </span>
+            <div className="flex flex-col min-w-0">
+              <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
+                Ethio-League
+              </span>
+              {isLeagueAdmin() && leagueName && (
+                <span className="text-xs text-sidebar-foreground/60 truncate">
+                  {leagueName}
+                </span>
+              )}
+            </div>
           )}
         </div>
 

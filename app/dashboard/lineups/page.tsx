@@ -40,6 +40,8 @@ interface Match {
     roundNumber?: number;
     homeClub: Club;
     awayClub: Club;
+    season?: { id: string; name: string };
+    seasonId?: string;
 }
 
 interface Player {
@@ -83,17 +85,28 @@ const POSITIONS = [
 ];
 
 export default function LineupsPage() {
-    const { getClubId, getSeasonId } = useAuth();
+    const { getClubId } = useAuth();
     const clubId = getClubId();
-    const seasonId = getSeasonId();
+
+    // Dialog state — declared early so seasonId can be derived for the players fetch
+    const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
+    const [starters, setStarters] = useState<Set<string>>(new Set());
+    const [substitutes, setSubstitutes] = useState<Set<string>>(new Set());
+    const [positions, setPositions] = useState<Record<string, number>>({});
+    const [captainId, setCaptainId] = useState<string>("");
+    const [submitting, setSubmitting] = useState(false);
+    const [apiErrors, setApiErrors] = useState<string[]>([]);
 
     const { data: matchesData, isLoading: matchesLoading, error: matchesError } = useSWR(
         clubId ? `/api/matches?clubId=${clubId}` : null,
         authFetcher
     );
 
+    // Derive seasonId from the selected match — avoids relying on getSeasonId() which is MEA-only
+    const matchSeasonId = selectedMatch?.season?.id ?? selectedMatch?.seasonId ?? null;
+
     const { data: playersData, isLoading: playersLoading } = useSWR(
-        seasonId ? `/api/seasons/${seasonId}/players` : null,
+        matchSeasonId ? `/api/seasons/${matchSeasonId}/players` : null,
         authFetcher
     );
 
@@ -117,15 +130,6 @@ export default function LineupsPage() {
         () => allPlayers.filter((p) => p.seasonClub?.club?.id === clubId),
         [allPlayers, clubId]
     );
-
-    // Dialog state
-    const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
-    const [starters, setStarters] = useState<Set<string>>(new Set());
-    const [substitutes, setSubstitutes] = useState<Set<string>>(new Set());
-    const [positions, setPositions] = useState<Record<string, number>>({});
-    const [captainId, setCaptainId] = useState<string>("");
-    const [submitting, setSubmitting] = useState(false);
-    const [apiErrors, setApiErrors] = useState<string[]>([]);
 
     const openDialog = (match: Match) => {
         setSelectedMatch(match);
@@ -335,8 +339,8 @@ export default function LineupsPage() {
                                                 <div
                                                     key={scp.id}
                                                     className={`flex items-center gap-3 rounded-md border px-3 py-2 text-sm transition-colors ${isStarter
-                                                            ? "border-primary/40 bg-primary/5"
-                                                            : "border-border"
+                                                        ? "border-primary/40 bg-primary/5"
+                                                        : "border-border"
                                                         }`}
                                                 >
                                                     <input
@@ -402,8 +406,8 @@ export default function LineupsPage() {
                                                     <div
                                                         key={scp.id}
                                                         className={`flex items-center gap-3 rounded-md border px-3 py-2 text-sm transition-colors ${isSub
-                                                                ? "border-blue-500/40 bg-blue-500/5"
-                                                                : "border-border"
+                                                            ? "border-blue-500/40 bg-blue-500/5"
+                                                            : "border-border"
                                                             }`}
                                                     >
                                                         <input

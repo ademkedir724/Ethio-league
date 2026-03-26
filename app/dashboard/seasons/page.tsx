@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import useSWR, { mutate } from "swr";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
+import { useAuth } from "@/lib/auth-context";
 import { usePermissions } from "@/lib/use-permissions";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
@@ -31,22 +32,27 @@ import {
 import { Calendar, Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface League {
+  id: string;
+  name: string;
+}
+
 interface Season {
   id: string;
   name: string;
-  leagueName: string;
-  organization: string;
+  leagueId: string;
+  league: { id: string; name: string; organization: { id: string; name: string } };
   startDate: string;
   endDate: string;
   status: string;
-  clubCount: number;
-  matchCount: number;
+  _count: { seasonClubs: number; matches: number };
 }
 
 const emptyForm = {
   name: "",
-  leagueName: "",
-  organization: "",
+  leagueId: "",
   startDate: "",
   endDate: "",
   pointsWin: "3",
@@ -54,14 +60,27 @@ const emptyForm = {
   pointsLoss: "0",
 };
 
-export default function SeasonsPage() {
-  const { data, isLoading, error } = useSWR("/api/seasons", authFetcher, {
-    fallbackData: undefined,
-  });
+// ─── Component ────────────────────────────────────────────────────────────────
 
-  const seasons: Season[] = data || [];
+export default function SeasonsPage() {
+  const { isLeagueAdmin, getLeagueId } = useAuth();
   const { canManage } = usePermissions();
   const canEdit = canManage("seasons");
+
+  // Fetch seasons — server already scopes by role
+  const { data: seasonsData, isLoading, error } = useSWR<Season[]>(
+    "/api/seasons",
+    authFetcher
+  );
+
+  // Fetch leagues for the create form (league selector)
+  const { data: leaguesData } = useSWR<League[]>(
+    canEdit ? "/api/leagues" : null,
+    authFetcher
+  );
+
+  const seasons: Season[] = seasonsData ?? [];
+  const leagues: League[] = leaguesData ?? [];
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -74,7 +93,7 @@ export default function SeasonsPage() {
     return seasons.filter((s) => {
       const matchesSearch =
         s.name.toLowerCase().includes(search.toLowerCase()) ||
-        s.leagueName.toLowerCase().includes(search.toLowerCase());
+        (s.league?.name ?? "").toLowerCase().includes(search.toLowerCase());
       const matchesStatus = statusFilter === "all" || s.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -82,13 +101,15 @@ export default function SeasonsPage() {
 
   const stats = useMemo(() => {
     const active = seasons.filter((s) => s.status === "active").length;
-    const totalMatches = seasons.reduce((sum, s) => sum + s.matchCount, 0);
+    const totalMatches = seasons.reduce((sum, s) => sum + (s._count?.matches ?? 0), 0);
     return { total: seasons.length, active, totalMatches };
   }, [seasons]);
 
   const openCreate = () => {
     setEditingSeason(null);
-    setForm(emptyForm);
+    // Pre-select league for league_admin
+    const defaultLeagueId = isLeagueAdmin() ? (getLeagueId() ?? "") : "";
+    setForm({ ...emptyForm, leagueId: defaultLeagueId });
     setFormOpen(true);
   };
 
@@ -96,10 +117,9 @@ export default function SeasonsPage() {
     setEditingSeason(season);
     setForm({
       name: season.name,
-      leagueName: season.leagueName,
-      organization: season.organization,
-      startDate: season.startDate,
-      endDate: season.endDate,
+      leagueId: season.leagueId,
+      startDate: season.startDate ? season.startDate.slice(0, 10) : "",
+      endDate: season.endDate ? season.endDate.slice(0, 10) : "",
       pointsWin: "3",
       pointsDraw: "1",
       pointsLoss: "0",
@@ -108,17 +128,25 @@ export default function SeasonsPage() {
   };
 
   const handleSubmit = async () => {
+    if (!form.name.trim()) {
+      toast.error("Season name is required");
+      return;
+    }
+    if (!form.startDate || !form.endDate) {
+      toast.error("Start and end dates are required");
+      return;
+    }
+
     if (editingSeason) {
       const res = await fetchWithAuth(`/api/seasons/${editingSeason.id}`, {
         method: "PATCH",
         body: JSON.stringify({
           name: form.name,
-          leagueName: form.leagueName,
-          organizationId: form.organization,
           startDate: form.startDate,
           endDate: form.endDate,
           pointsWin: parseInt(form.pointsWin),
           pointsDraw: parseInt(form.pointsDraw),
+          pointsLoss: parseInt(form.pointsLoss),
         }),
       });
       if (!res.ok) {
@@ -128,16 +156,20 @@ export default function SeasonsPage() {
       }
       toast.success("Season updated");
     } else {
+      if (!form.leagueId) {
+        toast.error("Please select a league");
+        return;
+      }
       const res = await fetchWithAuth("/api/seasons", {
         method: "POST",
         body: JSON.stringify({
+          leagueId: form.leagueId,
           name: form.name,
-          leagueName: form.leagueName,
-          organizationId: form.organization,
           startDate: form.startDate,
           endDate: form.endDate,
           pointsWin: parseInt(form.pointsWin),
           pointsDraw: parseInt(form.pointsDraw),
+          pointsLoss: parseInt(form.pointsLoss),
         }),
       });
       if (!res.ok) {
@@ -166,13 +198,12 @@ export default function SeasonsPage() {
     mutate("/api/seasons");
   };
 
-  const formatDate = (d: string) => {
-    return new Date(d).toLocaleDateString("en-GB", {
+  const formatDate = (d: string) =>
+    new Date(d).toLocaleDateString("en-GB", {
       day: "numeric",
       month: "short",
       year: "numeric",
     });
-  };
 
   const columns: Column<Season>[] = [
     {
@@ -181,7 +212,7 @@ export default function SeasonsPage() {
       render: (s) => (
         <div className="flex flex-col">
           <span className="text-sm font-medium text-foreground">{s.name}</span>
-          <span className="text-xs text-muted-foreground">{s.leagueName}</span>
+          <span className="text-xs text-muted-foreground">{s.league?.name}</span>
         </div>
       ),
     },
@@ -190,7 +221,9 @@ export default function SeasonsPage() {
       header: "Organization",
       className: "hidden md:table-cell",
       render: (s) => (
-        <span className="text-sm text-muted-foreground">{s.organization}</span>
+        <span className="text-sm text-muted-foreground">
+          {s.league?.organization?.name}
+        </span>
       ),
     },
     {
@@ -199,7 +232,7 @@ export default function SeasonsPage() {
       className: "hidden lg:table-cell",
       render: (s) => (
         <span className="text-sm text-muted-foreground">
-          {formatDate(s.startDate)} - {formatDate(s.endDate)}
+          {formatDate(s.startDate)} – {formatDate(s.endDate)}
         </span>
       ),
     },
@@ -208,7 +241,7 @@ export default function SeasonsPage() {
       header: "Clubs",
       className: "hidden lg:table-cell",
       render: (s) => (
-        <span className="text-sm text-foreground">{s.clubCount}</span>
+        <span className="text-sm text-foreground">{s._count?.seasonClubs ?? 0}</span>
       ),
     },
     {
@@ -216,7 +249,7 @@ export default function SeasonsPage() {
       header: "Matches",
       className: "hidden xl:table-cell",
       render: (s) => (
-        <span className="text-sm text-foreground">{s.matchCount}</span>
+        <span className="text-sm text-foreground">{s._count?.matches ?? 0}</span>
       ),
     },
     {
@@ -233,7 +266,11 @@ export default function SeasonsPage() {
           render: (s: Season) => (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground"
+                >
                   <MoreHorizontal className="h-4 w-4" />
                   <span className="sr-only">Actions</span>
                 </Button>
@@ -262,7 +299,14 @@ export default function SeasonsPage() {
   return (
     <div className="flex flex-col gap-6">
       {error && <ErrorState />}
-      <PageHeader title="Seasons" description={canEdit ? "Manage league seasons and their configurations." : "View league seasons and their configurations."}>
+      <PageHeader
+        title="Seasons"
+        description={
+          canEdit
+            ? "Manage league seasons and their configurations."
+            : "View league seasons and their configurations."
+        }
+      >
         {canEdit && (
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" />
@@ -274,8 +318,18 @@ export default function SeasonsPage() {
       {/* Stats */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard title="Total Seasons" value={stats.total} icon={Calendar} />
-        <StatCard title="Active Seasons" value={stats.active} icon={Calendar} description="Currently running" />
-        <StatCard title="Total Matches" value={stats.totalMatches} icon={Calendar} description="Across all seasons" />
+        <StatCard
+          title="Active Seasons"
+          value={stats.active}
+          icon={Calendar}
+          description="Currently running"
+        />
+        <StatCard
+          title="Total Matches"
+          value={stats.totalMatches}
+          icon={Calendar}
+          description="Across all seasons"
+        />
       </div>
 
       {/* Table */}
@@ -295,8 +349,8 @@ export default function SeasonsPage() {
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="upcoming">Upcoming</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="draft">Draft</SelectItem>
             </SelectContent>
           </Select>
         }
@@ -307,38 +361,83 @@ export default function SeasonsPage() {
         open={formOpen}
         onOpenChange={setFormOpen}
         title={editingSeason ? "Edit Season" : "Create Season"}
-        description={editingSeason ? "Update season details." : "Set up a new league season."}
+        description={
+          editingSeason ? "Update season details." : "Set up a new league season."
+        }
         submitLabel={editingSeason ? "Update" : "Create"}
         onSubmit={handleSubmit}
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-2 sm:col-span-2">
-            <Label htmlFor="season-name">Season Name</Label>
-            <Input id="season-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="2025/26 Season" />
+            <Label htmlFor="season-name">Season Name *</Label>
+            <Input
+              id="season-name"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="2025/26 Season"
+            />
+          </div>
+
+          {/* League selector — shown for create; hidden for edit (league can't change) */}
+          {!editingSeason && (
+            <div className="flex flex-col gap-2 sm:col-span-2">
+              <Label htmlFor="season-league">League *</Label>
+              <Select
+                value={form.leagueId || "none"}
+                onValueChange={(v) =>
+                  setForm({ ...form, leagueId: v === "none" ? "" : v })
+                }
+              >
+                <SelectTrigger id="season-league">
+                  <SelectValue placeholder="Select a league" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Select a league</SelectItem>
+                  {leagues.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="season-start">Start Date *</Label>
+            <Input
+              id="season-start"
+              type="date"
+              value={form.startDate}
+              onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+            />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="season-league">League Name</Label>
-            <Input id="season-league" value={form.leagueName} onChange={(e) => setForm({ ...form, leagueName: e.target.value })} placeholder="Ethiopian Premier League" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="season-org">Organization</Label>
-            <Input id="season-org" value={form.organization} onChange={(e) => setForm({ ...form, organization: e.target.value })} placeholder="EFF" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="season-start">Start Date</Label>
-            <Input id="season-start" type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="season-end">End Date</Label>
-            <Input id="season-end" type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} />
+            <Label htmlFor="season-end">End Date *</Label>
+            <Input
+              id="season-end"
+              type="date"
+              value={form.endDate}
+              onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+            />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="season-pw">Points for Win</Label>
-            <Input id="season-pw" type="number" value={form.pointsWin} onChange={(e) => setForm({ ...form, pointsWin: e.target.value })} />
+            <Input
+              id="season-pw"
+              type="number"
+              value={form.pointsWin}
+              onChange={(e) => setForm({ ...form, pointsWin: e.target.value })}
+            />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="season-pd">Points for Draw</Label>
-            <Input id="season-pd" type="number" value={form.pointsDraw} onChange={(e) => setForm({ ...form, pointsDraw: e.target.value })} />
+            <Input
+              id="season-pd"
+              type="number"
+              value={form.pointsDraw}
+              onChange={(e) => setForm({ ...form, pointsDraw: e.target.value })}
+            />
           </div>
         </div>
       </FormDialog>
