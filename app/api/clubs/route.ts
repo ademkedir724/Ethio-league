@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, created, badRequest, forbidden, serverError } from "@/lib/api-helpers";
-import { assertSeasonScope } from "@/lib/scope-guard";
+import { assertLeagueScope } from "@/lib/scope-guard";
 import { sendPasswordSetupEmail } from "@/lib/email";
 import { logAudit } from "@/lib/audit";
 
@@ -21,12 +21,12 @@ export async function GET(req: NextRequest) {
     if (isOrgAdmin) {
       const orgId = auth.roles.find((r) => r.roleName === "organization_admin")?.organizationId;
       if (orgId) {
-        where.seasonClubs = { some: { season: { organizationId: orgId } } };
+        where.seasonClubs = { some: { season: { league: { organizationId: orgId } } } };
       }
     } else if (isLeagueAdmin) {
-      const seasonId = auth.roles.find((r) => r.roleName === "league_admin")?.seasonId;
-      if (seasonId) {
-        where.seasonClubs = { some: { seasonId } };
+      const leagueId = auth.roles.find((r) => r.roleName === "league_admin")?.leagueId;
+      if (leagueId) {
+        where.seasonClubs = { some: { season: { leagueId } } };
       }
     }
 
@@ -64,8 +64,14 @@ export async function POST(req: NextRequest) {
       if (!adminEmail) return badRequest("Admin email is required");
       if (!seasonId) return badRequest("Season ID is required");
 
-      // Verify caller is scoped to this season
-      if (!assertSeasonScope(auth, seasonId)) {
+      // Verify caller is scoped to the league that owns this season
+      const seasonForScope = await prisma.season.findUnique({
+        where: { id: seasonId },
+        select: { leagueId: true },
+      });
+      if (!seasonForScope) return badRequest("Season not found");
+
+      if (!assertLeagueScope(auth, seasonForScope.leagueId)) {
         return forbidden();
       }
 
@@ -146,17 +152,17 @@ export async function POST(req: NextRequest) {
         description: "Club created by league admin",
       });
 
-      // Notify org admin — find via season → organization → userRoleScope with organization_admin role
+      // Notify org admin — find via season → league → organization → org_admin scope
       try {
-        const season = await prisma.season.findUnique({
+        const seasonWithLeague = await prisma.season.findUnique({
           where: { id: seasonId },
-          select: { organizationId: true },
+          include: { league: { select: { organizationId: true } } },
         });
 
-        if (season) {
+        if (seasonWithLeague) {
           const orgAdminScope = await prisma.userRoleScope.findFirst({
             where: {
-              organizationId: season.organizationId,
+              organizationId: seasonWithLeague.league.organizationId,
               role: { name: "organization_admin" },
             },
             select: { userId: true },

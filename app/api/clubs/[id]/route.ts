@@ -24,7 +24,7 @@ export async function GET(
         ownedStadiums: true,
         seasonClubs: {
           include: {
-            season: { select: { id: true, name: true, leagueName: true } },
+            season: { select: { id: true, name: true, leagueId: true } },
           },
         },
       },

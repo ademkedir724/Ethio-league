@@ -32,7 +32,9 @@ export async function POST(
         seasonClubs: {
           include: {
             season: {
-              select: { organizationId: true },
+              include: {
+                league: { select: { organizationId: true } },
+              },
             },
           },
           take: 1,
@@ -45,7 +47,7 @@ export async function POST(
     }
 
     // Get the organization ID from the club's season registration
-    const organizationId = club.seasonClubs[0]?.season?.organizationId;
+    const organizationId = club.seasonClubs[0]?.season?.league?.organizationId;
 
     // Auth check: super_admin or org admin of the organization
     const isSuperAdmin = hasRole(auth, ["super_admin"]);
