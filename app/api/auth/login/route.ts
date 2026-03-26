@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
         roles: user.userRoleScopes.map((s) => ({
           roleName: s.role.name,
           organizationId: s.organizationId,
+          leagueId: s.leagueId,
           seasonId: s.seasonId,
           clubId: s.clubId,
         })),

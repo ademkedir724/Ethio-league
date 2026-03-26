@@ -4,30 +4,41 @@ import { AuthUser } from "@/lib/auth";
  * Returns true if the user is super_admin OR has organization_admin role
  * scoped to the given organizationId.
  */
-export function assertOrgScope(
-    auth: AuthUser,
-    organizationId: string
-): boolean {
+export function assertOrgScope(auth: AuthUser, organizationId: string): boolean {
     return auth.roles.some(
         (r) =>
             r.roleName === "super_admin" ||
-            (r.roleName === "organization_admin" &&
-                r.organizationId === organizationId)
+            (r.roleName === "organization_admin" && r.organizationId === organizationId)
     );
 }
 
 /**
  * Returns true if the user is super_admin OR has league_admin role
- * scoped to the given seasonId.
+ * scoped to the given leagueId.
+ */
+export function assertLeagueScope(auth: AuthUser, leagueId: string): boolean {
+    return auth.roles.some(
+        (r) =>
+            r.roleName === "super_admin" ||
+            (r.roleName === "league_admin" && r.leagueId === leagueId)
+    );
+}
+
+/**
+ * Returns true if the user is super_admin, OR has league_admin scoped to the
+ * league that owns this season (seasonLeagueId), OR has organization_admin
+ * scoped to the org that owns the league.
+ *
+ * API routes must fetch the season first to obtain seasonLeagueId before calling this.
  */
 export function assertSeasonScope(
     auth: AuthUser,
-    seasonId: string
+    seasonLeagueId: string
 ): boolean {
     return auth.roles.some(
         (r) =>
             r.roleName === "super_admin" ||
-            (r.roleName === "league_admin" && r.seasonId === seasonId)
+            (r.roleName === "league_admin" && r.leagueId === seasonLeagueId)
     );
 }
 
@@ -44,7 +55,7 @@ export function assertClubScope(auth: AuthUser, clubId: string): boolean {
 }
 
 /**
- * Returns true if the user is super_admin OR league_admin (any season) OR
+ * Returns true if the user is super_admin OR league_admin (any league) OR
  * has match_event_admin role scoped to the given seasonId.
  */
 export function assertMEASeasonScope(

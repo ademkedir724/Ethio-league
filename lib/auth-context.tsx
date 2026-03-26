@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 interface RoleScope {
   roleName: string;
   organizationId?: string | null;
+  leagueId?: string | null;
   seasonId?: string | null;
   clubId?: string | null;
 }
@@ -37,6 +38,7 @@ interface AuthContextType {
   isLeagueAdmin: () => boolean;
   isClubAdmin: () => boolean;
   isMEA: () => boolean;
+  getLeagueId: () => string | null;
   getSeasonId: () => string | null;
   getClubId: () => string | null;
 }
@@ -129,12 +131,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return hasRole(["match_event_admin"]);
   }, [hasRole]);
 
-  const getSeasonId = useCallback((): string | null => {
+  const getLeagueId = useCallback((): string | null => {
     if (!user) return null;
     const role = user.roles.find(
-      (r) =>
-        (r.roleName === "league_admin" || r.roleName === "match_event_admin") &&
-        r.seasonId
+      (r) => r.roleName === "league_admin" && r.leagueId
+    );
+    return role?.leagueId || null;
+  }, [user]);
+
+  const getSeasonId = useCallback((): string | null => {
+    if (!user) return null;
+    // Only match_event_admin uses seasonId scope now
+    const role = user.roles.find(
+      (r) => r.roleName === "match_event_admin" && r.seasonId
     );
     return role?.seasonId || null;
   }, [user]);
@@ -176,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLeagueAdmin,
         isClubAdmin,
         isMEA,
+        getLeagueId,
         getSeasonId,
         getClubId,
       }}

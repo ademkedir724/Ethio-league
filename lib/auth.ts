@@ -33,6 +33,7 @@ export interface TokenPayload {
 export interface RoleScope {
   roleName: string;
   organizationId?: string | null;
+  leagueId?: string | null;
   seasonId?: string | null;
   clubId?: string | null;
 }
@@ -92,6 +93,7 @@ export async function authenticate(
     const roles: RoleScope[] = scopes.map((s) => ({
       roleName: s.role.name,
       organizationId: s.organizationId,
+      leagueId: s.leagueId,
       seasonId: s.seasonId,
       clubId: s.clubId,
     }));
