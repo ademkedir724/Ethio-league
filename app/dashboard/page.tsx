@@ -154,12 +154,11 @@ function SuperAdminOverview() {
     "/api/dashboard/stats",
     authFetcher,
     {
-      fallbackData: mockSuperAdminStats,
-      onError: () => {},
+      fallbackData: undefined,
     }
   );
 
-  const displayStats = stats || mockSuperAdminStats;
+  const displayStats = stats || {};
 
   return (
     <div className="flex flex-col gap-6">
@@ -317,12 +316,11 @@ function OrgAdminOverview() {
     organization ? `/api/dashboard/stats?organizationId=${organization.id}` : null,
     authFetcher,
     {
-      fallbackData: mockOrgAdminStats,
-      onError: () => {},
+      fallbackData: undefined,
     }
   );
 
-  const displayStats = stats || mockOrgAdminStats;
+  const displayStats = stats || {};
   const isLoading = orgLoading || statsLoading;
 
   return (
@@ -484,13 +482,196 @@ function OrgAdminOverview() {
   );
 }
 
+function ClubAdminOverview() {
+  const { data: stats, isLoading, error } = useSWR(
+    "/api/dashboard/stats",
+    authFetcher
+  );
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="My Club Dashboard"
+        description="Overview of your club's players, coaches, and matches."
+      />
+      {error && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+          Failed to load dashboard stats. Please try again.
+        </div>
+      )}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i} className="border-border bg-card">
+              <CardContent className="p-6">
+                <Skeleton className="h-16 w-full" />
+              </CardContent>
+            </Card>
+          ))
+        ) : (
+          <>
+            <StatCard
+              title="Players"
+              value={stats?.players ?? 0}
+              icon={UserCircle}
+              description="Registered players"
+            />
+            <StatCard
+              title="Coaches"
+              value={stats?.coaches ?? 0}
+              icon={Users}
+              description="Club coaches"
+            />
+            <StatCard
+              title="Upcoming Matches"
+              value={stats?.upcomingMatches ?? 0}
+              icon={Calendar}
+              description="Scheduled matches"
+            />
+            <StatCard
+              title="Completed Matches"
+              value={stats?.completedMatches ?? 0}
+              icon={Swords}
+              description="Finished matches"
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LeagueAdminOverview() {
+  const { data: stats, isLoading, error } = useSWR(
+    "/api/dashboard/stats",
+    authFetcher
+  );
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="League Dashboard"
+        description="Overview of clubs, matches, and standings in your league."
+      />
+      {error && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+          Failed to load dashboard stats. Please try again.
+        </div>
+      )}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {isLoading ? (
+          Array.from({ length: 5 }).map((_, i) => (
+            <Card key={i} className="border-border bg-card">
+              <CardContent className="p-6">
+                <Skeleton className="h-16 w-full" />
+              </CardContent>
+            </Card>
+          ))
+        ) : (
+          <>
+            <StatCard
+              title="Clubs"
+              value={stats?.clubs ?? 0}
+              icon={Shield}
+              description="Clubs in league"
+            />
+            <StatCard
+              title="Total Matches"
+              value={stats?.totalMatches ?? 0}
+              icon={Swords}
+              description="All matches"
+            />
+            <StatCard
+              title="Completed"
+              value={stats?.completedMatches ?? 0}
+              icon={Calendar}
+              description="Finished matches"
+            />
+            <StatCard
+              title="Live"
+              value={stats?.liveMatches ?? 0}
+              icon={Megaphone}
+              description="In progress"
+            />
+            <StatCard
+              title="Upcoming"
+              value={stats?.upcomingMatches ?? 0}
+              icon={Clock}
+              description="Scheduled matches"
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MEAOverview() {
+  const { data: stats, isLoading, error } = useSWR(
+    "/api/dashboard/stats",
+    authFetcher
+  );
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Match Event Dashboard"
+        description="Overview of matches pending approval and live events."
+      />
+      {error && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+          Failed to load dashboard stats. Please try again.
+        </div>
+      )}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {isLoading ? (
+          Array.from({ length: 2 }).map((_, i) => (
+            <Card key={i} className="border-border bg-card">
+              <CardContent className="p-6">
+                <Skeleton className="h-16 w-full" />
+              </CardContent>
+            </Card>
+          ))
+        ) : (
+          <>
+            <StatCard
+              title="Pending Approval"
+              value={stats?.pendingApproval ?? 0}
+              icon={Clock}
+              description="Matches awaiting approval"
+            />
+            <StatCard
+              title="Live Matches"
+              value={stats?.liveMatches ?? 0}
+              icon={Swords}
+              description="Currently in progress"
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardOverview() {
-  const { isSuperAdmin, isOrgAdmin } = useAuth();
+  const { isSuperAdmin, isOrgAdmin, isClubAdmin, isLeagueAdmin, isMEA } = useAuth();
 
   if (isOrgAdmin()) {
     return <OrgAdminOverview />;
   }
 
-  // Default to Super Admin view (or any other role)
+  if (isClubAdmin()) {
+    return <ClubAdminOverview />;
+  }
+
+  if (isLeagueAdmin()) {
+    return <LeagueAdminOverview />;
+  }
+
+  if (isMEA()) {
+    return <MEAOverview />;
+  }
+
+  // Default to Super Admin view
   return <SuperAdminOverview />;
 }
