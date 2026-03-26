@@ -92,7 +92,7 @@ function OrgAdminUsersView() {
           u.roles.includes(r)
         )
       ),
-      onError: () => {},
+      onError: () => { },
     }
   );
 
@@ -503,7 +503,7 @@ function OrgAdminUsersView() {
 function SuperAdminUsersView() {
   const { data, isLoading } = useSWR("/api/users", authFetcher, {
     fallbackData: mockUsers,
-    onError: () => {},
+    onError: () => { },
   });
 
   const users: User[] = data || mockUsers;
@@ -766,6 +766,22 @@ function SuperAdminUsersView() {
         variant="destructive"
         onConfirm={handleDelete}
       />
+    </div>
+  );
+}
+
+// ─── Page Entry Point ────────────────────────────────────────────────────────
+
+export default function UsersPage() {
+  const { isSuperAdmin, isOrgAdmin } = useAuth();
+
+  if (isSuperAdmin()) return <SuperAdminUsersView />;
+  if (isOrgAdmin()) return <OrgAdminUsersView />;
+
+  // Fallback — should not happen if sidebar guards are correct
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Users" description="You do not have permission to view this page." />
     </div>
   );
 }

@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
         phone: user.phone,
         status: user.status,
         roles: user.userRoleScopes.map((s) => ({
-          role: s.role.name,
+          roleName: s.role.name,
           organizationId: s.organizationId,
           seasonId: s.seasonId,
           clubId: s.clubId,
