@@ -46,8 +46,8 @@ export async function DELETE(
         const idNum = parseInt(id, 10);
         if (isNaN(idNum)) return badRequest("Invalid ID");
 
-        const inUse = await prisma.season.findFirst({ where: { leagueTypeId: idNum } });
-        if (inUse) return badRequest("Cannot delete: league type is in use by one or more seasons");
+        const inUse = await prisma.league.findFirst({ where: { leagueTypeId: idNum } });
+        if (inUse) return badRequest("Cannot delete: league type is in use by one or more leagues");
 
         const existing = await prisma.leagueType.findUnique({ where: { id: idNum } });
         if (!existing) return notFound("League type not found");

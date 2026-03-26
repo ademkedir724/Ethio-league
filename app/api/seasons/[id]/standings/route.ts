@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, badRequest, forbidden, notFound, serverError, parseUUID } from "@/lib/api-helpers";
-import { assertSeasonScope } from "@/lib/scope-guard";
+import { assertLeagueScope, assertOrgScope } from "@/lib/scope-guard";
 import { computeStandings, MatchResult } from "@/lib/standings";
 
 export async function GET(
@@ -17,13 +17,15 @@ export async function GET(
         const seasonId = parseUUID(id);
         if (!seasonId) return badRequest("Invalid season ID");
 
-        if (!assertSeasonScope(auth, seasonId)) return forbidden();
-
         const season = await prisma.season.findUnique({
             where: { id: seasonId },
-            select: { pointsWin: true, pointsDraw: true },
+            include: { league: true },
         });
         if (!season) return notFound("Season not found");
+
+        if (!assertLeagueScope(auth, season.leagueId) && !assertOrgScope(auth, season.league.organizationId)) {
+            return forbidden();
+        }
 
         const matches = await prisma.match.findMany({
             where: { seasonId, status: "completed" },
@@ -44,12 +46,7 @@ export async function GET(
             awayClubLogoUrl: m.awayClub.logoUrl,
         }));
 
-        const standings = computeStandings(
-            matchResults,
-            season.pointsWin ?? 3,
-            season.pointsDraw ?? 1
-        );
-
+        const standings = computeStandings(matchResults, season.pointsWin ?? 3, season.pointsDraw ?? 1);
         return success(standings);
     } catch (error) {
         return serverError(error);

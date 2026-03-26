@@ -1,17 +1,10 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import {
-    success,
-    created,
-    badRequest,
-    forbidden,
-    serverError,
-    parseUUID,
-} from "@/lib/api-helpers";
-import { assertSeasonScope } from "@/lib/scope-guard";
+import { success, created, badRequest, forbidden, serverError, parseUUID } from "@/lib/api-helpers";
+import { assertLeagueScope, assertOrgScope } from "@/lib/scope-guard";
 
-// GET /api/seasons/[id]/players — list all players assigned to a season
+// GET /api/seasons/[id]/players
 export async function GET(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
@@ -24,17 +17,18 @@ export async function GET(
         const seasonId = parseUUID(id);
         if (!seasonId) return badRequest("Invalid season ID");
 
-        if (!assertSeasonScope(auth, seasonId)) return forbidden();
+        const season = await prisma.season.findUnique({ where: { id: seasonId }, include: { league: true } });
+        if (!season) return badRequest("Season not found");
+
+        if (!assertLeagueScope(auth, season.leagueId) && !assertOrgScope(auth, season.league.organizationId)) {
+            return forbidden();
+        }
 
         const records = await prisma.seasonClubPlayer.findMany({
             where: { seasonClub: { seasonId } },
             include: {
                 player: true,
-                seasonClub: {
-                    include: {
-                        club: { select: { id: true, name: true } },
-                    },
-                },
+                seasonClub: { include: { club: { select: { id: true, name: true } } } },
                 position: true,
             },
         });
@@ -46,7 +40,6 @@ export async function GET(
 }
 
 // POST /api/seasons/[id]/players — assign a player to a season club
-// Body: { clubId, playerId, jerseyNumber?, positionId? }
 export async function POST(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
@@ -59,7 +52,12 @@ export async function POST(
         const seasonId = parseUUID(id);
         if (!seasonId) return badRequest("Invalid season ID");
 
-        if (!assertSeasonScope(auth, seasonId)) return forbidden();
+        const season = await prisma.season.findUnique({ where: { id: seasonId }, include: { league: true } });
+        if (!season) return badRequest("Season not found");
+
+        if (!assertLeagueScope(auth, season.leagueId) && !assertOrgScope(auth, season.league.organizationId)) {
+            return forbidden();
+        }
 
         const body = await req.json();
         const { clubId, playerId, jerseyNumber, positionId } = body;
@@ -70,10 +68,8 @@ export async function POST(
         const seasonClub = await prisma.seasonClub.findUnique({
             where: { seasonId_clubId: { seasonId, clubId } },
         });
-
         if (!seasonClub) return badRequest("Club is not registered in this season");
-        if (seasonClub.status !== "active")
-            return badRequest("Club must be active in the season to assign players");
+        if (seasonClub.status !== "active") return badRequest("Club must be active in the season to assign players");
 
         const duplicate = await prisma.seasonClubPlayer.findFirst({
             where: { seasonClubId: seasonClub.id, playerId },

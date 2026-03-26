@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireAuth, isAuthError, hasRole, hasOrgRole } from "@/lib/auth";
-import { success, created, badRequest, notFound, serverError, parseUUID } from "@/lib/api-helpers";
-import { NextResponse } from "next/server";
+import { requireAuth, isAuthError } from "@/lib/auth";
+import { success, created, badRequest, notFound, forbidden, serverError, parseUUID } from "@/lib/api-helpers";
+import { assertLeagueScope, assertOrgScope } from "@/lib/scope-guard";
 
-// GET /api/seasons/:id/clubs — list clubs in a season
+// GET /api/seasons/:id/clubs
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -31,7 +31,6 @@ export async function GET(
 }
 
 // POST /api/seasons/:id/clubs — register a club in a season
-// Body: { clubId }
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -47,16 +46,16 @@ export async function POST(
     const { clubId } = await req.json();
     if (!clubId) return badRequest("clubId is required");
 
-    const season = await prisma.season.findUnique({ where: { id: seasonId } });
+    const season = await prisma.season.findUnique({
+      where: { id: seasonId },
+      include: { league: true },
+    });
     if (!season) return notFound("Season not found");
 
-    const isSuperAdmin = hasRole(auth, ["super_admin"]);
-    const isOrgAdmin = hasOrgRole(auth, "organization_admin", season.organizationId);
-    if (!isSuperAdmin && !isOrgAdmin) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!assertLeagueScope(auth, season.leagueId) && !assertOrgScope(auth, season.league.organizationId)) {
+      return forbidden();
     }
 
-    // Check if already registered
     const existing = await prisma.seasonClub.findUnique({
       where: { seasonId_clubId: { seasonId, clubId } },
     });
