@@ -7,13 +7,31 @@ import { assertSeasonScope } from "@/lib/scope-guard";
 import { sendPasswordSetupEmail } from "@/lib/email";
 import { logAudit } from "@/lib/audit";
 
-// GET /api/clubs — list all clubs
+// GET /api/clubs — list clubs (scope-filtered by role)
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req);
     if (isAuthError(auth)) return auth;
 
+    const where: Record<string, unknown> = {};
+
+    const isOrgAdmin = auth.roles.some((r) => r.roleName === "organization_admin");
+    const isLeagueAdmin = auth.roles.some((r) => r.roleName === "league_admin");
+
+    if (isOrgAdmin) {
+      const orgId = auth.roles.find((r) => r.roleName === "organization_admin")?.organizationId;
+      if (orgId) {
+        where.seasonClubs = { some: { season: { organizationId: orgId } } };
+      }
+    } else if (isLeagueAdmin) {
+      const seasonId = auth.roles.find((r) => r.roleName === "league_admin")?.seasonId;
+      if (seasonId) {
+        where.seasonClubs = { some: { seasonId } };
+      }
+    }
+
     const clubs = await prisma.club.findMany({
+      where,
       include: {
         primaryStadium: { select: { id: true, name: true } },
         _count: { select: { seasonClubs: true } },
