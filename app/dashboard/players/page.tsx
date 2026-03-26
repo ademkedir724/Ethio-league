@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import useSWR from "swr";
-import { authFetcher } from "@/lib/fetch-client";
+import useSWR, { mutate } from "swr";
+import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
 import { useOrganization } from "@/lib/org-context";
 import { usePermissions } from "@/lib/use-permissions";
@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { UserCircle, Plus, MoreHorizontal, Pencil, Trash2, Eye } from "lucide-react";
+import { toast } from "sonner";
 
 interface Player {
   id: string;
@@ -46,19 +47,6 @@ interface Player {
   club: string;
   status: string;
 }
-
-const mockPlayers: Player[] = [
-  { id: "1", firstName: "Abebe", lastName: "Bikila", dateOfBirth: "1998-05-12", nationality: "Ethiopian", position: "Forward", preferredFoot: "Right", heightCm: 178, weightKg: 72, club: "St. George FC", status: "active" },
-  { id: "2", firstName: "Getaneh", lastName: "Kebede", dateOfBirth: "1996-03-08", nationality: "Ethiopian", position: "Forward", preferredFoot: "Right", heightCm: 175, weightKg: 70, club: "Ethio Electric SC", status: "active" },
-  { id: "3", firstName: "Shimelis", lastName: "Bekele", dateOfBirth: "2000-11-22", nationality: "Ethiopian", position: "Midfielder", preferredFoot: "Left", heightCm: 172, weightKg: 68, club: "Fasil Kenema FC", status: "active" },
-  { id: "4", firstName: "Dawit", lastName: "Estifanos", dateOfBirth: "1997-07-15", nationality: "Ethiopian", position: "Defender", preferredFoot: "Right", heightCm: 183, weightKg: 78, club: "Hawassa Ketema FC", status: "active" },
-  { id: "5", firstName: "Yared", lastName: "Zeleke", dateOfBirth: "2001-01-30", nationality: "Ethiopian", position: "Goalkeeper", preferredFoot: "Right", heightCm: 188, weightKg: 82, club: "St. George FC", status: "active" },
-  { id: "6", firstName: "Samuel", lastName: "Teshome", dateOfBirth: "1999-09-18", nationality: "Ethiopian", position: "Midfielder", preferredFoot: "Right", heightCm: 176, weightKg: 71, club: "Adama Ketema FC", status: "inactive" },
-  { id: "7", firstName: "Henok", lastName: "Goitom", dateOfBirth: "2002-04-05", nationality: "Ethiopian", position: "Forward", preferredFoot: "Left", heightCm: 180, weightKg: 74, club: "Dire Dawa Ketema FC", status: "active" },
-  { id: "8", firstName: "Biniyam", lastName: "Getnet", dateOfBirth: "1995-12-10", nationality: "Ethiopian", position: "Defender", preferredFoot: "Right", heightCm: 185, weightKg: 80, club: "Sidama Bunna FC", status: "active" },
-  { id: "9", firstName: "Tewodros", lastName: "Mengistu", dateOfBirth: "2003-06-28", nationality: "Ethiopian", position: "Midfielder", preferredFoot: "Right", heightCm: 174, weightKg: 69, club: "Wolaita Dicha FC", status: "pending" },
-  { id: "10", firstName: "Kidus", lastName: "Admasu", dateOfBirth: "2000-02-14", nationality: "Ethiopian", position: "Goalkeeper", preferredFoot: "Right", heightCm: 190, weightKg: 85, club: "Fasil Kenema FC", status: "active" },
-];
 
 const positionColors: Record<string, string> = {
   Forward: "bg-red-500/15 text-red-400 border-red-500/20",
@@ -80,7 +68,7 @@ const emptyForm = {
 
 export default function PlayersPage() {
   const { organization, isLoading: orgLoading } = useOrganization();
-  const { getOrganizationId, isOrgAdmin, isSuperAdmin } = useAuth();
+  const { getOrganizationId, isOrgAdmin, isSuperAdmin, isClubAdmin, getClubId } = useAuth();
   const { canManage, isViewOnly } = usePermissions();
   const orgId = getOrganizationId();
 
@@ -89,12 +77,11 @@ export default function PlayersPage() {
     ? `/api/players?organizationId=${orgId}`
     : "/api/players";
 
-  const { data, isLoading: playersLoading } = useSWR(apiUrl, authFetcher, {
-    fallbackData: mockPlayers,
-    onError: () => {},
+  const { data, isLoading: playersLoading, error } = useSWR(apiUrl, authFetcher, {
+    fallbackData: undefined,
   });
 
-  const players: Player[] = data || mockPlayers;
+  const players: Player[] = data || [];
   const isLoading = orgLoading || playersLoading;
 
   // Both org admin and super admin are view-only for players
@@ -109,6 +96,7 @@ export default function PlayersPage() {
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Player | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [isSaving, setIsSaving] = useState(false);
 
   const clubs = useMemo(() => {
     const set = new Set(players.map((p) => p.club));
@@ -157,11 +145,69 @@ export default function PlayersPage() {
   };
 
   const handleSubmit = async () => {
-    await new Promise((r) => setTimeout(r, 500));
+    // Duplicate warning check for create
+    if (!editingPlayer) {
+      const isDuplicate = players.some(
+        (p) =>
+          p.firstName === form.firstName &&
+          p.lastName === form.lastName &&
+          p.dateOfBirth === form.dateOfBirth
+      );
+      if (isDuplicate) {
+        toast.warning("A player with the same name and date of birth already exists.");
+      }
+    }
+
+    setIsSaving(true);
+    try {
+      let res: Response;
+      if (editingPlayer) {
+        res = await fetchWithAuth(`/api/players/${editingPlayer.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(form),
+        });
+      } else {
+        res = await fetchWithAuth("/api/players", {
+          method: "POST",
+          body: JSON.stringify({ ...form, clubId: getClubId(), status: "active" }),
+        });
+      }
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Request failed");
+      }
+
+      toast.success(editingPlayer ? "Player updated successfully." : "Player created successfully.");
+      mutate(apiUrl);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Something went wrong.";
+      toast.error(message);
+      throw err; // rethrow so FormDialog doesn't close on error
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDelete = async () => {
-    await new Promise((r) => setTimeout(r, 500));
+    if (!deleteTarget) return;
+    try {
+      const res = await fetchWithAuth(`/api/players/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Delete failed");
+      }
+
+      toast.success("Player deleted");
+      setDeleteTarget(null);
+      mutate(apiUrl);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Something went wrong.";
+      toast.error(message);
+    }
   };
 
   const getInitials = (first: string, last: string) =>
@@ -236,50 +282,50 @@ export default function PlayersPage() {
     // Only show actions if user can edit (club admin)
     ...(canEdit
       ? [
-          {
-            key: "actions",
-            header: "",
-            className: "w-12",
-            render: (p: Player) => (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-                    <MoreHorizontal className="h-4 w-4" />
-                    <span className="sr-only">Actions</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => openEdit(p)}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => setDeleteTarget(p)}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ),
-          },
-        ]
+        {
+          key: "actions",
+          header: "",
+          className: "w-12",
+          render: (p: Player) => (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                  <MoreHorizontal className="h-4 w-4" />
+                  <span className="sr-only">Actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => openEdit(p)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setDeleteTarget(p)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ),
+        },
+      ]
       : [
-          // View-only action for org admin / super admin
-          {
-            key: "actions",
-            header: "",
-            className: "w-12",
-            render: (p: Player) => (
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-                <Eye className="h-4 w-4" />
-                <span className="sr-only">View</span>
-              </Button>
-            ),
-          },
-        ]),
+        // View-only action for org admin / super admin
+        {
+          key: "actions",
+          header: "",
+          className: "w-12",
+          render: (p: Player) => (
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+              <Eye className="h-4 w-4" />
+              <span className="sr-only">View</span>
+            </Button>
+          ),
+        },
+      ]),
   ];
 
   const pageTitle = isOrgAdmin() && organization
@@ -289,8 +335,8 @@ export default function PlayersPage() {
   const pageDescription = isOrgAdmin()
     ? "View players from clubs in your organization."
     : canEdit
-    ? "Manage registered players across all clubs."
-    : "View registered players across all clubs.";
+      ? "Manage registered players across all clubs."
+      : "View registered players across all clubs.";
 
   return (
     <div className="flex flex-col gap-6">
@@ -302,6 +348,12 @@ export default function PlayersPage() {
           </Button>
         )}
       </PageHeader>
+
+      {error && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+          Failed to load players. Please refresh.
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
