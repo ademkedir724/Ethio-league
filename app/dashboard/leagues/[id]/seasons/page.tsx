@@ -95,15 +95,10 @@ export default function LeagueSeasonsPage() {
     const router = useRouter();
     const leagueId = params.id as string;
 
-    const { user, isSuperAdmin, isOrgAdmin, isLeagueAdmin } = useAuth();
+    const { isLeagueAdmin } = useAuth();
 
-    const canEdit =
-        isSuperAdmin() ||
-        isOrgAdmin() ||
-        isLeagueAdmin() ||
-        (user?.roles.some((r) =>
-            ["super_admin", "organization_admin", "league_admin"].includes(r.roleName)
-        ) ?? false);
+    // Only league_admin can create/edit/delete seasons
+    const canEdit = isLeagueAdmin();
 
     // Fetch league details for breadcrumb/header
     const { data: league, isLoading: leagueLoading } = useSWR<League>(

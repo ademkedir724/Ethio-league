@@ -75,16 +75,12 @@ const emptyForm = {
 
 export default function LeaguesPage() {
   const router = useRouter();
-  const { user, isSuperAdmin, isOrgAdmin, getOrganizationId } = useAuth();
+  const { isOrgAdmin, getOrganizationId } = useAuth();
 
-  const canEdit =
-    isSuperAdmin() ||
-    isOrgAdmin() ||
-    (user?.roles.some((r) => r.roleName === "organization_admin") ?? false);
+  // Only org_admin can create/edit/delete leagues
+  const canEdit = isOrgAdmin();
 
-  const orgId =
-    user?.roles.find((r) => r.roleName === "organization_admin")?.organizationId ??
-    getOrganizationId();
+  const orgId = getOrganizationId();
 
   // Fetch leagues
   const { data: leaguesData, isLoading, error } = useSWR<League[]>(

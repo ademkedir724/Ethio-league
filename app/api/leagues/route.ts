@@ -43,10 +43,10 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/leagues — create a league (org_admin or super_admin)
+// POST /api/leagues — create a league (org_admin only)
 export async function POST(req: NextRequest) {
   try {
-    const auth = await requireAuth(req, ["super_admin", "organization_admin"]);
+    const auth = await requireAuth(req, ["organization_admin"]);
     if (isAuthError(auth)) return auth;
 
     const body = await req.json();

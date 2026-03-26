@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, created, badRequest, forbidden, serverError } from "@/lib/api-helpers";
-import { assertOrgScope, assertLeagueScope } from "@/lib/scope-guard";
+import { assertLeagueScope } from "@/lib/scope-guard";
 import { logAudit } from "@/lib/audit";
 
 // GET /api/seasons?leagueId=X — list seasons scoped by role
@@ -52,10 +52,10 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/seasons — create a season under a league
+// POST /api/seasons — create a season under a league (league_admin only)
 export async function POST(req: NextRequest) {
   try {
-    const auth = await requireAuth(req, ["super_admin", "organization_admin", "league_admin"]);
+    const auth = await requireAuth(req, ["league_admin"]);
     if (isAuthError(auth)) return auth;
 
     const body = await req.json();
@@ -65,11 +65,11 @@ export async function POST(req: NextRequest) {
     if (!name) return badRequest("name is required");
     if (!startDate || !endDate) return badRequest("startDate and endDate are required");
 
-    // Verify league exists and caller has access
+    // Verify league exists and caller is scoped to it
     const league = await prisma.league.findUnique({ where: { id: leagueId } });
     if (!league) return badRequest("League not found");
 
-    if (!assertOrgScope(auth, league.organizationId) && !assertLeagueScope(auth, leagueId)) {
+    if (!assertLeagueScope(auth, leagueId)) {
       return forbidden();
     }
 
