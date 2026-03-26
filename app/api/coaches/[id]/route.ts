@@ -23,7 +23,7 @@ export async function GET(
           include: {
             seasonClub: {
               include: {
-                season: { select: { id: true, name: true, leagueName: true } },
+                season: { select: { id: true, name: true, leagueId: true } },
                 club: { select: { id: true, name: true } },
               },
             },

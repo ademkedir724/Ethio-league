@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     } else if (isOrgAdmin) {
       const orgId = auth.roles.find((r) => r.roleName === "organization_admin")?.organizationId;
       if (orgId) {
-        where.seasonClubPlayers = { some: { seasonClub: { season: { organizationId: orgId } } } };
+        where.seasonClubPlayers = { some: { seasonClub: { season: { league: { organizationId: orgId } } } } };
       }
     }
 
