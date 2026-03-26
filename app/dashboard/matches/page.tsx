@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import useSWR from "swr";
-import { authFetcher } from "@/lib/fetch-client";
+import useSWR, { mutate } from "swr";
+import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
 import { useOrganization } from "@/lib/org-context";
 import { usePermissions } from "@/lib/use-permissions";
@@ -29,7 +29,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Swords, Plus, MoreHorizontal, Pencil, Trash2, Play, CheckCircle, Eye } from "lucide-react";
+import { Swords, Plus, MoreHorizontal, Pencil, Trash2, Play, CheckCircle, Eye, Shuffle, UserCheck } from "lucide-react";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 interface Match {
   id: string;
@@ -45,19 +47,6 @@ interface Match {
   status: string;
 }
 
-const mockMatches: Match[] = [
-  { id: "1", homeClub: "St. George FC", awayClub: "Ethio Electric SC", homeScore: 2, awayScore: 1, matchDate: "2026-03-01T15:00:00", stadium: "Addis Ababa Stadium", season: "2025/26 Season", league: "Ethiopian Premier League", roundNumber: 18, status: "completed" },
-  { id: "2", homeClub: "Fasil Kenema FC", awayClub: "Hawassa Ketema FC", homeScore: 0, awayScore: 0, matchDate: "2026-03-03T14:00:00", stadium: "Fasil Kenema Stadium", season: "2025/26 Season", league: "Ethiopian Premier League", roundNumber: 18, status: "live" },
-  { id: "3", homeClub: "Adama Ketema FC", awayClub: "Dire Dawa Ketema FC", homeScore: null, awayScore: null, matchDate: "2026-03-06T15:00:00", stadium: "Adama Stadium", season: "2025/26 Season", league: "Ethiopian Premier League", roundNumber: 19, status: "scheduled" },
-  { id: "4", homeClub: "Wolaita Dicha FC", awayClub: "Sidama Bunna FC", homeScore: 3, awayScore: 2, matchDate: "2026-02-28T16:00:00", stadium: "Wolaita Stadium", season: "2025/26 Season", league: "Ethiopian Premier League", roundNumber: 17, status: "completed" },
-  { id: "5", homeClub: "Bahir Dar Ketema FC", awayClub: "Jimma Aba Jifar FC", homeScore: null, awayScore: null, matchDate: "2026-03-08T15:00:00", stadium: "Bahir Dar Stadium", season: "2025/26 Season", league: "Ethiopian Premier League", roundNumber: 19, status: "upcoming" },
-  { id: "6", homeClub: "Ethio Electric SC", awayClub: "Fasil Kenema FC", homeScore: 1, awayScore: 1, matchDate: "2026-02-25T14:00:00", stadium: "Addis Ababa Stadium", season: "2025/26 Season", league: "Ethiopian Premier League", roundNumber: 17, status: "completed" },
-  { id: "7", homeClub: "Dire Dawa Ketema FC", awayClub: "St. George FC", homeScore: null, awayScore: null, matchDate: "2026-03-10T15:00:00", stadium: "Dire Dawa Stadium", season: "2025/26 Season", league: "Ethiopian Premier League", roundNumber: 20, status: "upcoming" },
-  { id: "8", homeClub: "Hawassa Ketema FC", awayClub: "Adama Ketema FC", homeScore: null, awayScore: null, matchDate: "2026-03-06T16:00:00", stadium: "Hawassa Stadium", season: "2025/26 Season", league: "Ethiopian Premier League", roundNumber: 19, status: "scheduled" },
-  { id: "9", homeClub: "Sidama Bunna FC", awayClub: "Bahir Dar Ketema FC", homeScore: null, awayScore: null, matchDate: "2026-03-12T14:00:00", stadium: "Hawassa Stadium", season: "2025/26 Season", league: "Ethiopian Premier League", roundNumber: 20, status: "upcoming" },
-  { id: "10", homeClub: "Jimma Aba Jifar FC", awayClub: "Wolaita Dicha FC", homeScore: 0, awayScore: 1, matchDate: "2026-03-01T14:00:00", stadium: "Jimma Stadium", season: "2025/26 Season", league: "Ethiopian Premier League", roundNumber: 18, status: "completed" },
-];
-
 const emptyForm = {
   homeClub: "",
   awayClub: "",
@@ -68,8 +57,9 @@ const emptyForm = {
 };
 
 export default function MatchesPage() {
+  const router = useRouter();
   const { organization, isLoading: orgLoading } = useOrganization();
-  const { getOrganizationId, isOrgAdmin, isSuperAdmin } = useAuth();
+  const { getOrganizationId, isOrgAdmin, isSuperAdmin, isLeagueAdmin, getSeasonId } = useAuth();
   const { canManage, isViewOnly } = usePermissions();
   const orgId = getOrganizationId();
 
@@ -78,12 +68,11 @@ export default function MatchesPage() {
     ? `/api/matches?organizationId=${orgId}`
     : "/api/matches";
 
-  const { data, isLoading: matchesLoading } = useSWR(apiUrl, authFetcher, {
-    fallbackData: mockMatches,
-    onError: () => {},
+  const { data, isLoading: matchesLoading, error } = useSWR(apiUrl, authFetcher, {
+    fallbackData: undefined,
   });
 
-  const matches: Match[] = data || mockMatches;
+  const matches: Match[] = data || [];
   const isLoading = orgLoading || matchesLoading;
 
   // Org admin is strictly view-only for matches
@@ -96,6 +85,7 @@ export default function MatchesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Match | null>(null);
+  const [generateConfirmOpen, setGenerateConfirmOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
 
   const leagues = useMemo(() => {
@@ -141,12 +131,107 @@ export default function MatchesPage() {
     setFormOpen(true);
   };
 
+  const handleGenerateFixtures = () => {
+    if (matches.length > 0) {
+      setGenerateConfirmOpen(true);
+    } else {
+      doGenerateFixtures();
+    }
+  };
+
+  const doGenerateFixtures = async () => {
+    try {
+      const seasonId = getSeasonId();
+      const res = await fetchWithAuth("/api/matches/fixtures", {
+        method: "POST",
+        body: JSON.stringify({ seasonId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to generate fixtures");
+        return;
+      }
+      toast.success("Fixtures generated successfully");
+      mutate(apiUrl);
+    } catch {
+      toast.error("Failed to generate fixtures");
+    }
+  };
+
+  const handleStartMatch = async (m: Match) => {
+    try {
+      const res = await fetchWithAuth(`/api/matches/${m.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "live" }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to start match");
+        return;
+      }
+      toast.success("Match started");
+      mutate(apiUrl);
+    } catch {
+      toast.error("Failed to start match");
+    }
+  };
+
+  const handleEndMatch = async (m: Match) => {
+    try {
+      const res = await fetchWithAuth(`/api/matches/${m.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "completed" }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to end match");
+        return;
+      }
+      toast.success("Match ended");
+      mutate(apiUrl);
+    } catch {
+      toast.error("Failed to end match");
+    }
+  };
+
   const handleSubmit = async () => {
-    await new Promise((r) => setTimeout(r, 500));
+    if (!editingMatch) return;
+    try {
+      const res = await fetchWithAuth(`/api/matches/${editingMatch.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          matchDate: form.matchDate,
+          roundNumber: form.roundNumber ? Number(form.roundNumber) : undefined,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to update match");
+        return;
+      }
+      toast.success("Match updated");
+      mutate(apiUrl);
+    } catch {
+      toast.error("Failed to update match");
+    }
   };
 
   const handleDelete = async () => {
-    await new Promise((r) => setTimeout(r, 500));
+    if (!deleteTarget) return;
+    try {
+      const res = await fetchWithAuth(`/api/matches/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to delete match");
+        return;
+      }
+      toast.success("Match deleted");
+      mutate(apiUrl);
+    } catch {
+      toast.error("Failed to delete match");
+    }
   };
 
   const formatDateTime = (d: string) => {
@@ -162,7 +247,10 @@ export default function MatchesPage() {
       key: "match",
       header: "Match",
       render: (m) => (
-        <div className="flex flex-col">
+        <div
+          className="flex flex-col cursor-pointer hover:opacity-80"
+          onClick={() => router.push(`/dashboard/matches/${m.id}`)}
+        >
           <span className="text-sm font-medium text-foreground">{m.homeClub}</span>
           <span className="text-xs text-muted-foreground">vs {m.awayClub}</span>
         </div>
@@ -219,62 +307,85 @@ export default function MatchesPage() {
     // Actions column
     ...(canEdit
       ? [
-          {
-            key: "actions",
-            header: "",
-            className: "w-12",
-            render: (m: Match) => (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-                    <MoreHorizontal className="h-4 w-4" />
-                    <span className="sr-only">Actions</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => openEdit(m)}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit
-                  </DropdownMenuItem>
-                  {(m.status === "scheduled" || m.status === "upcoming") && (
-                    <DropdownMenuItem className="text-emerald-400 focus:text-emerald-400">
-                      <Play className="mr-2 h-4 w-4" />
-                      Start Match
-                    </DropdownMenuItem>
-                  )}
-                  {m.status === "live" && (
-                    <DropdownMenuItem className="text-blue-400 focus:text-blue-400">
-                      <CheckCircle className="mr-2 h-4 w-4" />
-                      End Match
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuSeparator />
+        {
+          key: "actions",
+          header: "",
+          className: "w-12",
+          render: (m: Match) => (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                  <MoreHorizontal className="h-4 w-4" />
+                  <span className="sr-only">Actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => router.push(`/dashboard/matches/${m.id}`)}>
+                  <Eye className="mr-2 h-4 w-4" />
+                  View
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openEdit(m)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </DropdownMenuItem>
+                {(m.status === "scheduled" || m.status === "upcoming") && (
                   <DropdownMenuItem
-                    onClick={() => setDeleteTarget(m)}
-                    className="text-destructive focus:text-destructive"
+                    className="text-emerald-400 focus:text-emerald-400"
+                    onClick={() => handleStartMatch(m)}
                   >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
+                    <Play className="mr-2 h-4 w-4" />
+                    Start Match
                   </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ),
-          },
-        ]
+                )}
+                {m.status === "live" && (
+                  <DropdownMenuItem
+                    className="text-blue-400 focus:text-blue-400"
+                    onClick={() => handleEndMatch(m)}
+                  >
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    End Match
+                  </DropdownMenuItem>
+                )}
+                {isLeagueAdmin() && (
+                  <DropdownMenuItem
+                    onClick={() => toast.info("Official assignment coming soon")}
+                  >
+                    <UserCheck className="mr-2 h-4 w-4" />
+                    Assign Officials
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setDeleteTarget(m)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ),
+        },
+      ]
       : [
-          // View-only action for org admin / super admin
-          {
-            key: "actions",
-            header: "",
-            className: "w-12",
-            render: (m: Match) => (
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-                <Eye className="h-4 w-4" />
-                <span className="sr-only">View</span>
-              </Button>
-            ),
-          },
-        ]),
+        // View-only action for org admin / super admin
+        {
+          key: "actions",
+          header: "",
+          className: "w-12",
+          render: (m: Match) => (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground"
+              onClick={() => router.push(`/dashboard/matches/${m.id}`)}
+            >
+              <Eye className="h-4 w-4" />
+              <span className="sr-only">View</span>
+            </Button>
+          ),
+        },
+      ]),
   ];
 
   const pageTitle = isOrgAdmin() && organization
@@ -284,12 +395,18 @@ export default function MatchesPage() {
   const pageDescription = isOrgAdmin()
     ? "View match fixtures, scores, and results for your organization's leagues."
     : canEdit
-    ? "Manage match fixtures, scores, and results."
-    : "View match fixtures, scores, and results.";
+      ? "Manage match fixtures, scores, and results."
+      : "View match fixtures, scores, and results.";
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title={pageTitle} description={pageDescription}>
+        {isLeagueAdmin() && (
+          <Button variant="outline" onClick={handleGenerateFixtures}>
+            <Shuffle className="h-4 w-4" />
+            Generate Fixtures
+          </Button>
+        )}
         {canEdit && (
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" />
@@ -297,6 +414,12 @@ export default function MatchesPage() {
           </Button>
         )}
       </PageHeader>
+
+      {error && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          Failed to load matches. Please try again.
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -398,6 +521,19 @@ export default function MatchesPage() {
             onConfirm={handleDelete}
           />
         </>
+      )}
+
+      {/* Generate Fixtures Confirmation */}
+      {isLeagueAdmin() && (
+        <ConfirmDialog
+          open={generateConfirmOpen}
+          onOpenChange={setGenerateConfirmOpen}
+          title="Generate Fixtures"
+          description="This will delete all existing fixtures. Continue?"
+          confirmLabel="Generate"
+          variant="destructive"
+          onConfirm={doGenerateFixtures}
+        />
       )}
     </div>
   );

@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, created, badRequest, serverError } from "@/lib/api-helpers";
 
-// GET /api/matches?seasonId=X&status=Y — list matches
+// GET /api/matches?seasonId=X&status=Y — list matches (scope-filtered by role)
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req);
@@ -15,6 +15,26 @@ export async function GET(req: NextRequest) {
     const where: Record<string, unknown> = {};
     if (seasonId) where.seasonId = seasonId;
     if (status) where.status = status;
+
+    // Scope filtering by role
+    const isLeagueAdmin = auth.roles.some((r) => r.roleName === "league_admin");
+    const isMEA = auth.roles.some((r) => r.roleName === "match_event_admin");
+    const isClubAdmin = auth.roles.some((r) => r.roleName === "club_admin");
+
+    if (isLeagueAdmin && !seasonId) {
+      const leagueSeasonId = auth.roles.find((r) => r.roleName === "league_admin")?.seasonId;
+      if (leagueSeasonId) where.seasonId = leagueSeasonId;
+    } else if (isMEA && !seasonId) {
+      const meaSeasonIds = auth.roles
+        .filter((r) => r.roleName === "match_event_admin" && r.seasonId)
+        .map((r) => r.seasonId as string);
+      if (meaSeasonIds.length > 0) where.seasonId = { in: meaSeasonIds };
+    } else if (isClubAdmin) {
+      const clubId = auth.roles.find((r) => r.roleName === "club_admin")?.clubId;
+      if (clubId) {
+        where.OR = [{ homeClubId: clubId }, { awayClubId: clubId }];
+      }
+    }
 
     const matches = await prisma.match.findMany({
       where,
