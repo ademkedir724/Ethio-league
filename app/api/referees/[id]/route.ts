@@ -19,9 +19,9 @@ export async function GET(
     const referee = await prisma.referee.findUnique({
       where: { id },
       include: {
-        refereeLeagues: {
+        seasonReferees: {
           include: {
-            season: { select: { id: true, name: true, leagueName: true } },
+            season: { select: { id: true, name: true, leagueId: true } },
           },
         },
         matchReferees: {

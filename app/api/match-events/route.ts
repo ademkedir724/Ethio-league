@@ -106,23 +106,30 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Notify league admin for this season
-    const leagueAdminScope = await prisma.userRoleScope.findFirst({
-      where: {
-        seasonId: match.seasonId,
-        role: { name: "league_admin" },
-      },
-      include: { role: true },
+    // Notify league admin for this season — find via season → league → league_admin scope
+    const seasonForNotif = await prisma.season.findUnique({
+      where: { id: match.seasonId },
+      select: { leagueId: true },
     });
 
-    if (leagueAdminScope) {
-      await prisma.notification.create({
-        data: {
-          userId: leagueAdminScope.userId,
-          title: "Match Event Logged",
-          body: `A ${eventType.name} event was logged for match ${matchId}`,
+    if (seasonForNotif) {
+      const leagueAdminScope = await prisma.userRoleScope.findFirst({
+        where: {
+          leagueId: seasonForNotif.leagueId,
+          role: { name: "league_admin" },
         },
+        include: { role: true },
       });
+
+      if (leagueAdminScope) {
+        await prisma.notification.create({
+          data: {
+            userId: leagueAdminScope.userId,
+            title: "Match Event Logged",
+            body: `A ${eventType.name} event was logged for match ${matchId}`,
+          },
+        });
+      }
     }
 
     // Audit log

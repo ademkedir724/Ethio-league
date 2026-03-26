@@ -3,13 +3,11 @@ import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, created, badRequest, serverError } from "@/lib/api-helpers";
 
-// POST /api/referees/assign-league — assign referee to a season/league
+// POST /api/referees/assign-league — assign referee to a season (Org Admin)
 // Body: { refereeId, seasonId, roleLevel? }
 export async function POST(req: NextRequest) {
   try {
-    const auth = await requireAuth(req, [
-      "super_admin", "organization_admin", "league_admin",
-    ]);
+    const auth = await requireAuth(req, ["super_admin", "organization_admin"]);
     if (isAuthError(auth)) return auth;
 
     const { refereeId, seasonId, roleLevel } = await req.json();
@@ -18,12 +16,12 @@ export async function POST(req: NextRequest) {
       return badRequest("refereeId and seasonId are required");
     }
 
-    const existing = await prisma.refereeLeague.findUnique({
+    const existing = await prisma.seasonReferee.findUnique({
       where: { refereeId_seasonId: { refereeId, seasonId } },
     });
     if (existing) return badRequest("Referee already assigned to this season");
 
-    const rl = await prisma.refereeLeague.create({
+    const sr = await prisma.seasonReferee.create({
       data: {
         refereeId,
         seasonId,
@@ -32,11 +30,11 @@ export async function POST(req: NextRequest) {
       },
       include: {
         referee: true,
-        season: { select: { id: true, name: true, leagueName: true } },
+        season: { select: { id: true, name: true, leagueId: true } },
       },
     });
 
-    return created(rl);
+    return created(sr);
   } catch (error) {
     return serverError(error);
   }
