@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/lib/use-permissions";
+import { useAuth } from "@/lib/auth-context";
 import {
   LayoutDashboard,
   Building2,
@@ -18,6 +19,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Layers,
+  BarChart3,
+  ClipboardList,
+  FileText,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -109,9 +114,73 @@ export function DashboardSidebar({
 }: DashboardSidebarProps) {
   const pathname = usePathname();
   const { canViewNavItem } = usePermissions();
+  const { isSuperAdmin, isLeagueAdmin, isClubAdmin, user } = useAuth();
 
   // Filter nav items based on user permissions
   const navItems = allNavItems.filter((item) => canViewNavItem(item.href));
+
+  // Role-specific nav items
+  const roleNavItems = [
+    ...(isLeagueAdmin()
+      ? [{ title: "Standings", href: "/dashboard/standings", icon: BarChart3 }]
+      : []),
+    ...(isClubAdmin()
+      ? [{ title: "Lineups", href: "/dashboard/lineups", icon: ClipboardList }]
+      : []),
+    ...(isSuperAdmin()
+      ? [
+        { title: "Audit Log", href: "/dashboard/audit-log", icon: FileText },
+        { title: "System Config", href: "/dashboard/system-config", icon: Settings },
+      ]
+      : []),
+  ];
+
+  // Profile is visible to all authenticated users
+  const profileNavItem = user
+    ? { title: "Profile", href: "/dashboard/profile", icon: UserCircle }
+    : null;
+
+  const renderNavLink = (item: { title: string; href: string; icon: React.ElementType }) => {
+    const isActive =
+      pathname === item.href ||
+      (item.href !== "/dashboard" && pathname.startsWith(item.href));
+
+    const linkContent = (
+      <Link
+        href={item.href}
+        className={cn(
+          "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+          isActive
+            ? "bg-sidebar-accent text-sidebar-primary"
+            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+        )}
+      >
+        <item.icon
+          className={cn(
+            "h-4.5 w-4.5 shrink-0",
+            isActive && "text-sidebar-primary"
+          )}
+        />
+        {!collapsed && <span>{item.title}</span>}
+      </Link>
+    );
+
+    if (collapsed) {
+      return (
+        <Tooltip key={item.href}>
+          <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+          <TooltipContent
+            side="right"
+            className="bg-popover text-popover-foreground"
+          >
+            {item.title}
+          </TooltipContent>
+        </Tooltip>
+      );
+    }
+
+    return <div key={item.href}>{linkContent}</div>;
+  };
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -136,47 +205,21 @@ export function DashboardSidebar({
         {/* Nav */}
         <ScrollArea className="flex-1 py-3">
           <nav className="flex flex-col gap-1 px-2">
-            {navItems.map((item) => {
-              const isActive =
-                pathname === item.href ||
-                (item.href !== "/dashboard" && pathname.startsWith(item.href));
+            {navItems.map((item) => renderNavLink(item))}
 
-              const linkContent = (
-                <Link
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-sidebar-accent text-sidebar-primary"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                  )}
-                >
-                  <item.icon
-                    className={cn(
-                      "h-4.5 w-4.5 shrink-0",
-                      isActive && "text-sidebar-primary"
-                    )}
-                  />
-                  {!collapsed && <span>{item.title}</span>}
-                </Link>
-              );
+            {roleNavItems.length > 0 && (
+              <>
+                <Separator className="my-1 bg-sidebar-border" />
+                {roleNavItems.map((item) => renderNavLink(item))}
+              </>
+            )}
 
-              if (collapsed) {
-                return (
-                  <Tooltip key={item.href}>
-                    <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                    <TooltipContent
-                      side="right"
-                      className="bg-popover text-popover-foreground"
-                    >
-                      {item.title}
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              }
-
-              return <div key={item.href}>{linkContent}</div>;
-            })}
+            {profileNavItem && (
+              <>
+                <Separator className="my-1 bg-sidebar-border" />
+                {renderNavLink(profileNavItem)}
+              </>
+            )}
           </nav>
         </ScrollArea>
 
