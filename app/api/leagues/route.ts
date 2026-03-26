@@ -1,85 +1,41 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireAuth, isAuthError, hasRole, hasOrgRole, hashPassword } from "@/lib/auth";
+import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, created, badRequest, serverError } from "@/lib/api-helpers";
-import { randomBytes } from "crypto";
+import { assertOrgScope } from "@/lib/scope-guard";
+import { logAudit } from "@/lib/audit";
 
-// GET /api/leagues?organizationId=X — list leagues (grouped seasons by leagueName)
+// GET /api/leagues — list leagues scoped by role
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req);
     if (isAuthError(auth)) return auth;
 
-    const orgId = req.nextUrl.searchParams.get("organizationId");
+    const isSuperAdmin = auth.roles.some((r) => r.roleName === "super_admin");
+    const orgAdminRole = auth.roles.find((r) => r.roleName === "organization_admin");
+    const leagueAdminRole = auth.roles.find((r) => r.roleName === "league_admin");
 
-    // For org_admin, they can only see their own organization's leagues
-    const isSuperAdmin = hasRole(auth, ["super_admin"]);
-    
-    let whereClause = {};
-    if (orgId) {
-      whereClause = { organizationId: orgId };
+    let where: Record<string, unknown> = {};
+
+    if (isSuperAdmin) {
+      // no filter — return all
+    } else if (orgAdminRole?.organizationId) {
+      where = { organizationId: orgAdminRole.organizationId };
+    } else if (leagueAdminRole?.leagueId) {
+      where = { id: leagueAdminRole.leagueId };
+    } else {
+      where = { id: "none" }; // no access
     }
 
-    // Get all seasons and group them by leagueName to form "leagues"
-    const seasons = await prisma.season.findMany({
-      where: whereClause,
+    const leagues = await prisma.league.findMany({
+      where,
       include: {
         organization: { select: { id: true, name: true } },
-        leagueType: true,
-        _count: { select: { seasonClubs: true, matches: true } },
+        leagueType: { select: { id: true, name: true } },
+        _count: { select: { seasons: true } },
       },
-      orderBy: [{ leagueName: "asc" }, { startDate: "desc" }],
+      orderBy: { createdAt: "desc" },
     });
-
-    // Group seasons by leagueName + organizationId to create "leagues"
-    const leagueMap = new Map<string, {
-      id: string;
-      name: string;
-      organizationId: string;
-      organizationName: string;
-      genderCategory: string | null;
-      ageCategory: string | null;
-      type: string | null;
-      status: string;
-      seasonCount: number;
-      activeSeasonCount: number;
-      totalClubs: number;
-      totalMatches: number;
-      seasons: typeof seasons;
-    }>();
-
-    for (const season of seasons) {
-      const key = `${season.organizationId}-${season.leagueName}`;
-      
-      if (!leagueMap.has(key)) {
-        leagueMap.set(key, {
-          id: key,
-          name: season.leagueName,
-          organizationId: season.organizationId,
-          organizationName: season.organization.name,
-          genderCategory: season.genderCategory,
-          ageCategory: season.ageCategory,
-          type: season.leagueType?.name || null,
-          status: "active",
-          seasonCount: 0,
-          activeSeasonCount: 0,
-          totalClubs: 0,
-          totalMatches: 0,
-          seasons: [],
-        });
-      }
-
-      const league = leagueMap.get(key)!;
-      league.seasonCount += 1;
-      if (season.status === "active") {
-        league.activeSeasonCount += 1;
-      }
-      league.totalClubs += season._count.seasonClubs;
-      league.totalMatches += season._count.matches;
-      league.seasons.push(season);
-    }
-
-    const leagues = Array.from(leagueMap.values());
 
     return success(leagues);
   } catch (error) {
@@ -87,120 +43,48 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/leagues — create a new league with first season + league admin
+// POST /api/leagues — create a league (org_admin or super_admin)
 export async function POST(req: NextRequest) {
   try {
-    const auth = await requireAuth(req);
+    const auth = await requireAuth(req, ["super_admin", "organization_admin"]);
     if (isAuthError(auth)) return auth;
 
     const body = await req.json();
-    const {
-      // League/Season data
-      organizationId,
-      leagueName,
-      leagueTypeId,
-      genderCategory,
-      ageCategory,
-      divisionLevel,
-      description,
-      // First season data
-      seasonName,
-      startDate,
-      endDate,
-      // League Admin data
-      adminFullName,
-      adminEmail,
-      adminPhone,
-    } = body;
+    const { organizationId, name, leagueTypeId, genderCategory, ageCategory, divisionLevel, logoUrl, description } = body;
 
-    if (!organizationId || !leagueName || !seasonName || !startDate || !endDate) {
-      return badRequest(
-        "organizationId, leagueName, seasonName, startDate, and endDate are required"
-      );
+    if (!organizationId) return badRequest("organizationId is required");
+    if (!name) return badRequest("name is required");
+
+    if (!assertOrgScope(auth, organizationId)) {
+      return badRequest("You do not have permission to create leagues for this organization");
     }
 
-    if (!adminFullName || !adminEmail) {
-      return badRequest("League Admin details (adminFullName, adminEmail) are required");
-    }
-
-    // Auth check: super_admin or org admin of the org
-    const isSuperAdmin = hasRole(auth, ["super_admin"]);
-    const isOrgAdmin = hasOrgRole(auth, "organization_admin", organizationId);
-    if (!isSuperAdmin && !isOrgAdmin) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    // Check if admin email already exists
-    const existingUser = await prisma.user.findUnique({ where: { email: adminEmail } });
-    if (existingUser) {
-      return badRequest("A user with this email already exists");
-    }
-
-    // Generate password reset token for the new admin
-    const passwordResetToken = randomBytes(32).toString("hex");
-    const passwordResetExpires = new Date(Date.now() + 3600000); // 1 hour
-
-    // Create everything in a transaction
-    const result = await prisma.$transaction(async (tx) => {
-      // 1. Create the season (which represents the league)
-      const season = await tx.season.create({
-        data: {
-          organizationId,
-          name: seasonName,
-          leagueName,
-          leagueTypeId: leagueTypeId || null,
-          genderCategory: genderCategory || null,
-          ageCategory: ageCategory || null,
-          divisionLevel: divisionLevel || null,
-          startDate: new Date(startDate),
-          endDate: new Date(endDate),
-        },
-      });
-
-      // 2. Create the league admin user
-      const leagueAdmin = await tx.user.create({
-        data: {
-          email: adminEmail,
-          fullName: adminFullName,
-          phone: adminPhone || null,
-          passwordHash: await hashPassword(randomBytes(16).toString("hex")), // Temporary password
-          passwordResetToken,
-          passwordResetExpires,
-          status: "pending",
-        },
-      });
-
-      // 3. Get the league_admin role
-      const leagueAdminRole = await tx.role.findUnique({
-        where: { name: "league_admin" },
-      });
-
-      if (!leagueAdminRole) {
-        throw new Error("league_admin role not found");
-      }
-
-      // 4. Assign the role to the user with organization and season scope
-      await tx.userRoleScope.create({
-        data: {
-          userId: leagueAdmin.id,
-          roleId: leagueAdminRole.id,
-          organizationId,
-          seasonId: season.id,
-        },
-      });
-
-      return {
-        season,
-        leagueAdmin: {
-          id: leagueAdmin.id,
-          email: leagueAdmin.email,
-          fullName: leagueAdmin.fullName,
-        },
-        passwordSetupLink: `/set-password?token=${passwordResetToken}`,
-      };
+    const league = await prisma.league.create({
+      data: {
+        organizationId,
+        name,
+        leagueTypeId: leagueTypeId || null,
+        genderCategory: genderCategory || null,
+        ageCategory: ageCategory || null,
+        divisionLevel: divisionLevel || null,
+        logoUrl: logoUrl || null,
+        description: description || null,
+      },
+      include: {
+        organization: { select: { id: true, name: true } },
+        leagueType: { select: { id: true, name: true } },
+      },
     });
 
-    return created(result);
+    await logAudit({
+      userId: auth.userId,
+      actionType: "league_created",
+      targetId: league.id,
+      targetType: "league",
+      description: `League "${league.name}" created`,
+    });
+
+    return created(league);
   } catch (error) {
     return serverError(error);
   }
