@@ -182,7 +182,7 @@ export async function POST(req: NextRequest) {
         // Notification failure must not break the response
       }
 
-      return created({ club: newClub, user: { id: newUser.id, email: newUser.email } });
+      return created({ club: newClub, adminSetupLink: `/set-password?token=${token}`, user: { id: newUser.id, email: newUser.email } });
     }
 
     // ── Super admin / organization admin workflow (unchanged) ─────────────

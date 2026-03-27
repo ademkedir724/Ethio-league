@@ -5,19 +5,17 @@ import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
-import { useOrganization } from "@/lib/org-context";
-import { usePermissions } from "@/lib/use-permissions";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
-import { FormDialog } from "@/components/dashboard/form-dialog";
-import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -26,6 +24,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -33,150 +39,124 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Shield, Plus, MoreHorizontal, Pencil, Trash2, MapPin, Check, X, Eye } from "lucide-react";
+import {
+  Shield, Plus, MoreHorizontal, Check, X, Eye,
+  MapPin, ShieldCheck, Link as LinkIcon, Copy,
+} from "lucide-react";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Season {
+  id: string;
+  name: string;
+  status: string;
+}
 
 interface Club {
   id: string;
   name: string;
-  shortName: string;
-  city: string;
-  country: string;
-  foundedYear: number | null;
-  stadium: string;
-  playerCount: number;
-  coachCount: number;
+  shortName?: string | null;
+  city?: string | null;
+  country?: string | null;
+  foundedYear?: number | null;
   status: string;
+  primaryStadium?: { id: string; name: string } | null;
+  _count?: { seasonClubs: number };
 }
 
-const mockClubs: Club[] = [
-  { id: "1", name: "St. George FC", shortName: "SGF", city: "Addis Ababa", country: "Ethiopia", foundedYear: 1935, stadium: "Addis Ababa Stadium", playerCount: 28, coachCount: 4, status: "active" },
-  { id: "2", name: "Ethio Electric SC", shortName: "EES", city: "Addis Ababa", country: "Ethiopia", foundedYear: 2011, stadium: "Addis Ababa Stadium", playerCount: 25, coachCount: 3, status: "active" },
-  { id: "3", name: "Fasil Kenema FC", shortName: "FKF", city: "Gondar", country: "Ethiopia", foundedYear: 1962, stadium: "Fasil Kenema Stadium", playerCount: 26, coachCount: 3, status: "active" },
-  { id: "4", name: "Hawassa Ketema FC", shortName: "HKF", city: "Hawassa", country: "Ethiopia", foundedYear: 2006, stadium: "Hawassa Stadium", playerCount: 24, coachCount: 3, status: "active" },
-  { id: "5", name: "Adama Ketema FC", shortName: "AKF", city: "Adama", country: "Ethiopia", foundedYear: 1998, stadium: "Adama Stadium", playerCount: 23, coachCount: 3, status: "pending" },
-  { id: "6", name: "Dire Dawa Ketema FC", shortName: "DDK", city: "Dire Dawa", country: "Ethiopia", foundedYear: 1945, stadium: "Dire Dawa Stadium", playerCount: 27, coachCount: 4, status: "pending" },
-  { id: "7", name: "Wolaita Dicha FC", shortName: "WDF", city: "Sodo", country: "Ethiopia", foundedYear: 2003, stadium: "Wolaita Stadium", playerCount: 22, coachCount: 2, status: "active" },
-  { id: "8", name: "Sidama Bunna FC", shortName: "SBF", city: "Hawassa", country: "Ethiopia", foundedYear: 1998, stadium: "Hawassa Stadium", playerCount: 25, coachCount: 3, status: "rejected" },
-];
-
-const emptyForm = {
+const emptyCreateForm = {
   name: "",
-  shortName: "",
-  city: "",
-  country: "Ethiopia",
-  foundedYear: "",
-  website: "",
-  description: "",
+  adminFullName: "",
+  adminEmail: "",
+  adminPhone: "",
+  seasonId: "",
 };
 
-export default function ClubsPage() {
-  const { organization, isLoading: orgLoading } = useOrganization();
-  const { getOrganizationId, isOrgAdmin, isSuperAdmin } = useAuth();
-  const { canManage, isViewOnly } = usePermissions();
-  const orgId = getOrganizationId();
+function getInitials(name: string) {
+  return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+}
 
-  // Org admins see org-scoped clubs, super admins see all
-  const apiUrl = isOrgAdmin() && orgId
-    ? `/api/clubs?organizationId=${orgId}`
-    : "/api/clubs";
+// ─── League Admin View ────────────────────────────────────────────────────────
 
-  const { data, isLoading: clubsLoading } = useSWR(apiUrl, authFetcher, {
-    fallbackData: mockClubs,
-    onError: () => {},
-  });
+function LeagueAdminClubsView() {
+  const { getLeagueId } = useAuth();
+  const leagueId = getLeagueId();
 
-  const clubs: Club[] = data || mockClubs;
-  const isLoading = orgLoading || clubsLoading;
+  const { data: clubsData, isLoading: clubsLoading, error } = useSWR<Club[]>(
+    "/api/clubs",
+    authFetcher
+  );
 
-  // Super admin: view-only, Org admin: can approve/reject pending clubs
-  const canApprove = isOrgAdmin();
-  const canEdit = canManage("clubs") && !isOrgAdmin(); // Org admin cannot create clubs, only approve
+  // Fetch seasons for this league to populate the season selector
+  const { data: seasonsData } = useSWR<Season[]>(
+    leagueId ? `/api/leagues/${leagueId}/seasons` : null,
+    authFetcher
+  );
+
+  const clubs: Club[] = clubsData ?? [];
+  const seasons: Season[] = seasonsData ?? [];
 
   const [search, setSearch] = useState("");
-  const [cityFilter, setCityFilter] = useState("all");
-  const [currentTab, setCurrentTab] = useState("all");
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingClub, setEditingClub] = useState<Club | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Club | null>(null);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState(emptyCreateForm);
+  const [isSaving, setIsSaving] = useState(false);
+  const [setupLink, setSetupLink] = useState<string | null>(null);
+  const [setupEmail, setSetupEmail] = useState("");
   const [approveTarget, setApproveTarget] = useState<Club | null>(null);
   const [rejectTarget, setRejectTarget] = useState<Club | null>(null);
-  const [form, setForm] = useState(emptyForm);
-  const [isSaving, setIsSaving] = useState(false);
 
-  const cities = useMemo(() => {
-    const set = new Set(clubs.map((c) => c.city));
-    return Array.from(set).sort();
-  }, [clubs]);
-
-  // Filter by tab and search
   const filtered = useMemo(() => {
-    return clubs.filter((club) => {
-      const matchesSearch =
-        club.name.toLowerCase().includes(search.toLowerCase()) ||
-        club.shortName.toLowerCase().includes(search.toLowerCase()) ||
-        club.city.toLowerCase().includes(search.toLowerCase());
-      const matchesCity = cityFilter === "all" || club.city === cityFilter;
-      const matchesTab =
-        currentTab === "all" ||
-        (currentTab === "pending" && club.status === "pending") ||
-        (currentTab === "approved" && club.status === "active") ||
-        (currentTab === "rejected" && club.status === "rejected");
-      return matchesSearch && matchesCity && matchesTab;
+    return clubs.filter((c) => {
+      const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase());
+      const matchesStatus = statusFilter === "all" || c.status === statusFilter;
+      return matchesSearch && matchesStatus;
     });
-  }, [clubs, search, cityFilter, currentTab]);
+  }, [clubs, search, statusFilter]);
 
-  const stats = useMemo(() => {
-    const total = clubs.length;
-    const active = clubs.filter((c) => c.status === "active").length;
-    const pending = clubs.filter((c) => c.status === "pending").length;
-    const totalPlayers = clubs.reduce((sum, c) => sum + c.playerCount, 0);
-    return { total, active, pending, totalPlayers };
-  }, [clubs]);
+  const stats = useMemo(() => ({
+    total: clubs.length,
+    active: clubs.filter((c) => c.status === "active").length,
+    pending: clubs.filter((c) => c.status === "pending").length,
+  }), [clubs]);
 
-  const openCreate = () => {
-    setEditingClub(null);
-    setForm(emptyForm);
-    setFormOpen(true);
-  };
+  const handleCreate = async () => {
+    if (!form.name.trim()) { toast.error("Club name is required"); return; }
+    if (!form.adminFullName.trim()) { toast.error("Club Admin full name is required"); return; }
+    if (!form.adminEmail.trim()) { toast.error("Club Admin email is required"); return; }
+    if (!form.seasonId) { toast.error("Please select a season"); return; }
 
-  const openEdit = (club: Club) => {
-    setEditingClub(club);
-    setForm({
-      name: club.name,
-      shortName: club.shortName,
-      city: club.city,
-      country: club.country,
-      foundedYear: club.foundedYear?.toString() || "",
-      website: "",
-      description: "",
-    });
-    setFormOpen(true);
-  };
-
-  const handleSubmit = async () => {
     setIsSaving(true);
     try {
-      // Mock save - in production this would call the API
-      await new Promise((r) => setTimeout(r, 500));
-      toast.success(editingClub ? "Club updated" : "Club created");
-      setFormOpen(false);
-      mutate(apiUrl);
-    } catch {
-      toast.error("Operation failed");
-    } finally {
-      setIsSaving(false);
-    }
-  };
+      const res = await fetchWithAuth("/api/clubs", {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.name.trim(),
+          adminFullName: form.adminFullName.trim(),
+          adminEmail: form.adminEmail.trim(),
+          adminPhone: form.adminPhone.trim() || null,
+          seasonId: form.seasonId,
+        }),
+      });
 
-  const handleDelete = async () => {
-    setIsSaving(true);
-    try {
-      await new Promise((r) => setTimeout(r, 500));
-      toast.success("Club deleted");
-      setDeleteTarget(null);
-      mutate(apiUrl);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to create club");
+        return;
+      }
+
+      const result = await res.json();
+      const link: string | null = result.adminSetupLink ?? null;
+
+      setSetupEmail(form.adminEmail.trim());
+      if (link) setSetupLink(link);
+
+      toast.success("Club created");
+      setCreateOpen(false);
+      setForm(emptyCreateForm);
+      mutate("/api/clubs");
     } catch {
-      toast.error("Failed to delete club");
+      toast.error("Something went wrong");
     } finally {
       setIsSaving(false);
     }
@@ -184,76 +164,58 @@ export default function ClubsPage() {
 
   const handleApprove = async () => {
     if (!approveTarget) return;
-    setIsSaving(true);
     try {
-      const response = await fetchWithAuth(`/api/clubs/${approveTarget.id}/approve`, {
+      const res = await fetchWithAuth(`/api/clubs/${approveTarget.id}/approve`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "approve" }),
       });
-
-      if (!response.ok) {
-        // Fallback to mock for demo
-        await new Promise((r) => setTimeout(r, 500));
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to approve club");
+        return;
       }
-
-      toast.success(`${approveTarget.name} has been approved`);
+      toast.success(`${approveTarget.name} approved`);
       setApproveTarget(null);
-      mutate(apiUrl);
+      mutate("/api/clubs");
     } catch {
       toast.error("Failed to approve club");
-    } finally {
-      setIsSaving(false);
     }
   };
 
   const handleReject = async () => {
     if (!rejectTarget) return;
-    setIsSaving(true);
     try {
-      const response = await fetchWithAuth(`/api/clubs/${rejectTarget.id}/approve`, {
+      const res = await fetchWithAuth(`/api/clubs/${rejectTarget.id}/approve`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "reject" }),
       });
-
-      if (!response.ok) {
-        // Fallback to mock for demo
-        await new Promise((r) => setTimeout(r, 500));
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to reject club");
+        return;
       }
-
-      toast.success(`${rejectTarget.name} has been rejected`);
+      toast.success(`${rejectTarget.name} rejected`);
       setRejectTarget(null);
-      mutate(apiUrl);
+      mutate("/api/clubs");
     } catch {
       toast.error("Failed to reject club");
-    } finally {
-      setIsSaving(false);
     }
   };
-
-  const getInitials = (name: string) =>
-    name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
 
   const columns: Column<Club>[] = [
     {
       key: "name",
       header: "Club",
-      render: (club) => (
+      render: (c) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
             <AvatarFallback className="bg-primary/10 text-xs text-primary">
-              {getInitials(club.name)}
+              {getInitials(c.name)}
             </AvatarFallback>
           </Avatar>
           <div className="flex flex-col">
-            <span className="text-sm font-medium text-foreground">{club.name}</span>
-            <span className="text-xs text-muted-foreground">{club.shortName}</span>
+            <span className="text-sm font-medium text-foreground">{c.name}</span>
+            {c.shortName && <span className="text-xs text-muted-foreground">{c.shortName}</span>}
           </div>
         </div>
       ),
@@ -262,288 +224,434 @@ export default function ClubsPage() {
       key: "city",
       header: "City",
       className: "hidden md:table-cell",
-      render: (club) => (
+      render: (c) => c.city ? (
         <div className="flex items-center gap-1.5">
           <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">{club.city}</span>
+          <span className="text-sm text-muted-foreground">{c.city}</span>
         </div>
-      ),
-    },
-    {
-      key: "founded",
-      header: "Founded",
-      className: "hidden lg:table-cell",
-      render: (club) => (
-        <span className="text-sm text-muted-foreground">
-          {club.foundedYear || "N/A"}
-        </span>
-      ),
-    },
-    {
-      key: "players",
-      header: "Players",
-      className: "hidden lg:table-cell",
-      render: (club) => (
-        <span className="text-sm text-foreground">{club.playerCount}</span>
-      ),
-    },
-    {
-      key: "coaches",
-      header: "Coaches",
-      className: "hidden xl:table-cell",
-      render: (club) => (
-        <span className="text-sm text-foreground">{club.coachCount}</span>
-      ),
+      ) : <span className="text-sm text-muted-foreground">—</span>,
     },
     {
       key: "status",
       header: "Status",
-      render: (club) => <StatusBadge status={club.status} />,
+      render: (c) => <StatusBadge status={c.status} />,
     },
     {
       key: "actions",
       header: "",
-      className: "w-12",
-      render: (club) => {
-        // For org admins, show approve/reject for pending clubs
-        if (canApprove && club.status === "pending") {
+      className: "w-24",
+      render: (c) => {
+        if (c.status === "pending") {
           return (
             <div className="flex items-center gap-1">
               <Button
-                variant="ghost"
-                size="icon"
+                variant="ghost" size="icon"
                 className="h-8 w-8 text-emerald-400 hover:text-emerald-400 hover:bg-emerald-400/10"
-                onClick={() => setApproveTarget(club)}
+                onClick={() => setApproveTarget(c)}
               >
                 <Check className="h-4 w-4" />
-                <span className="sr-only">Approve</span>
               </Button>
               <Button
-                variant="ghost"
-                size="icon"
+                variant="ghost" size="icon"
                 className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                onClick={() => setRejectTarget(club)}
+                onClick={() => setRejectTarget(c)}
               >
                 <X className="h-4 w-4" />
-                <span className="sr-only">Reject</span>
               </Button>
             </div>
           );
         }
-
-        // For super admin, show view-only actions (or full edit if canEdit)
         return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-                <MoreHorizontal className="h-4 w-4" />
-                <span className="sr-only">Actions</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem>
-                <Eye className="mr-2 h-4 w-4" />
-                View Details
-              </DropdownMenuItem>
-              {canEdit && (
-                <>
-                  <DropdownMenuItem onClick={() => openEdit(club)}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => setDeleteTarget(club)}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+            <Eye className="h-4 w-4" />
+          </Button>
         );
       },
     },
   ];
 
-  const pageTitle = isOrgAdmin() && organization
-    ? `${organization.name} - Clubs`
-    : "Clubs";
-
-  const pageDescription = isOrgAdmin()
-    ? "View clubs and manage pending registrations for your organization."
-    : "View registered football clubs and their details.";
-
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={pageTitle} description={pageDescription}>
-        {canEdit && (
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" />
-            Add Club
-          </Button>
-        )}
+      <PageHeader title="Clubs" description="Manage clubs in your league.">
+        <Button onClick={() => { setForm(emptyCreateForm); setCreateOpen(true); }}>
+          <Plus className="h-4 w-4" />
+          Create Club
+        </Button>
       </PageHeader>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      {error && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          Failed to load clubs. Please try again.
+        </div>
+      )}
+
+      <div className="grid grid-cols-3 gap-4">
         <StatCard title="Total Clubs" value={stats.total} icon={Shield} />
-        <StatCard title="Active" value={stats.active} icon={Shield} description="Approved clubs" />
+        <StatCard title="Active" value={stats.active} icon={Shield} description="Approved" />
         <StatCard title="Pending" value={stats.pending} icon={Shield} description="Awaiting approval" />
-        <StatCard title="Total Players" value={stats.totalPlayers} icon={Shield} description="Across all clubs" />
       </div>
 
-      {/* Tabs for org admin */}
-      {isOrgAdmin() ? (
-        <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
-          <TabsList className="mb-4">
-            <TabsTrigger value="all">All Clubs</TabsTrigger>
-            <TabsTrigger value="pending">
-              Pending
-              {stats.pending > 0 && (
-                <span className="ml-1.5 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-400">
-                  {stats.pending}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="approved">Approved</TabsTrigger>
-            <TabsTrigger value="rejected">Rejected</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value={currentTab}>
-            <DataTable
-              columns={columns}
-              data={filtered}
-              isLoading={isLoading}
-              searchValue={search}
-              onSearchChange={setSearch}
-              searchPlaceholder="Search clubs..."
-              emptyMessage={
-                currentTab === "pending"
-                  ? "No pending club registrations."
-                  : "No clubs found."
-              }
-              filterSlot={
-                <Select value={cityFilter} onValueChange={setCityFilter}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue placeholder="City" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Cities</SelectItem>
-                    {cities.map((city) => (
-                      <SelectItem key={city} value={city}>
-                        {city}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              }
-            />
-          </TabsContent>
-        </Tabs>
+      {clubsLoading ? (
+        <div className="flex flex-col gap-3">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
+        </div>
       ) : (
-        // Super admin view - simple table
         <DataTable
           columns={columns}
           data={filtered}
-          isLoading={isLoading}
+          isLoading={false}
           searchValue={search}
           onSearchChange={setSearch}
           searchPlaceholder="Search clubs..."
           emptyMessage="No clubs found."
           filterSlot={
-            <Select value={cityFilter} onValueChange={setCityFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="City" />
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Cities</SelectItem>
-                {cities.map((city) => (
-                  <SelectItem key={city} value={city}>
-                    {city}
-                  </SelectItem>
-                ))}
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
               </SelectContent>
             </Select>
           }
         />
       )}
 
-      {/* Create / Edit Dialog */}
-      <FormDialog
-        open={formOpen}
-        onOpenChange={setFormOpen}
-        title={editingClub ? "Edit Club" : "Create Club"}
-        description={editingClub ? "Update club details." : "Register a new football club."}
-        submitLabel={isSaving ? "Saving..." : editingClub ? "Update" : "Create"}
-        onSubmit={handleSubmit}
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-2 sm:col-span-2">
-            <Label htmlFor="club-name">Club Name</Label>
-            <Input id="club-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="St. George FC" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="club-short">Short Name</Label>
-            <Input id="club-short" value={form.shortName} onChange={(e) => setForm({ ...form, shortName: e.target.value })} placeholder="SGF" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="club-city">City</Label>
-            <Input id="club-city" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Addis Ababa" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="club-country">Country</Label>
-            <Input id="club-country" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} placeholder="Ethiopia" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="club-founded">Founded Year</Label>
-            <Input id="club-founded" type="number" value={form.foundedYear} onChange={(e) => setForm({ ...form, foundedYear: e.target.value })} placeholder="1935" />
-          </div>
-          <div className="flex flex-col gap-2 sm:col-span-2">
-            <Label htmlFor="club-website">Website</Label>
-            <Input id="club-website" value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} placeholder="https://club.com" />
-          </div>
-          <div className="flex flex-col gap-2 sm:col-span-2">
-            <Label htmlFor="club-desc">Description</Label>
-            <Textarea id="club-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief description of the club..." rows={3} />
-          </div>
-        </div>
-      </FormDialog>
+      {/* Create Club Dialog */}
+      <Dialog open={createOpen} onOpenChange={(open) => { if (!open) setCreateOpen(false); }}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create Club</DialogTitle>
+            <DialogDescription>
+              Create a new club and its Club Admin account. The admin will receive a password setup link.
+            </DialogDescription>
+          </DialogHeader>
 
-      {/* Delete Confirmation */}
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title="Delete Club"
-        description={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
-        confirmLabel={isSaving ? "Deleting..." : "Delete"}
-        variant="destructive"
-        onConfirm={handleDelete}
-      />
+          <div className="grid gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="club-name">Club Name *</Label>
+              <Input
+                id="club-name"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="St. George FC"
+              />
+            </div>
 
-      {/* Approve Confirmation */}
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="club-season">Season *</Label>
+              <Select
+                value={form.seasonId || "none"}
+                onValueChange={(v) => setForm({ ...form, seasonId: v === "none" ? "" : v })}
+              >
+                <SelectTrigger id="club-season">
+                  <SelectValue placeholder="Select a season" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Select a season</SelectItem>
+                  {seasons.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                      {s.status === "active" && (
+                        <Badge variant="outline" className="ml-2 text-[10px] text-emerald-400 border-emerald-500/30">
+                          active
+                        </Badge>
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Separator />
+
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-medium">Club Admin *</p>
+              <p className="text-xs text-muted-foreground">
+                A Club Admin account will be created and linked to this club.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="admin-name">Full Name *</Label>
+              <Input
+                id="admin-name"
+                value={form.adminFullName}
+                onChange={(e) => setForm({ ...form, adminFullName: e.target.value })}
+                placeholder="Abebe Kebede"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="admin-email">Email *</Label>
+                <Input
+                  id="admin-email"
+                  type="email"
+                  value={form.adminEmail}
+                  onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
+                  placeholder="admin@club.com"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="admin-phone">Phone</Label>
+                <Input
+                  id="admin-phone"
+                  value={form.adminPhone}
+                  onChange={(e) => setForm({ ...form, adminPhone: e.target.value })}
+                  placeholder="+251 911 234 567"
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreate} disabled={isSaving}>
+              {isSaving ? "Creating..." : "Create Club"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Setup Link Dialog */}
+      <Dialog open={!!setupLink} onOpenChange={(open) => { if (!open) { setSetupLink(null); setSetupEmail(""); } }}>
+        <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-400">
+              <ShieldCheck className="h-5 w-5" />
+              Club Admin Created
+            </DialogTitle>
+            <DialogDescription>
+              The Club Admin account for <strong>{setupEmail}</strong> has been created.
+              In production, the following password setup link would be sent via email.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-border bg-muted/50 p-3">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+                <LinkIcon className="h-4 w-4" />
+                Password Setup Link
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded bg-background px-2 py-1 text-xs text-muted-foreground break-all">
+                  {setupLink}
+                </code>
+                <Button
+                  size="icon" variant="outline" className="h-8 w-8 shrink-0"
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.origin + (setupLink ?? ""));
+                    toast.success("Link copied to clipboard");
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">This link will expire in 1 hour.</p>
+            <Button className="w-full" onClick={() => { setSetupLink(null); setSetupEmail(""); }}>Done</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Approve / Reject confirmations */}
       <ConfirmDialog
         open={!!approveTarget}
         onOpenChange={(open) => !open && setApproveTarget(null)}
-        title="Approve Club Registration"
-        description={`Are you sure you want to approve "${approveTarget?.name}"? They will be able to participate in leagues.`}
-        confirmLabel={isSaving ? "Approving..." : "Approve"}
+        title="Approve Club"
+        description={`Approve "${approveTarget?.name}"? They will be able to participate in the season.`}
+        confirmLabel="Approve"
         variant="default"
         onConfirm={handleApprove}
       />
-
-      {/* Reject Confirmation */}
       <ConfirmDialog
         open={!!rejectTarget}
         onOpenChange={(open) => !open && setRejectTarget(null)}
-        title="Reject Club Registration"
-        description={`Are you sure you want to reject "${rejectTarget?.name}"? They will be notified of this decision.`}
-        confirmLabel={isSaving ? "Rejecting..." : "Reject"}
+        title="Reject Club"
+        description={`Reject "${rejectTarget?.name}"? The club admin will be notified.`}
+        confirmLabel="Reject"
         variant="destructive"
         onConfirm={handleReject}
       />
     </div>
   );
+}
+
+// ─── Org Admin / Super Admin View ─────────────────────────────────────────────
+
+function OrgAdminClubsView() {
+  const { getOrganizationId, isOrgAdmin } = useAuth();
+  const orgId = getOrganizationId();
+
+  const apiUrl = isOrgAdmin() && orgId ? `/api/clubs?organizationId=${orgId}` : "/api/clubs";
+  const { data: clubsData, isLoading, error } = useSWR<Club[]>(apiUrl, authFetcher);
+  const clubs: Club[] = clubsData ?? [];
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [approveTarget, setApproveTarget] = useState<Club | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<Club | null>(null);
+
+  const filtered = useMemo(() => clubs.filter((c) => {
+    const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter === "all" || c.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  }), [clubs, search, statusFilter]);
+
+  const stats = useMemo(() => ({
+    total: clubs.length,
+    active: clubs.filter((c) => c.status === "active").length,
+    pending: clubs.filter((c) => c.status === "pending").length,
+  }), [clubs]);
+
+  const handleApprove = async () => {
+    if (!approveTarget) return;
+    try {
+      const res = await fetchWithAuth(`/api/clubs/${approveTarget.id}/approve`, {
+        method: "POST",
+        body: JSON.stringify({ action: "approve" }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d.error || "Failed"); return; }
+      toast.success(`${approveTarget.name} approved`);
+      setApproveTarget(null);
+      mutate(apiUrl);
+    } catch { toast.error("Failed to approve club"); }
+  };
+
+  const handleReject = async () => {
+    if (!rejectTarget) return;
+    try {
+      const res = await fetchWithAuth(`/api/clubs/${rejectTarget.id}/approve`, {
+        method: "POST",
+        body: JSON.stringify({ action: "reject" }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d.error || "Failed"); return; }
+      toast.success(`${rejectTarget.name} rejected`);
+      setRejectTarget(null);
+      mutate(apiUrl);
+    } catch { toast.error("Failed to reject club"); }
+  };
+
+  const columns: Column<Club>[] = [
+    {
+      key: "name",
+      header: "Club",
+      render: (c) => (
+        <div className="flex items-center gap-3">
+          <Avatar className="h-9 w-9">
+            <AvatarFallback className="bg-primary/10 text-xs text-primary">{getInitials(c.name)}</AvatarFallback>
+          </Avatar>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium text-foreground">{c.name}</span>
+            {c.shortName && <span className="text-xs text-muted-foreground">{c.shortName}</span>}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "city",
+      header: "City",
+      className: "hidden md:table-cell",
+      render: (c) => c.city ? (
+        <div className="flex items-center gap-1.5">
+          <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">{c.city}</span>
+        </div>
+      ) : <span className="text-sm text-muted-foreground">—</span>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (c) => <StatusBadge status={c.status} />,
+    },
+    {
+      key: "actions",
+      header: "",
+      className: "w-24",
+      render: (c) => {
+        if (isOrgAdmin() && c.status === "pending") {
+          return (
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-400 hover:bg-emerald-400/10" onClick={() => setApproveTarget(c)}>
+                <Check className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => setRejectTarget(c)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          );
+        }
+        return <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"><Eye className="h-4 w-4" /></Button>;
+      },
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Clubs" description={isOrgAdmin() ? "View clubs and manage pending registrations." : "View all registered clubs."} />
+
+      {error && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          Failed to load clubs.
+        </div>
+      )}
+
+      <div className="grid grid-cols-3 gap-4">
+        <StatCard title="Total Clubs" value={stats.total} icon={Shield} />
+        <StatCard title="Active" value={stats.active} icon={Shield} />
+        <StatCard title="Pending" value={stats.pending} icon={Shield} />
+      </div>
+
+      <DataTable
+        columns={columns}
+        data={filtered}
+        isLoading={isLoading}
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search clubs..."
+        emptyMessage="No clubs found."
+        filterSlot={
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
+            </SelectContent>
+          </Select>
+        }
+      />
+
+      <ConfirmDialog
+        open={!!approveTarget}
+        onOpenChange={(open) => !open && setApproveTarget(null)}
+        title="Approve Club"
+        description={`Approve "${approveTarget?.name}"?`}
+        confirmLabel="Approve"
+        variant="default"
+        onConfirm={handleApprove}
+      />
+      <ConfirmDialog
+        open={!!rejectTarget}
+        onOpenChange={(open) => !open && setRejectTarget(null)}
+        title="Reject Club"
+        description={`Reject "${rejectTarget?.name}"?`}
+        confirmLabel="Reject"
+        variant="destructive"
+        onConfirm={handleReject}
+      />
+    </div>
+  );
+}
+
+// ─── Entry Point ──────────────────────────────────────────────────────────────
+
+export default function ClubsPage() {
+  const { isLeagueAdmin } = useAuth();
+  if (isLeagueAdmin()) return <LeagueAdminClubsView />;
+  return <OrgAdminClubsView />;
 }
