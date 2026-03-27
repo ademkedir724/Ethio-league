@@ -43,11 +43,12 @@ export async function POST(req: NextRequest) {
     // Hash the new password
     const passwordHash = await hashPassword(password);
 
-    // Update user with new password and clear reset token
+    // Update user with new password, clear reset token, and activate
     await prisma.user.update({
       where: { id: user.id },
       data: {
         passwordHash,
+        status: "active",
         passwordResetToken: null,
         passwordResetExpires: null,
       },

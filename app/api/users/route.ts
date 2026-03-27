@@ -1,20 +1,40 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
-import { hashPassword, requireAuth, isAuthError } from "@/lib/auth";
+import { hashPassword, requireAuth, isAuthError, hasOrgRole } from "@/lib/auth";
 import {
   success,
   created,
   badRequest,
+  forbidden,
   serverError,
 } from "@/lib/api-helpers";
+import { sendPasswordSetupEmail } from "@/lib/email";
+import { logAudit } from "@/lib/audit";
+import { NextResponse } from "next/server";
 
-// GET /api/users — list all users (super_admin or organization_admin)
+// GET /api/users — list users scoped by role
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req, ["super_admin", "organization_admin"]);
     if (isAuthError(auth)) return auth;
 
+    const isSuperAdmin = auth.roles.some((r) => r.roleName === "super_admin");
+    const orgAdminRole = auth.roles.find((r) => r.roleName === "organization_admin");
+
+    let where: Record<string, unknown> = {};
+
+    if (!isSuperAdmin && orgAdminRole?.organizationId) {
+      // Org admin sees only users scoped to their organization
+      where = {
+        userRoleScopes: {
+          some: { organizationId: orgAdminRole.organizationId },
+        },
+      };
+    }
+    // super_admin sees all users (no filter)
+
     const users = await prisma.user.findMany({
+      where,
       select: {
         id: true,
         email: true,
@@ -34,49 +54,106 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/users — register a new user (public registration)
+// POST /api/users
+// - Public registration (no auth, no role): creates a fan user with password
+// - Org admin creating a Match Event Admin: requires auth + role + organizationId
 export async function POST(req: NextRequest) {
   try {
-    const { email, password, fullName, phone } = await req.json();
+    const body = await req.json();
+    const { email, fullName, phone, role, organizationId, password } = body;
 
-    if (!email || !password || !fullName) {
-      return badRequest("Email, password, and fullName are required");
+    if (!email || !fullName) {
+      return badRequest("email and fullName are required");
+    }
+
+    // ── Privileged creation: org_admin creating a match_event_admin ──────────
+    if (role === "MATCH_EVENT_ADMIN" || role === "match_event_admin") {
+      const auth = await requireAuth(req, ["super_admin", "organization_admin"]);
+      if (isAuthError(auth)) return auth;
+
+      const isSuperAdmin = auth.roles.some((r) => r.roleName === "super_admin");
+      if (!isSuperAdmin) {
+        if (!organizationId || !hasOrgRole(auth, "organization_admin", organizationId)) {
+          return forbidden();
+        }
+      }
+
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing) return badRequest("A user with this email already exists");
+
+      const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+      const result = await prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            fullName,
+            email,
+            phone: phone || null,
+            status: "inactive",
+            passwordHash: "",
+            passwordResetToken: token,
+            passwordResetExpires: new Date(Date.now() + 3_600_000),
+          },
+        });
+
+        const meaRole = await tx.role.findUnique({ where: { name: "match_event_admin" } });
+        if (!meaRole) throw new Error("match_event_admin role not found");
+
+        await tx.userRoleScope.create({
+          data: {
+            userId: user.id,
+            roleId: meaRole.id,
+            organizationId: organizationId || null,
+          },
+        });
+
+        return user;
+      });
+
+      // Send setup email (non-blocking failure returns link in response)
+      const passwordSetupLink = `/set-password?token=${token}`;
+      try {
+        await sendPasswordSetupEmail(email, token);
+      } catch {
+        // email not configured — return link in response for dev
+      }
+
+      await logAudit({
+        userId: auth.userId,
+        actionType: "user_created",
+        targetId: result.id,
+        targetType: "user",
+        description: `Match Event Admin "${fullName}" (${email}) created`,
+      });
+
+      return created({
+        id: result.id,
+        email: result.email,
+        fullName: result.fullName,
+        status: result.status,
+        passwordSetupLink,
+      });
+    }
+
+    // ── Public registration ───────────────────────────────────────────────────
+    if (!password) {
+      return badRequest("password is required for public registration");
     }
 
     const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) {
-      return badRequest("Email already in use");
-    }
+    if (existing) return badRequest("Email already in use");
 
     const passwordHash = await hashPassword(password);
 
-    // Create user and assign default "fan" role
     const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        fullName,
-        phone,
-      },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        phone: true,
-        status: true,
-        createdAt: true,
-      },
+      data: { email, passwordHash, fullName, phone },
+      select: { id: true, email: true, fullName: true, phone: true, status: true, createdAt: true },
     });
 
-    // Assign default fan role
     const fanRole = await prisma.role.findUnique({ where: { name: "fan" } });
     if (fanRole) {
-      await prisma.userRoleScope.create({
-        data: {
-          userId: user.id,
-          roleId: fanRole.id,
-        },
-      });
+      await prisma.userRoleScope.create({ data: { userId: user.id, roleId: fanRole.id } });
     }
 
     return created(user);
