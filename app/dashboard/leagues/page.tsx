@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -36,10 +37,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
-import { Layers, Plus, MoreHorizontal, Pencil, Trash2, Calendar } from "lucide-react";
+import { Layers, Plus, MoreHorizontal, Pencil, Trash2, Calendar, Link as LinkIcon, Copy, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const AGE_CATEGORIES = ["Senior", "U21", "U20", "U18", "U17", "U15", "U14", "U13", "Youth"];
+const DIVISION_LEVELS = [1, 2, 3, 4, 5];
+const GENDER_OPTIONS = [
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+  { value: "mixed", label: "Mixed" },
+];
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface LeagueType {
   id: number;
@@ -67,37 +78,28 @@ const emptyForm = {
   genderCategory: "",
   ageCategory: "",
   divisionLevel: "",
-  logoUrl: "",
   description: "",
+  // League Admin fields
+  adminFullName: "",
+  adminEmail: "",
+  adminPhone: "",
 };
 
-// ─── Component ───────────────────────────────────────────────────────────────
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function LeaguesPage() {
   const router = useRouter();
   const { isOrgAdmin, getOrganizationId } = useAuth();
 
-  // Only org_admin can create/edit/delete leagues
   const canEdit = isOrgAdmin();
-
   const orgId = getOrganizationId();
 
-  // Fetch leagues
-  const { data: leaguesData, isLoading, error } = useSWR<League[]>(
-    "/api/leagues",
-    authFetcher
-  );
-
-  // Fetch league types for the form
-  const { data: leagueTypesData } = useSWR<LeagueType[]>(
-    "/api/seasons/league-types",
-    authFetcher
-  );
+  const { data: leaguesData, isLoading, error } = useSWR<League[]>("/api/leagues", authFetcher);
+  const { data: leagueTypesData } = useSWR<LeagueType[]>("/api/seasons/league-types", authFetcher);
 
   const leagues: League[] = leaguesData ?? [];
   const leagueTypes: LeagueType[] = leagueTypesData ?? [];
 
-  // State
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [formOpen, setFormOpen] = useState(false);
@@ -105,6 +107,8 @@ export default function LeaguesPage() {
   const [deleteTarget, setDeleteTarget] = useState<League | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
+  const [setupLink, setSetupLink] = useState<string | null>(null);
+  const [setupLinkEmail, setSetupLinkEmail] = useState<string>("");
 
   const filtered = useMemo(() => {
     return leagues.filter((l) => {
@@ -128,16 +132,21 @@ export default function LeaguesPage() {
       genderCategory: league.genderCategory ?? "",
       ageCategory: league.ageCategory ?? "",
       divisionLevel: league.divisionLevel?.toString() ?? "",
-      logoUrl: league.logoUrl ?? "",
       description: league.description ?? "",
+      adminFullName: "",
+      adminEmail: "",
+      adminPhone: "",
     });
     setFormOpen(true);
   };
 
   const handleSubmit = async () => {
-    if (!form.name.trim()) {
-      toast.error("League name is required");
-      return;
+    if (!form.name.trim()) { toast.error("League name is required"); return; }
+
+    // League admin is mandatory on create
+    if (!editingLeague) {
+      if (!form.adminFullName.trim()) { toast.error("League Admin full name is required"); return; }
+      if (!form.adminEmail.trim()) { toast.error("League Admin email is required"); return; }
     }
 
     setIsSaving(true);
@@ -148,8 +157,8 @@ export default function LeaguesPage() {
         genderCategory: form.genderCategory || null,
         ageCategory: form.ageCategory || null,
         divisionLevel: form.divisionLevel ? parseInt(form.divisionLevel) : null,
-        logoUrl: form.logoUrl || null,
         description: form.description || null,
+        logoUrl: null,
       };
 
       let res: Response;
@@ -159,13 +168,17 @@ export default function LeaguesPage() {
           body: JSON.stringify(body),
         });
       } else {
-        if (!orgId) {
-          toast.error("No organization found for your account");
-          return;
-        }
+        if (!orgId) { toast.error("No organization found for your account"); return; }
+        const createBody: Record<string, unknown> = {
+          ...body,
+          organizationId: orgId,
+          adminFullName: form.adminFullName.trim(),
+          adminEmail: form.adminEmail.trim(),
+          adminPhone: form.adminPhone.trim() || null,
+        };
         res = await fetchWithAuth("/api/leagues", {
           method: "POST",
-          body: JSON.stringify({ ...body, organizationId: orgId }),
+          body: JSON.stringify(createBody),
         });
       }
 
@@ -173,6 +186,15 @@ export default function LeaguesPage() {
         const data = await res.json().catch(() => ({}));
         toast.error(data.error || (editingLeague ? "Failed to update league" : "Failed to create league"));
         return;
+      }
+
+      const result = await res.json();
+
+      // Set setup link BEFORE closing form so state update is batched correctly
+      const link = result.adminSetupLink ?? result.data?.adminSetupLink ?? null;
+      if (link) {
+        setSetupLinkEmail(form.adminEmail.trim());
+        setSetupLink(link);
       }
 
       toast.success(editingLeague ? "League updated" : "League created");
@@ -188,9 +210,7 @@ export default function LeaguesPage() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      const res = await fetchWithAuth(`/api/leagues/${deleteTarget.id}`, {
-        method: "DELETE",
-      });
+      const res = await fetchWithAuth(`/api/leagues/${deleteTarget.id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         toast.error(data.error || "Failed to delete league");
@@ -275,8 +295,8 @@ export default function LeaguesPage() {
       )}
 
       {/* Create / Edit Dialog */}
-      <Dialog open={formOpen} onOpenChange={(open: boolean) => { if (!open) setFormOpen(false); }}>
-        <DialogContent className="max-w-lg">
+      <Dialog open={formOpen} onOpenChange={(open) => { if (!open) setFormOpen(false); }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingLeague ? "Edit League" : "Create League"}</DialogTitle>
             <DialogDescription>
@@ -285,6 +305,7 @@ export default function LeaguesPage() {
           </DialogHeader>
 
           <div className="grid gap-4">
+            {/* League Name */}
             <div className="flex flex-col gap-2">
               <Label htmlFor="league-name">Name *</Label>
               <Input
@@ -296,6 +317,7 @@ export default function LeaguesPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
+              {/* League Type */}
               <div className="flex flex-col gap-2">
                 <Label htmlFor="league-type">League Type</Label>
                 <Select
@@ -307,15 +329,24 @@ export default function LeaguesPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">None</SelectItem>
-                    {leagueTypes.map((lt) => (
-                      <SelectItem key={lt.id} value={lt.id.toString()}>
-                        {lt.name}
-                      </SelectItem>
-                    ))}
+                    {leagueTypes.map((lt) => {
+                      const isRoundRobin = lt.name.toLowerCase().replace(/[^a-z]/g, "").includes("roundrobin") ||
+                        lt.name.toLowerCase().includes("round");
+                      return (
+                        <SelectItem
+                          key={lt.id}
+                          value={lt.id.toString()}
+                          disabled={!isRoundRobin}
+                        >
+                          {lt.name}{!isRoundRobin ? " (coming soon)" : ""}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
 
+              {/* Gender */}
               <div className="flex flex-col gap-2">
                 <Label htmlFor="gender">Gender</Label>
                 <Select
@@ -327,47 +358,61 @@ export default function LeaguesPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">None</SelectItem>
-                    <SelectItem value="male">Male</SelectItem>
-                    <SelectItem value="female">Female</SelectItem>
-                    <SelectItem value="mixed">Mixed</SelectItem>
+                    {GENDER_OPTIONS.map((g) => (
+                      <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
+              {/* Age Category */}
               <div className="flex flex-col gap-2">
                 <Label htmlFor="age-category">Age Category</Label>
-                <Input
-                  id="age-category"
-                  value={form.ageCategory}
-                  onChange={(e) => setForm({ ...form, ageCategory: e.target.value })}
-                  placeholder="Senior, U18, U21..."
-                />
+                <Select
+                  value={form.ageCategory || "none"}
+                  onValueChange={(v) => setForm({ ...form, ageCategory: v === "none" ? "" : v })}
+                >
+                  <SelectTrigger id="age-category">
+                    <SelectValue placeholder="Select age group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {AGE_CATEGORIES.map((a) => (
+                      <SelectItem key={a} value={a}>{a}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
+              {/* Division Level */}
               <div className="flex flex-col gap-2">
                 <Label htmlFor="division">Division Level</Label>
-                <Input
-                  id="division"
-                  type="number"
-                  value={form.divisionLevel}
-                  onChange={(e) => setForm({ ...form, divisionLevel: e.target.value })}
-                  placeholder="1"
-                />
+                <Select
+                  value={form.divisionLevel || "none"}
+                  onValueChange={(v) => setForm({ ...form, divisionLevel: v === "none" ? "" : v })}
+                >
+                  <SelectTrigger id="division">
+                    <SelectValue placeholder="Select level" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {DIVISION_LEVELS.map((d) => (
+                      <SelectItem key={d} value={d.toString()}>Division {d}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
+            {/* Logo — disabled */}
             <div className="flex flex-col gap-2">
-              <Label htmlFor="logo-url">Logo URL</Label>
-              <Input
-                id="logo-url"
-                value={form.logoUrl}
-                onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
-                placeholder="https://..."
-              />
+              <Label className="text-muted-foreground">Logo</Label>
+              <Input disabled placeholder="Logo upload coming soon..." className="opacity-50 cursor-not-allowed" />
             </div>
 
+            {/* Description */}
             <div className="flex flex-col gap-2">
               <Label htmlFor="description">Description</Label>
               <Textarea
@@ -375,19 +420,102 @@ export default function LeaguesPage() {
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 placeholder="Optional description..."
-                rows={3}
+                rows={2}
               />
             </div>
+
+            {/* League Admin section — only on create */}
+            {!editingLeague && (
+              <>
+                <Separator />
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-medium">League Admin *</p>
+                  <p className="text-xs text-muted-foreground">
+                    A League Admin must be created with each new league. They will receive a password setup link.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="admin-name">Full Name *</Label>
+                  <Input
+                    id="admin-name"
+                    value={form.adminFullName}
+                    onChange={(e) => setForm({ ...form, adminFullName: e.target.value })}
+                    placeholder="Abebe Kebede"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="admin-email">Email *</Label>
+                    <Input
+                      id="admin-email"
+                      type="email"
+                      value={form.adminEmail}
+                      onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
+                      placeholder="admin@example.com"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="admin-phone">Phone</Label>
+                    <Input
+                      id="admin-phone"
+                      value={form.adminPhone}
+                      onChange={(e) => setForm({ ...form, adminPhone: e.target.value })}
+                      placeholder="+251 911 234 567"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setFormOpen(false)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
             <Button onClick={handleSubmit} disabled={isSaving}>
               {isSaving ? "Saving..." : editingLeague ? "Update" : "Create"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Setup Link Dialog */}
+      <Dialog open={!!setupLink} onOpenChange={(open) => { if (!open) { setSetupLink(null); setSetupLinkEmail(""); } }}>
+        <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-400">
+              <ShieldCheck className="h-5 w-5" />
+              League Admin Created
+            </DialogTitle>
+            <DialogDescription>
+              The League Admin account for <strong>{setupLinkEmail}</strong> has been created.
+              In production, the following password setup link would be sent via email.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-border bg-muted/50 p-3">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+                <LinkIcon className="h-4 w-4" />
+                Password Setup Link
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded bg-background px-2 py-1 text-xs text-muted-foreground break-all">
+                  {setupLink}
+                </code>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8 shrink-0"
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.origin + (setupLink ?? ""));
+                    toast.success("Link copied to clipboard");
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">This link will expire in 1 hour.</p>
+            <Button className="w-full" onClick={() => { setSetupLink(null); setSetupLinkEmail(""); }}>Done</Button>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -396,7 +524,7 @@ export default function LeaguesPage() {
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title="Delete League"
-        description={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone. Leagues with seasons cannot be deleted.`}
+        description={`Are you sure you want to delete "${deleteTarget?.name}"? Leagues with seasons cannot be deleted.`}
         confirmLabel="Delete"
         variant="destructive"
         onConfirm={handleDelete}
@@ -405,7 +533,7 @@ export default function LeaguesPage() {
   );
 }
 
-// ─── League Card ─────────────────────────────────────────────────────────────
+// ─── League Card ──────────────────────────────────────────────────────────────
 
 interface LeagueCardProps {
   league: League;
@@ -459,20 +587,11 @@ function LeagueCard({ league, canEdit, onEdit, onDelete, onViewSeasons }: League
       </CardHeader>
 
       <CardContent className="flex flex-col gap-3 flex-1">
-        {/* Meta info */}
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          {league.genderCategory && (
-            <span className="capitalize">{league.genderCategory}</span>
-          )}
-          {league.ageCategory && (
-            <span>{league.ageCategory}</span>
-          )}
-          {league.divisionLevel != null && (
-            <span>Division {league.divisionLevel}</span>
-          )}
+          {league.genderCategory && <span className="capitalize">{league.genderCategory}</span>}
+          {league.ageCategory && <span>{league.ageCategory}</span>}
+          {league.divisionLevel != null && <span>Division {league.divisionLevel}</span>}
         </div>
-
-        {/* Season count + status */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
             <Calendar className="h-3.5 w-3.5" />
@@ -482,14 +601,7 @@ function LeagueCard({ league, canEdit, onEdit, onDelete, onViewSeasons }: League
             {league.status}
           </Badge>
         </div>
-
-        {/* View Seasons button */}
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-auto w-full"
-          onClick={onViewSeasons}
-        >
+        <Button variant="outline" size="sm" className="mt-auto w-full" onClick={onViewSeasons}>
           View Seasons
         </Button>
       </CardContent>

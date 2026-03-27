@@ -43,6 +43,24 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Users, Plus, MoreHorizontal, Pencil, Trash2, ShieldCheck, UserX, Link as LinkIcon, Copy } from "lucide-react";
 
+interface UserRoleScope {
+  id: string;
+  role: { name: string };
+  organizationId?: string | null;
+  seasonId?: string | null;
+  clubId?: string | null;
+}
+
+interface ApiUser {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  status: string;
+  createdAt: string;
+  userRoleScopes: UserRoleScope[];
+}
+
 interface User {
   id: string;
   fullName: string;
@@ -50,20 +68,16 @@ interface User {
   phone: string;
   roles: string[];
   status: string;
-  lastLogin: string;
   createdAt: string;
 }
 
-const mockUsers: User[] = [
-  { id: "1", fullName: "Abebe Kebede", email: "abebe@ethioleague.com", phone: "+251911234567", roles: ["SUPER_ADMIN"], status: "active", lastLogin: "2026-03-03", createdAt: "2024-01-01" },
-  { id: "2", fullName: "Tigist Haile", email: "tigist@ethioleague.com", phone: "+251922345678", roles: ["ORGANIZATION_ADMIN"], status: "active", lastLogin: "2026-03-02", createdAt: "2024-03-15" },
-  { id: "3", fullName: "Dawit Mengistu", email: "dawit@ethioleague.com", phone: "+251933456789", roles: ["LEAGUE_ADMIN"], status: "pending", lastLogin: "Never", createdAt: "2026-02-20" },
-  { id: "4", fullName: "Sara Tesfaye", email: "sara@ethioleague.com", phone: "+251944567890", roles: ["CLUB_ADMIN"], status: "active", lastLogin: "2026-03-01", createdAt: "2024-06-10" },
-  { id: "5", fullName: "Yohannes Alemu", email: "yohannes@ethioleague.com", phone: "+251955678901", roles: ["MATCH_EVENT_ADMIN"], status: "active", lastLogin: "2026-02-28", createdAt: "2025-01-05" },
-  { id: "6", fullName: "Hana Bekele", email: "hana@ethioleague.com", phone: "+251966789012", roles: ["CLUB_ADMIN", "MATCH_EVENT_ADMIN"], status: "active", lastLogin: "2026-03-03", createdAt: "2025-04-12" },
-  { id: "7", fullName: "Fitsum Girma", email: "fitsum@ethioleague.com", phone: "+251977890123", roles: ["ORGANIZATION_ADMIN"], status: "suspended", lastLogin: "2025-12-01", createdAt: "2024-08-20" },
-  { id: "8", fullName: "Meron Tadesse", email: "meron@ethioleague.com", phone: "+251988901234", roles: ["LEAGUE_ADMIN"], status: "pending", lastLogin: "Never", createdAt: "2026-03-01" },
-];
+function mapApiUser(u: ApiUser): User {
+  return {
+    ...u,
+    phone: u.phone ?? "",
+    roles: u.userRoleScopes.map((s) => s.role.name.toUpperCase()),
+  };
+}
 
 const roleColors: Record<string, string> = {
   SUPER_ADMIN: "bg-primary/15 text-primary border-primary/20",
@@ -83,20 +97,12 @@ function OrgAdminUsersView() {
   const { getOrganizationId } = useAuth();
   const orgId = getOrganizationId();
 
-  const { data, isLoading: usersLoading } = useSWR<User[]>(
-    orgId ? `/api/users?organizationId=${orgId}` : null,
-    authFetcher,
-    {
-      fallbackData: mockUsers.filter((u) =>
-        ["ORGANIZATION_ADMIN", "LEAGUE_ADMIN", "CLUB_ADMIN", "MATCH_EVENT_ADMIN"].some((r) =>
-          u.roles.includes(r)
-        )
-      ),
-      onError: () => { },
-    }
+  const { data: rawData, isLoading: usersLoading } = useSWR<ApiUser[]>(
+    "/api/users",
+    authFetcher
   );
 
-  const users: User[] = data || [];
+  const users: User[] = useMemo(() => (rawData ?? []).map(mapApiUser), [rawData]);
   const isLoading = orgLoading || usersLoading;
 
   const [search, setSearch] = useState("");
@@ -199,7 +205,7 @@ function OrgAdminUsersView() {
       }
 
       setFormOpen(false);
-      mutate(orgId ? `/api/users?organizationId=${orgId}` : null);
+      mutate("/api/users");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Operation failed");
     } finally {
@@ -222,7 +228,7 @@ function OrgAdminUsersView() {
       }
 
       toast.success(`User ${newStatus === "active" ? "activated" : "deactivated"}`);
-      mutate(orgId ? `/api/users?organizationId=${orgId}` : null);
+      mutate("/api/users");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Operation failed");
     }
@@ -501,12 +507,8 @@ function OrgAdminUsersView() {
 // Full user management across all organizations
 
 function SuperAdminUsersView() {
-  const { data, isLoading } = useSWR("/api/users", authFetcher, {
-    fallbackData: mockUsers,
-    onError: () => { },
-  });
-
-  const users: User[] = data || mockUsers;
+  const { data: rawData, isLoading } = useSWR<ApiUser[]>("/api/users", authFetcher);
+  const users: User[] = useMemo(() => (rawData ?? []).map(mapApiUser), [rawData]);
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -552,11 +554,40 @@ function SuperAdminUsersView() {
   };
 
   const handleSubmit = async () => {
-    await new Promise((r) => setTimeout(r, 500));
+    if (!editingUser) return;
+    try {
+      const res = await fetchWithAuth(`/api/users/${editingUser.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ fullName: form.fullName, phone: form.phone }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        toast.error(d.error || "Failed to update user");
+        return;
+      }
+      toast.success("User updated");
+      setFormOpen(false);
+      mutate("/api/users");
+    } catch {
+      toast.error("Something went wrong");
+    }
   };
 
   const handleDelete = async () => {
-    await new Promise((r) => setTimeout(r, 500));
+    if (!deleteTarget) return;
+    try {
+      const res = await fetchWithAuth(`/api/users/${deleteTarget.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        toast.error(d.error || "Failed to delete user");
+        return;
+      }
+      toast.success("User deleted");
+      setDeleteTarget(null);
+      mutate("/api/users");
+    } catch {
+      toast.error("Something went wrong");
+    }
   };
 
   const getInitials = (name: string) =>
