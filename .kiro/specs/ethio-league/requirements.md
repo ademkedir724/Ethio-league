@@ -322,6 +322,58 @@ A significant portion of the system has already been implemented:
 
 ---
 
+### Requirement 19: User Management Edit Hierarchy
+
+**User Story:** As an admin, I want to edit user information within my authorized scope, so that user data is managed with proper access control at each level of the hierarchy.
+
+#### Acceptance Criteria
+
+1. WHEN a Super Admin edits a user, THE System SHALL restrict editable targets to users with the `organization_admin` role only. Super Admins SHALL NOT edit league_admin, club_admin, match_event_admin, or other super_admin users.
+2. WHEN an Organization Admin edits a user, THE System SHALL restrict editable targets to users with the `league_admin` or `match_event_admin` role that are scoped to the Organization Admin's organization only.
+3. WHEN a League Admin edits a user, THE System SHALL restrict editable targets to users with the `club_admin` role whose assigned club belongs to a season in the League Admin's league only.
+4. ANY authenticated user SHALL be able to edit their own `fullName` and `phone` fields via their profile page.
+5. Super Admins and Organization Admins SHALL additionally be able to update the `status` field of users within their editable scope.
+6. IF a caller attempts to edit a user outside their authorized scope, THE System SHALL return a 403 Forbidden response.
+7. THE System SHALL NOT allow any admin to edit another admin of equal or higher privilege level.
+
+---
+
+### Requirement 20: User Activation on Password Setup
+
+**User Story:** As a newly created user, I want my account to become active automatically when I set my password, so that I can log in immediately after completing the setup flow without requiring manual activation by an admin.
+
+#### Acceptance Criteria
+
+1. WHEN a user successfully sets their password via the `/api/auth/set-password` endpoint using a valid token, THE System SHALL update the user's `status` from `inactive` to `active` in the same database transaction.
+2. WHEN the password is set and the user is activated, THE System SHALL clear the `passwordResetToken` and `passwordResetExpires` fields.
+3. AFTER activation, THE System SHALL allow the user to log in immediately with their new password.
+4. IF the token is expired or invalid, THE System SHALL NOT activate the user and SHALL return a descriptive error.
+
+---
+
+### Requirement 21: Organization-Scoped User Listing
+
+**User Story:** As an Organization Admin, I want to see only the users associated with my organization, so that I have a clear view of my team without seeing unrelated users from other organizations.
+
+#### Acceptance Criteria
+
+1. WHEN an Organization Admin calls `GET /api/users`, THE System SHALL return only users who have at least one `UserRoleScope` record with `organizationId` matching the Organization Admin's organization.
+2. WHEN a Super Admin calls `GET /api/users`, THE System SHALL return all users across all organizations.
+3. THE System SHALL enforce that Organization Admins cannot access user records from other organizations via the users API.
+
+**User Story:** As a user, I want to receive in-app notifications for relevant system events, so that I am informed of actions that require my attention or affect my work.
+
+#### Acceptance Criteria
+
+1. WHEN an organization request is submitted, THE System SHALL create a notification for all Super Admins.
+2. WHEN an organization is approved or rejected, THE System SHALL create a notification for the Organization Admin of that organization.
+3. WHEN a club registration is submitted, THE System SHALL create a notification for the Organization Admin of the relevant organization.
+4. WHEN a club is approved or rejected, THE System SHALL create a notification for the Club Admin of that club.
+5. WHEN a lineup is submitted by a Club Admin, THE System SHALL create a notification for the League Admin of the relevant season.
+6. WHEN a match event is logged, THE System SHALL create a notification for the League Admin of the relevant season.
+7. WHEN a user views a notification, THE System SHALL mark it as read and update the unread count in the topbar.
+8. THE System SHALL enforce that users can only view notifications addressed to their own user account.
+
 ### Requirement 18: Notification Triggers
 
 **User Story:** As a user, I want to receive in-app notifications for relevant system events, so that I am informed of actions that require my attention or affect my work.
