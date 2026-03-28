@@ -397,22 +397,73 @@ function OrgAdminOverview() {
 }
 
 function ClubAdminOverview() {
-  const { data: stats, isLoading, error } = useSWR(
+  const { getClubId } = useAuth();
+  const clubId = getClubId();
+
+  const { data: stats, isLoading: statsLoading, error } = useSWR(
     "/api/dashboard/stats",
     authFetcher
   );
 
+  // Fetch club details to get league/org context
+  const { data: club, isLoading: clubLoading } = useSWR(
+    clubId ? `/api/clubs/${clubId}` : null,
+    authFetcher
+  );
+
+  // Seasons come from the club's seasonClubs relation
+  const isLoading = statsLoading || clubLoading;
+  const seasonClubs: Array<{ season: { id: string; name: string; status: string; league: { id: string; name: string; organization: { name: string } } } }> = club?.seasonClubs ?? [];
+  const currentSeason = seasonClubs.find((sc) => sc.season.status === "active")?.season
+    ?? seasonClubs[seasonClubs.length - 1]?.season
+    ?? null;
+  const league = currentSeason?.league ?? null;
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="My Club Dashboard"
-        description="Overview of your club's players, coaches, and matches."
+        title={club ? `${club.name}` : "My Club Dashboard"}
+        description={league ? `${league.organization?.name} · ${league.name}` : "Overview of your club's players, coaches, and matches."}
       />
       {error && (
         <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
           Failed to load dashboard stats. Please try again.
         </div>
       )}
+
+      {/* Context cards */}
+      {!clubLoading && (league || currentSeason) && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {league?.organization?.name && (
+            <Card className="border-border bg-card">
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Organization</p>
+                <p className="text-sm font-medium text-foreground">{league.organization.name}</p>
+              </CardContent>
+            </Card>
+          )}
+          {league?.name && (
+            <Card className="border-border bg-card">
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">League</p>
+                <p className="text-sm font-medium text-foreground">{league.name}</p>
+              </CardContent>
+            </Card>
+          )}
+          {currentSeason && (
+            <Card className="border-border bg-card">
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Current Season</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-foreground">{currentSeason.name}</p>
+                  <StatusBadge status={currentSeason.status} />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {isLoading ? (
           Array.from({ length: 4 }).map((_, i) => (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
@@ -53,6 +53,9 @@ interface Season {
     startDate: string;
     endDate: string;
     leagueId: string;
+    requiredClubs?: number | null;
+    roundRobinType?: string | null;
+    daysBetweenRounds?: number | null;
     _count?: { seasonClubs: number; matches: number };
 }
 
@@ -61,6 +64,9 @@ const emptyForm = {
     startDate: "",
     endDate: "",
     status: "upcoming",
+    requiredClubs: "",
+    roundRobinType: "double",
+    daysBetweenRounds: "",
 };
 
 const STATUS_OPTIONS = ["upcoming", "active", "completed", "cancelled"] as const;
@@ -138,6 +144,9 @@ export default function LeagueSeasonsPage() {
             startDate: season.startDate.slice(0, 10),
             endDate: season.endDate.slice(0, 10),
             status: season.status,
+            requiredClubs: season.requiredClubs?.toString() ?? "",
+            roundRobinType: season.roundRobinType ?? "double",
+            daysBetweenRounds: season.daysBetweenRounds?.toString() ?? "",
         });
         setFormOpen(true);
     };
@@ -163,6 +172,9 @@ export default function LeagueSeasonsPage() {
                         startDate: form.startDate,
                         endDate: form.endDate,
                         status: form.status,
+                        requiredClubs: form.requiredClubs ? parseInt(form.requiredClubs) : null,
+                        roundRobinType: form.roundRobinType || "double",
+                        daysBetweenRounds: form.daysBetweenRounds ? parseInt(form.daysBetweenRounds) : null,
                     }),
                 });
             } else {
@@ -173,6 +185,9 @@ export default function LeagueSeasonsPage() {
                         name: form.name.trim(),
                         startDate: form.startDate,
                         endDate: form.endDate,
+                        requiredClubs: form.requiredClubs ? parseInt(form.requiredClubs) : null,
+                        roundRobinType: form.roundRobinType || "double",
+                        daysBetweenRounds: form.daysBetweenRounds ? parseInt(form.daysBetweenRounds) : null,
                     }),
                 });
             }
@@ -275,7 +290,7 @@ export default function LeagueSeasonsPage() {
 
             {/* Create / Edit Dialog */}
             <Dialog open={formOpen} onOpenChange={(open) => { if (!open) setFormOpen(false); }}>
-                <DialogContent className="max-w-md">
+                <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>{editingSeason ? "Edit Season" : "Create Season"}</DialogTitle>
                         <DialogDescription>
@@ -283,59 +298,7 @@ export default function LeagueSeasonsPage() {
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="grid gap-4">
-                        <div className="flex flex-col gap-2">
-                            <Label htmlFor="season-name">Name *</Label>
-                            <Input
-                                id="season-name"
-                                value={form.name}
-                                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                                placeholder="2024/25 Season"
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="flex flex-col gap-2">
-                                <Label htmlFor="start-date">Start Date *</Label>
-                                <Input
-                                    id="start-date"
-                                    type="date"
-                                    value={form.startDate}
-                                    onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-                                />
-                            </div>
-                            <div className="flex flex-col gap-2">
-                                <Label htmlFor="end-date">End Date *</Label>
-                                <Input
-                                    id="end-date"
-                                    type="date"
-                                    value={form.endDate}
-                                    onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-                                />
-                            </div>
-                        </div>
-
-                        {editingSeason && (
-                            <div className="flex flex-col gap-2">
-                                <Label htmlFor="season-status">Status</Label>
-                                <Select
-                                    value={form.status}
-                                    onValueChange={(v) => setForm({ ...form, status: v })}
-                                >
-                                    <SelectTrigger id="season-status">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {STATUS_OPTIONS.map((s) => (
-                                            <SelectItem key={s} value={s} className="capitalize">
-                                                {s}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        )}
-                    </div>
+                    <SeasonFormFields form={form} setForm={setForm} editingSeason={editingSeason} />
 
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setFormOpen(false)}>
@@ -362,6 +325,165 @@ export default function LeagueSeasonsPage() {
     );
 }
 
+// ─── Season Form Fields ───────────────────────────────────────────────────────
+
+interface SeasonFormType {
+    name: string;
+    startDate: string;
+    endDate: string;
+    status: string;
+    requiredClubs: string;
+    roundRobinType: string;
+    daysBetweenRounds: string;
+}
+
+function SeasonFormFields({
+    form,
+    setForm,
+    editingSeason,
+}: {
+    form: SeasonFormType;
+    setForm: (f: SeasonFormType) => void;
+    editingSeason: Season | null;
+}) {
+    // Calculate recommended days between rounds
+    const recommendation = useMemo(() => {
+        if (!form.startDate || !form.endDate || !form.requiredClubs) return null;
+        const clubs = parseInt(form.requiredClubs);
+        if (isNaN(clubs) || clubs < 2) return null;
+
+        const start = new Date(form.startDate);
+        const end = new Date(form.endDate);
+        const totalDays = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        if (totalDays <= 0) return null;
+
+        // Number of rounds: single = n-1, double = 2*(n-1)
+        const rounds = form.roundRobinType === "single" ? clubs - 1 : 2 * (clubs - 1);
+        if (rounds <= 0) return null;
+
+        const recommended = Math.floor(totalDays / rounds);
+        return { rounds, totalDays, recommended };
+    }, [form.startDate, form.endDate, form.requiredClubs, form.roundRobinType]);
+
+    return (
+        <div className="grid gap-4">
+            <div className="flex flex-col gap-2">
+                <Label htmlFor="season-name">Name *</Label>
+                <Input
+                    id="season-name"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="2024/25 Season"
+                />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-2">
+                    <Label htmlFor="start-date">Start Date *</Label>
+                    <Input
+                        id="start-date"
+                        type="date"
+                        value={form.startDate}
+                        onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                    />
+                </div>
+                <div className="flex flex-col gap-2">
+                    <Label htmlFor="end-date">End Date *</Label>
+                    <Input
+                        id="end-date"
+                        type="date"
+                        value={form.endDate}
+                        onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                    />
+                </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-2">
+                    <Label htmlFor="required-clubs">Required Clubs</Label>
+                    <Input
+                        id="required-clubs"
+                        type="number"
+                        min={2}
+                        value={form.requiredClubs}
+                        onChange={(e) => setForm({ ...form, requiredClubs: e.target.value })}
+                        placeholder="e.g. 10"
+                    />
+                </div>
+                <div className="flex flex-col gap-2">
+                    <Label htmlFor="rr-type">Round Robin Type</Label>
+                    <Select
+                        value={form.roundRobinType}
+                        onValueChange={(v) => setForm({ ...form, roundRobinType: v })}
+                    >
+                        <SelectTrigger id="rr-type">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="single">Single (home only)</SelectItem>
+                            <SelectItem value="double">Double (home + away)</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+
+            {/* Smart recommendation */}
+            {recommendation && (
+                <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-xs text-blue-400">
+                    <p className="font-medium mb-0.5">Schedule recommendation</p>
+                    <p>
+                        {recommendation.rounds} rounds × {recommendation.recommended} days = {recommendation.rounds * recommendation.recommended} days
+                        {" "}(season is {recommendation.totalDays} days).
+                        Recommended: <strong>{recommendation.recommended} days between rounds</strong>.
+                    </p>
+                </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+                <Label htmlFor="days-between">Days Between Rounds</Label>
+                <Input
+                    id="days-between"
+                    type="number"
+                    min={1}
+                    value={form.daysBetweenRounds}
+                    onChange={(e) => setForm({ ...form, daysBetweenRounds: e.target.value })}
+                    placeholder={recommendation ? `Recommended: ${recommendation.recommended}` : "e.g. 7"}
+                />
+                {recommendation && !form.daysBetweenRounds && (
+                    <button
+                        type="button"
+                        className="text-xs text-blue-400 hover:underline text-left"
+                        onClick={() => setForm({ ...form, daysBetweenRounds: recommendation.recommended.toString() })}
+                    >
+                        Use recommended ({recommendation.recommended} days)
+                    </button>
+                )}
+            </div>
+
+            {editingSeason && (
+                <div className="flex flex-col gap-2">
+                    <Label htmlFor="season-status">Status</Label>
+                    <Select
+                        value={form.status}
+                        onValueChange={(v) => setForm({ ...form, status: v })}
+                    >
+                        <SelectTrigger id="season-status">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {STATUS_OPTIONS.map((s) => (
+                                <SelectItem key={s} value={s} className="capitalize">
+                                    {s}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ─── Season Card ─────────────────────────────────────────────────────────────
 
 interface SeasonCardProps {
@@ -372,26 +494,27 @@ interface SeasonCardProps {
 }
 
 function SeasonCard({ season, canEdit, onEdit, onDelete }: SeasonCardProps) {
+    const router = useRouter();
     return (
-        <Card className="flex flex-col">
+        <Card className="flex flex-col cursor-pointer hover:border-primary/40 transition-colors" onClick={() => router.push(`/dashboard/seasons/${season.id}`)}>
             <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
                 <CardTitle className="text-base leading-tight truncate">{season.name}</CardTitle>
                 {canEdit && (
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground">
+                            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground" onClick={(e) => e.stopPropagation()}>
                                 <MoreHorizontal className="h-4 w-4" />
                                 <span className="sr-only">Actions</span>
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => onEdit(season)}>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(season); }}>
                                 <Pencil className="mr-2 h-4 w-4" />
                                 Edit
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                                onClick={() => onDelete(season)}
+                                onClick={(e) => { e.stopPropagation(); onDelete(season); }}
                                 className="text-destructive focus:text-destructive"
                             >
                                 <Trash2 className="mr-2 h-4 w-4" />
@@ -421,6 +544,9 @@ function SeasonCard({ season, canEdit, onEdit, onDelete }: SeasonCardProps) {
                     <span>{formatDate(season.startDate)} — {formatDate(season.endDate)}</span>
                     {season._count && (
                         <span>{season._count.matches} match{season._count.matches !== 1 ? "es" : ""}</span>
+                    )}
+                    {season.requiredClubs && (
+                        <span>{season.requiredClubs} clubs required · {season.roundRobinType ?? "double"} round-robin</span>
                     )}
                 </div>
             </CardContent>
