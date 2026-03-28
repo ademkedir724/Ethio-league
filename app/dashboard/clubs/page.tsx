@@ -69,7 +69,6 @@ const emptyCreateForm = {
   adminFullName: "",
   adminEmail: "",
   adminPhone: "",
-  seasonId: "",
 };
 
 function getInitials(name: string) {
@@ -124,7 +123,6 @@ function LeagueAdminClubsView() {
     if (!form.name.trim()) { toast.error("Club name is required"); return; }
     if (!form.adminFullName.trim()) { toast.error("Club Admin full name is required"); return; }
     if (!form.adminEmail.trim()) { toast.error("Club Admin email is required"); return; }
-    if (!form.seasonId) { toast.error("Please select a season"); return; }
 
     setIsSaving(true);
     try {
@@ -135,7 +133,6 @@ function LeagueAdminClubsView() {
           adminFullName: form.adminFullName.trim(),
           adminEmail: form.adminEmail.trim(),
           adminPhone: form.adminPhone.trim() || null,
-          seasonId: form.seasonId,
         }),
       });
 
@@ -339,31 +336,6 @@ function LeagueAdminClubsView() {
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="St. George FC"
               />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="club-season">Season *</Label>
-              <Select
-                value={form.seasonId || "none"}
-                onValueChange={(v) => setForm({ ...form, seasonId: v === "none" ? "" : v })}
-              >
-                <SelectTrigger id="club-season">
-                  <SelectValue placeholder="Select a season" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Select a season</SelectItem>
-                  {seasons.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                      {s.status === "active" && (
-                        <Badge variant="outline" className="ml-2 text-[10px] text-emerald-400 border-emerald-500/30">
-                          active
-                        </Badge>
-                      )}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
 
             <Separator />
@@ -651,7 +623,80 @@ function OrgAdminClubsView() {
 // ─── Entry Point ──────────────────────────────────────────────────────────────
 
 export default function ClubsPage() {
-  const { isLeagueAdmin } = useAuth();
+  const { isLeagueAdmin, isClubAdmin } = useAuth();
   if (isLeagueAdmin()) return <LeagueAdminClubsView />;
+  if (isClubAdmin()) return <ClubAdminReadOnlyView />;
   return <OrgAdminClubsView />;
+}
+
+// ─── Club Admin Read-Only View ────────────────────────────────────────────────
+
+function ClubAdminReadOnlyView() {
+  const { data: clubsData, isLoading, error } = useSWR<Club[]>("/api/clubs", authFetcher);
+  const clubs: Club[] = clubsData ?? [];
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => clubs.filter((c) =>
+    c.name.toLowerCase().includes(search.toLowerCase())
+  ), [clubs, search]);
+
+  const columns: Column<Club>[] = [
+    {
+      key: "name",
+      header: "Club",
+      render: (c) => (
+        <div className="flex items-center gap-3">
+          <Avatar className="h-9 w-9">
+            <AvatarFallback className="bg-primary/10 text-xs text-primary">{getInitials(c.name)}</AvatarFallback>
+          </Avatar>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium text-foreground">{c.name}</span>
+            {c.shortName && <span className="text-xs text-muted-foreground">{c.shortName}</span>}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "city",
+      header: "City",
+      className: "hidden md:table-cell",
+      render: (c) => c.city ? (
+        <div className="flex items-center gap-1.5">
+          <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">{c.city}</span>
+        </div>
+      ) : <span className="text-sm text-muted-foreground">—</span>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (c) => <StatusBadge status={c.status} />,
+    },
+    {
+      key: "view",
+      header: "",
+      className: "w-12",
+      render: () => <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"><Eye className="h-4 w-4" /></Button>,
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Clubs" description="View all clubs in your league." />
+      {error && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          Failed to load clubs.
+        </div>
+      )}
+      <DataTable
+        columns={columns}
+        data={filtered}
+        isLoading={isLoading}
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search clubs..."
+        emptyMessage="No clubs found in your league."
+      />
+    </div>
+  );
 }
