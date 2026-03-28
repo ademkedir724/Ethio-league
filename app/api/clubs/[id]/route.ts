@@ -24,8 +24,23 @@ export async function GET(
         ownedStadiums: true,
         seasonClubs: {
           include: {
-            season: { select: { id: true, name: true, leagueId: true } },
+            season: {
+              select: {
+                id: true,
+                name: true,
+                status: true,
+                leagueId: true,
+                league: {
+                  select: {
+                    id: true,
+                    name: true,
+                    organization: { select: { id: true, name: true } },
+                  },
+                },
+              },
+            },
           },
+          orderBy: { season: { startDate: "desc" } },
         },
       },
     });

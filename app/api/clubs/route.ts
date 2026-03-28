@@ -56,24 +56,17 @@ export async function POST(req: NextRequest) {
 
     if (isLeagueAdmin) {
       // ── League admin workflow ──────────────────────────────────────────────
+      // Creates a standalone club + club admin. Season assignment happens separately.
       const body = await req.json();
-      const { name, adminFullName, adminEmail, adminPhone, seasonId } = body;
+      const { name, adminFullName, adminEmail, adminPhone } = body;
 
       if (!name) return badRequest("Club name is required");
       if (!adminFullName) return badRequest("Admin full name is required");
       if (!adminEmail) return badRequest("Admin email is required");
-      if (!seasonId) return badRequest("Season ID is required");
 
-      // Verify caller is scoped to the league that owns this season
-      const seasonForScope = await prisma.season.findUnique({
-        where: { id: seasonId },
-        select: { leagueId: true },
-      });
-      if (!seasonForScope) return badRequest("Season not found");
-
-      if (!assertLeagueScope(auth, seasonForScope.leagueId)) {
-        return forbidden();
-      }
+      // Verify caller is a league admin
+      const leagueAdminRole = auth.roles.find((r) => r.roleName === "league_admin");
+      if (!leagueAdminRole?.leagueId) return forbidden();
 
       // Check email uniqueness
       const existingUser = await prisma.user.findUnique({ where: { email: adminEmail } });
@@ -81,11 +74,7 @@ export async function POST(req: NextRequest) {
         return badRequest("A user with this email already exists");
       }
 
-      // Run everything in a transaction
       const token = crypto.randomBytes(32).toString("hex");
-
-      let newClub: Awaited<ReturnType<typeof prisma.club.create>>;
-      let newUser: Awaited<ReturnType<typeof prisma.user.create>>;
 
       const result = await prisma.$transaction(async (tx) => {
         const club = await tx.club.create({
@@ -115,19 +104,13 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        await tx.seasonClub.create({
-          data: {
-            seasonId,
-            clubId: club.id,
-            status: "pending",
-          },
-        });
+        // No SeasonClub created here — league admin assigns clubs to seasons separately
 
         return { club, user };
       });
 
-      newClub = result.club;
-      newUser = result.user;
+      const newClub = result.club;
+      const newUser = result.user;
 
       // Send password setup email
       try {
@@ -152,17 +135,17 @@ export async function POST(req: NextRequest) {
         description: "Club created by league admin",
       });
 
-      // Notify org admin — find via season → league → organization → org_admin scope
+      // Notify org admin via league → organization
       try {
-        const seasonWithLeague = await prisma.season.findUnique({
-          where: { id: seasonId },
-          include: { league: { select: { organizationId: true } } },
+        const league = await prisma.league.findUnique({
+          where: { id: leagueAdminRole.leagueId },
+          select: { organizationId: true },
         });
 
-        if (seasonWithLeague) {
+        if (league) {
           const orgAdminScope = await prisma.userRoleScope.findFirst({
             where: {
-              organizationId: seasonWithLeague.league.organizationId,
+              organizationId: league.organizationId,
               role: { name: "organization_admin" },
             },
             select: { userId: true },
