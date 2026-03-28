@@ -59,7 +59,8 @@ export async function POST(req: NextRequest) {
     if (isAuthError(auth)) return auth;
 
     const body = await req.json();
-    const { leagueId, name, startDate, endDate, pointsWin, pointsDraw, pointsLoss } = body;
+    const { leagueId, name, startDate, endDate, pointsWin, pointsDraw, pointsLoss,
+      requiredClubs, roundRobinType, daysBetweenRounds } = body;
 
     if (!leagueId) return badRequest("leagueId is required");
     if (!name) return badRequest("name is required");
@@ -82,6 +83,9 @@ export async function POST(req: NextRequest) {
         pointsWin: pointsWin ?? 3,
         pointsDraw: pointsDraw ?? 1,
         pointsLoss: pointsLoss ?? 0,
+        requiredClubs: requiredClubs ? parseInt(requiredClubs) : null,
+        roundRobinType: roundRobinType || "double",
+        daysBetweenRounds: daysBetweenRounds ? parseInt(daysBetweenRounds) : null,
       },
       include: {
         league: { select: { id: true, name: true } },

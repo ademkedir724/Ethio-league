@@ -71,3 +71,39 @@ export async function POST(
     return serverError(error);
   }
 }
+
+// DELETE /api/seasons/:id/clubs — remove a club from a season
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const auth = await requireAuth(req);
+    if (isAuthError(auth)) return auth;
+
+    const { id: idStr } = await params;
+    const seasonId = parseUUID(idStr);
+    if (!seasonId) return badRequest("Invalid season ID");
+
+    const { clubId } = await req.json();
+    if (!clubId) return badRequest("clubId is required");
+
+    const season = await prisma.season.findUnique({
+      where: { id: seasonId },
+      include: { league: true },
+    });
+    if (!season) return notFound("Season not found");
+
+    if (!assertLeagueScope(auth, season.leagueId) && !assertOrgScope(auth, season.league.organizationId)) {
+      return forbidden();
+    }
+
+    await prisma.seasonClub.delete({
+      where: { seasonId_clubId: { seasonId, clubId } },
+    });
+
+    return success({ message: "Club removed from season" });
+  } catch (error) {
+    return serverError(error);
+  }
+}
