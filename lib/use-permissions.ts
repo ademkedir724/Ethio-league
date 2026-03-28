@@ -40,6 +40,9 @@ const ORG_ADMIN_VIEW_ONLY = [
 // Nav items hidden for all roles (seasons accessed via Leagues page)
 export const HIDDEN_NAV_FOR_ALL = ["seasons"] as const;
 
+// Nav items hidden specifically for club_admin
+const CLUB_ADMIN_HIDDEN_NAV = ["users", "organizations", "referees"] as const;
+
 export type ManageableResource =
   | "organizations"
   | "users"
@@ -119,6 +122,11 @@ export function usePermissions() {
 
     // All roles: hide standalone seasons page (seasons accessed via Leagues)
     if ((HIDDEN_NAV_FOR_ALL as readonly string[]).includes(navKey)) {
+      return false;
+    }
+
+    // Club admin: hide users, organizations, referees
+    if (hasRole(["club_admin"]) && (CLUB_ADMIN_HIDDEN_NAV as readonly string[]).includes(navKey)) {
       return false;
     }
 
