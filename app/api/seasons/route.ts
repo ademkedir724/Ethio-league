@@ -5,30 +5,38 @@ import { success, created, badRequest, forbidden, serverError } from "@/lib/api-
 import { assertLeagueScope } from "@/lib/scope-guard";
 import { logAudit } from "@/lib/audit";
 
-// GET /api/seasons?leagueId=X — list seasons scoped by role
+// GET /api/seasons?leagueId=X&clubId=Y — list seasons scoped by role
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req);
     if (isAuthError(auth)) return auth;
 
     const leagueIdParam = req.nextUrl.searchParams.get("leagueId");
+    const clubIdParam = req.nextUrl.searchParams.get("clubId");
     const isSuperAdmin = auth.roles.some((r) => r.roleName === "super_admin");
     const orgAdminRole = auth.roles.find((r) => r.roleName === "organization_admin");
     const leagueAdminRole = auth.roles.find((r) => r.roleName === "league_admin");
+    const clubAdminRole = auth.roles.find((r) => r.roleName === "club_admin");
 
     let where: Record<string, unknown> = {};
 
-    if (leagueIdParam) {
+    if (clubIdParam) {
+      // Return seasons where this club has a SeasonClub record
+      where.seasonClubs = { some: { clubId: clubIdParam } };
+    } else if (leagueIdParam) {
       where.leagueId = leagueIdParam;
     } else if (isSuperAdmin) {
       // no filter
     } else if (orgAdminRole?.organizationId) {
-      // org admin sees all seasons across their leagues
       where.league = { organizationId: orgAdminRole.organizationId };
     } else if (leagueAdminRole?.leagueId) {
       where.leagueId = leagueAdminRole.leagueId;
+    } else if (clubAdminRole?.clubId) {
+      // Club admin sees seasons their club participates in
+      where.seasonClubs = { some: { clubId: clubAdminRole.clubId } };
     } else {
-      where.id = "none";
+      // No matching scope — return empty
+      return success([]);
     }
 
     const seasons = await prisma.season.findMany({
@@ -40,6 +48,9 @@ export async function GET(req: NextRequest) {
             name: true,
             organization: { select: { id: true, name: true } },
           },
+        },
+        seasonClubs: {
+          select: { id: true, clubId: true, status: true },
         },
         _count: { select: { seasonClubs: true, matches: true } },
       },

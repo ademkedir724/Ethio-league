@@ -15,9 +15,10 @@ export async function GET(req: NextRequest) {
     const isOrgAdmin = auth.roles.some((r) => r.roleName === "organization_admin");
 
     if (isClubAdmin) {
+      // Return all coaches whose origin club is this club (the full club pool)
       const clubId = auth.roles.find((r) => r.roleName === "club_admin")?.clubId;
       if (clubId) {
-        where.seasonClubCoaches = { some: { seasonClub: { clubId } } };
+        where.clubId = clubId;
       }
     } else if (isOrgAdmin) {
       const orgId = auth.roles.find((r) => r.roleName === "organization_admin")?.organizationId;
@@ -54,6 +55,12 @@ export async function POST(req: NextRequest) {
       return badRequest("firstName and lastName are required");
     }
 
+    // When a Club Admin creates a coach, stamp the origin club
+    const isClubAdmin = auth.roles.some((r) => r.roleName === "club_admin");
+    const originClubId = isClubAdmin
+      ? (auth.roles.find((r) => r.roleName === "club_admin")?.clubId ?? null)
+      : null;
+
     const coach = await prisma.coach.create({
       data: {
         firstName,
@@ -63,6 +70,7 @@ export async function POST(req: NextRequest) {
         licenseLevel: licenseLevel || null,
         experienceYears: experienceYears || null,
         photoUrl: photoUrl || null,
+        clubId: originClubId,
       },
     });
 

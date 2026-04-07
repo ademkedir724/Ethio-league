@@ -122,12 +122,24 @@ export async function POST(
     } else {
       const validSCPs = await prisma.seasonClubPlayer.findMany({
         where: { seasonClubId: seasonClub.id },
+        include: { player: { select: { firstName: true, lastName: true } } },
       });
       const validIds = new Set(validSCPs.map((p) => p.id));
       const submittedIds = lineups.map((l) => l.seasonClubPlayerId);
       const invalidIds = submittedIds.filter((id) => !validIds.has(id));
       if (invalidIds.length > 0) {
         errors.push(`Some players do not belong to this club's season squad: ${invalidIds.join(", ")}`);
+      }
+
+      // Enforce approved-only: all submitted players must have requestStatus = 'approved'
+      const unapproved = validSCPs.filter(
+        (p) => submittedIds.includes(p.id) && p.requestStatus !== "approved"
+      );
+      if (unapproved.length > 0) {
+        const names = unapproved
+          .map((p) => `${p.player.firstName} ${p.player.lastName} (${p.requestStatus})`)
+          .join(", ");
+        errors.push(`The following players are not approved for this season: ${names}`);
       }
     }
 

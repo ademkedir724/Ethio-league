@@ -24,6 +24,7 @@ import {
   ClipboardList,
   FileText,
   Settings,
+  ClipboardCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -124,10 +125,16 @@ export function DashboardSidebar({
   // Role-specific nav items
   const roleNavItems = [
     ...(isLeagueAdmin()
-      ? [{ title: "Standings", href: "/dashboard/standings", icon: BarChart3 }]
+      ? [
+        { title: "Standings", href: "/dashboard/standings", icon: BarChart3 },
+        { title: "Squad Management", href: "/dashboard/squad-management", icon: ClipboardCheck },
+      ]
       : []),
     ...(isClubAdmin()
-      ? [{ title: "Lineups", href: "/dashboard/lineups", icon: ClipboardList }]
+      ? [
+        { title: "Lineups", href: "/dashboard/lineups", icon: ClipboardList },
+        { title: "Squad Request", href: "/dashboard/squad-request", icon: Users },
+      ]
       : []),
     ...(isSuperAdmin()
       ? [

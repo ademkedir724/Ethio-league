@@ -60,6 +60,25 @@ export async function POST(req: NextRequest) {
     // Scope check: user must be scoped to this season
     if (!assertMEASeasonScope(auth, match.seasonId)) return forbidden();
 
+    // Verify player is approved in this season's squad
+    const seasonClub = await prisma.seasonClub.findFirst({
+      where: {
+        seasonId: match.seasonId,
+        clubId: clubId || undefined,
+      },
+    });
+    if (seasonClub) {
+      const scp = await prisma.seasonClubPlayer.findFirst({
+        where: {
+          seasonClubId: seasonClub.id,
+          playerId,
+        },
+      });
+      if (scp && scp.requestStatus !== "approved") {
+        return badRequest("Player is not approved in this season's squad and cannot be used in match events");
+      }
+    }
+
     // Look up event type before creating the event
     const eventType = await prisma.eventType.findUnique({
       where: { id: eventTypeId },

@@ -25,7 +25,8 @@ export async function GET(req: NextRequest) {
     } else if (leagueAdminRole?.leagueId) {
       where = { id: leagueAdminRole.leagueId };
     } else {
-      where = { id: "none" };
+      // club_admin, MEA, and other roles have no league scope — return empty
+      return success([]);
     }
 
     const leagues = await prisma.league.findMany({
