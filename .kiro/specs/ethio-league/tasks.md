@@ -400,7 +400,7 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
 
 ## Phase 10: Squad Request Workflow
 
-- [ ] 46. Schema migration — add `clubId` to Player and Coach, add `requestStatus` and `playerRole` to SeasonClubPlayer, add `requestStatus` to SeasonClubCoach
+- [x] 46. Schema migration — add `clubId` to Player and Coach, add `requestStatus` and `playerRole` to SeasonClubPlayer, add `requestStatus` to SeasonClubCoach
   - Add `clubId String? @db.Uuid` to `Player` with `club Club? @relation("PlayerOriginClub", fields: [clubId], references: [id])`
   - Add `clubId String? @db.Uuid` to `Coach` with `club Club? @relation("CoachOriginClub", fields: [clubId], references: [id])`
   - Add reverse relations `players Player[] @relation("PlayerOriginClub")` and `coaches Coach[] @relation("CoachOriginClub")` to `Club` model
@@ -410,16 +410,16 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
   - Write migration SQL
   - _Requirements: 22.1, 23.1, 24.2, 24.5, 25.3_
 
-- [ ] 47. Update `POST /api/players` and `GET /api/players` for club pool
+- [x] 47. Update `POST /api/players` and `GET /api/players` for club pool
   - In POST: when caller is `club_admin`, set `clubId = auth.clubId` on the created player
   - In GET: for `club_admin`, change filter from season-based to `where: { clubId: auth.clubId }` — returns all players the club has ever registered, even those not yet in any season
   - _Requirements: 22.1, 22.2_
 
-- [ ] 48. Update `POST /api/coaches` and `GET /api/coaches` for club pool
+- [x] 48. Update `POST /api/coaches` and `GET /api/coaches` for club pool
   - Same pattern as Task 47 but for coaches
   - _Requirements: 23.1, 23.2_
 
-- [ ] 49. Add `POST /api/seasons/[id]/squad-request/players` — Club Admin squad request submission
+- [x] 49. Add `POST /api/seasons/[id]/squad-request/players` — Club Admin squad request submission
   - Require `club_admin` role; enforce `assertClubScope` against the `seasonClubId`'s club
   - Accept array of player requests: `[{ playerId, jerseyNumber, positionId, playerRole, seasonClubId }]`
   - Validate jersey number uniqueness within the club's season (across all existing `SeasonClubPlayer` records for this `seasonClub`)
@@ -428,14 +428,14 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
   - Notify League Admin
   - _Requirements: 24.1–24.8_
 
-- [ ] 50. Add `POST /api/seasons/[id]/squad-request/coaches` — Club Admin coach squad request
+- [x] 50. Add `POST /api/seasons/[id]/squad-request/coaches` — Club Admin coach squad request
   - Same pattern as Task 49 but for coaches
   - Accept: `[{ coachId, role, status, seasonClubId }]`
   - Upsert `SeasonClubCoach` records with `requestStatus = 'pending'`
   - Notify League Admin
   - _Requirements: 25.1–25.4_
 
-- [ ] 51. Add `PATCH /api/seasons/[id]/players/[scpId]/review` — League Admin approve/reject player
+- [x] 51. Add `PATCH /api/seasons/[id]/players/[scpId]/review` — League Admin approve/reject player
   - Require `league_admin`; enforce `assertSeasonScope`
   - Accept `{ action: 'approve' | 'reject' }`
   - Only update `requestStatus` — never touch `jerseyNumber`, `positionId`, `playerRole`
@@ -443,21 +443,21 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
   - On reject: set `requestStatus = 'rejected'`; notify Club Admin
   - _Requirements: 26.1–26.8_
 
-- [ ] 52. Add `PATCH /api/seasons/[id]/coaches/[sccId]/review` — League Admin approve/reject coach
+- [x] 52. Add `PATCH /api/seasons/[id]/coaches/[sccId]/review` — League Admin approve/reject coach
   - Same pattern as Task 51 but for coaches
   - _Requirements: 27.1–27.3_
 
-- [ ] 53. Update `POST /api/matches/[id]/lineups` — enforce approved-only players
+- [x] 53. Update `POST /api/matches/[id]/lineups` — enforce approved-only players
   - Add validation: all `seasonClubPlayerIds` must have `requestStatus = 'approved'`
   - Return 400 with descriptive error listing unapproved players if validation fails
   - _Requirements: 26.7_
 
-- [ ] 54. Update `POST /api/match-events` — enforce approved-only players
+- [x] 54. Update `POST /api/match-events` — enforce approved-only players
   - When logging an event, verify the player has an approved `SeasonClubPlayer` record for the match's season
   - Return 400 if player is not approved
   - _Requirements: 26.7_
 
-- [ ] 55. Update `app/dashboard/seasons/[id]/players/page.tsx` — League Admin squad review UI
+- [x] 55. Update `app/dashboard/seasons/[id]/players/page.tsx` — League Admin squad review UI
   - Change from direct-assign UI to review UI
   - Show pending requests per club with player details (jersey, position, role)
   - Approve/Reject buttons per player — calls `PATCH /api/seasons/[id]/players/[scpId]/review`
@@ -465,7 +465,7 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
   - Keep the existing direct-assign capability for League Admin (for cases where they add players directly without a club request)
   - _Requirements: 26.1–26.8_
 
-- [ ] 56. Create `app/dashboard/squad-request/page.tsx` — Club Admin squad request UI
+- [x] 56. Create `app/dashboard/squad-request/page.tsx` — Club Admin squad request UI
   - Show current season's squad request status
   - Three-tab player picker: "My Club Pool" / "Last Season" / "Search System"
   - For each player added: jersey number input, position selector, role selector (Starter/Reserve)
@@ -474,7 +474,7 @@ This plan completes the Ethio League platform across 9 phases. Tasks marked `[x]
   - Separate tab for coaches with same flow
   - _Requirements: 24.1–24.8, 25.1–25.4_
 
-- [ ] 57. Add property-based tests for squad request workflow
+- [x] 57. Add property-based tests for squad request workflow
   - Property 15: Club pool scoping — generate random club admins, assert `GET /api/players` only returns their club's players
   - Property 16: Squad request pending state — assert all submitted records have `requestStatus = 'pending'`
   - Property 17: League Admin cannot edit squad fields — assert review endpoint ignores field changes

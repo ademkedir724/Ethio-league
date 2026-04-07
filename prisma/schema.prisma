@@ -145,6 +145,10 @@ model Club {
   awayMatches    Match[]   @relation("AwayClub")
   matchEvents    MatchEvent[]
   userRoleScopes UserRoleScope[]
+  /// Players first introduced to the system by this club (origin marker)
+  players        Player[]  @relation("PlayerOriginClub")
+  /// Coaches first introduced to the system by this club (origin marker)
+  coaches        Coach[]   @relation("CoachOriginClub")
 
   @@map("clubs")
 }
@@ -181,10 +185,13 @@ model Player {
   primaryPositionId Int?
   photoUrl          String?
   status            String    @default("active")
+  /// Origin club — the club that first introduced this player into the system. Nullable for players created by Super/Org Admin.
+  clubId            String?   @db.Uuid
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
   primaryPosition    Position?          @relation("PrimaryPosition", fields: [primaryPositionId], references: [id])
+  originClub         Club?              @relation("PlayerOriginClub", fields: [clubId], references: [id])
   seasonClubPlayers  SeasonClubPlayer[]
   matchEvents        MatchEvent[]       @relation("EventPlayer")
   relatedMatchEvents MatchEvent[]       @relation("RelatedPlayer")
@@ -202,9 +209,12 @@ model Coach {
   experienceYears Int?
   photoUrl        String?
   status          String    @default("active")
+  /// Origin club — the club that first introduced this coach into the system. Nullable for coaches created by Super/Org Admin.
+  clubId          String?   @db.Uuid
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  originClub        Club?             @relation("CoachOriginClub", fields: [clubId], references: [id])
   seasonClubCoaches SeasonClubCoach[]
 
   @@map("coaches")
@@ -392,6 +402,10 @@ model SeasonClubPlayer {
   contractStart DateTime?
   contractEnd   DateTime?
   status        String    @default("active")
+  /// Squad request status. 'approved' by default (backward-compatible with direct League Admin assignment).
+  requestStatus String    @default("approved")
+  /// Season-level squad designation set by Club Admin at request time. Distinct from MatchLineup.lineupType (match-day role).
+  playerRole    String?
   createdAt     DateTime  @default(now())
 
   seasonClub   SeasonClub    @relation(fields: [seasonClubId], references: [id], onDelete: Cascade)
@@ -411,6 +425,8 @@ model SeasonClubCoach {
   startDate    DateTime?
   endDate      DateTime?
   status       String    @default("active")
+  /// Squad request status. 'approved' by default (backward-compatible with direct League Admin assignment).
+  requestStatus String   @default("approved")
   createdAt    DateTime  @default(now())
 
   seasonClub SeasonClub @relation(fields: [seasonClubId], references: [id], onDelete: Cascade)
