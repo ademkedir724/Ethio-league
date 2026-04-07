@@ -388,3 +388,88 @@ A significant portion of the system has already been implemented:
 6. WHEN a match event is logged, THE System SHALL create a notification for the League Admin of the relevant season.
 7. WHEN a user views a notification, THE System SHALL mark it as read and update the unread count in the topbar.
 8. THE System SHALL enforce that users can only view notifications addressed to their own user account.
+
+---
+
+### Requirement 22: Club Player Pool (Club Admin)
+
+**User Story:** As a Club Admin, I want players I create to be permanently associated with my club's pool, so that I can find them when building season squad requests.
+
+#### Acceptance Criteria
+
+1. WHEN a Club Admin creates a player, THE System SHALL set `player.clubId` to the Club Admin's assigned club ID.
+2. WHEN a Club Admin views their player pool (`GET /api/players`), THE System SHALL return all players where `player.clubId` matches the Club Admin's club, regardless of season assignment status.
+3. THE System SHALL allow a player with a `clubId` to be assigned to any club's season squad (transfers are allowed — `clubId` is origin, not current ownership).
+4. Players created by Super Admin or Org Admin SHALL have `clubId` as null.
+
+---
+
+### Requirement 23: Club Coach Pool (Club Admin)
+
+**User Story:** As a Club Admin, I want coaches I create to be permanently associated with my club's pool, so that I can find them when building season squad requests.
+
+#### Acceptance Criteria
+
+1. WHEN a Club Admin creates a coach, THE System SHALL set `coach.clubId` to the Club Admin's assigned club ID.
+2. WHEN a Club Admin views their coach pool (`GET /api/coaches`), THE System SHALL return all coaches where `coach.clubId` matches the Club Admin's club.
+3. THE System SHALL allow a coach with a `clubId` to be assigned to any club's season squad.
+4. Coaches created by Super Admin or Org Admin SHALL have `clubId` as null.
+
+---
+
+### Requirement 24: Season Squad Request — Players (Club Admin)
+
+**User Story:** As a Club Admin, I want to submit a season squad request for players, so that the League Admin can review and approve which players are eligible for the season.
+
+#### Acceptance Criteria
+
+1. WHEN a Club Admin builds a season squad request, THE System SHALL present three sources of players to choose from: "My Club Pool" (players where `player.clubId = auth.clubId`), "Last Season Squad" (players approved in the club's previous season), and "Search System" (search all players in the system by name, for transfers).
+2. WHEN a Club Admin adds a player to the squad request, THE System SHALL require: jersey number (unique within this club for this season), season position (from Position table), and player role (`starter` or `reserve`).
+3. THE System SHALL validate jersey number uniqueness within the club's season at submission time — return 400 if duplicate.
+4. THE System SHALL validate that the player is not already approved in another club's squad for the same season — return 400 if duplicate cross-club registration.
+5. WHEN a Club Admin submits the squad request, THE System SHALL set `SeasonClubPlayer.requestStatus = 'pending'` for all submitted players and notify the League Admin.
+6. THE System SHALL lock the submitted player records (prevent editing) after submission until the League Admin acts on them.
+7. THE System SHALL enforce that only Club Admins scoped to the relevant club can submit squad requests.
+8. A Club Admin SHALL be able to submit the squad request in multiple batches (add more players later) as long as the season squad window is open.
+
+---
+
+### Requirement 25: Season Squad Request — Coaches (Club Admin)
+
+**User Story:** As a Club Admin, I want to submit a season squad request for coaches, so that the League Admin can review and approve coaching staff eligibility.
+
+#### Acceptance Criteria
+
+1. WHEN a Club Admin builds a coach squad request, THE System SHALL present three sources: "My Club Pool" (coaches where `coach.clubId = auth.clubId`), "Last Season Squad", and "Search System".
+2. WHEN a Club Admin adds a coach to the squad request, THE System SHALL require: season role (`head_coach`, `assistant_coach`, `goalkeeping_coach`, `fitness_coach`, `medical_staff`) and status (`active` or `reserve`).
+3. WHEN a Club Admin submits the coach squad request, THE System SHALL set `SeasonClubCoach.requestStatus = 'pending'` and notify the League Admin.
+4. THE System SHALL enforce that only Club Admins scoped to the relevant club can submit coach squad requests.
+
+---
+
+### Requirement 26: Season Squad Approval — Players (League Admin)
+
+**User Story:** As a League Admin, I want to review and approve or reject player squad requests from clubs, so that only validated players become match-eligible.
+
+#### Acceptance Criteria
+
+1. WHEN a League Admin views squad requests for a season, THE System SHALL display all `SeasonClubPlayer` records with `requestStatus = 'pending'`, grouped by club.
+2. THE League Admin SHALL be able to approve or reject each player request individually.
+3. THE League Admin SHALL NOT be able to edit any fields (jersey number, position, role) — only approve or reject.
+4. WHEN a League Admin approves a player request, THE System SHALL set `SeasonClubPlayer.requestStatus = 'approved'` and notify the Club Admin.
+5. WHEN a League Admin rejects a player request, THE System SHALL set `SeasonClubPlayer.requestStatus = 'rejected'` and notify the Club Admin with the rejection.
+6. WHEN a player request is rejected, THE Club Admin SHALL be able to correct and resubmit that player.
+7. THE System SHALL enforce that only approved players (`requestStatus = 'approved'`) are eligible for lineup submission and match events.
+8. THE System SHALL enforce that League Admins can only review requests for seasons within their assigned league.
+
+---
+
+### Requirement 27: Season Squad Approval — Coaches (League Admin)
+
+**User Story:** As a League Admin, I want to review and approve or reject coach squad requests from clubs, so that only validated coaching staff are officially registered for the season.
+
+#### Acceptance Criteria
+
+1. THE League Admin SHALL be able to approve or reject each coach request individually — no editing allowed.
+2. WHEN approved, `SeasonClubCoach.requestStatus = 'approved'`; WHEN rejected, `SeasonClubCoach.requestStatus = 'rejected'`.
+3. THE System SHALL notify the Club Admin of the approval or rejection outcome.

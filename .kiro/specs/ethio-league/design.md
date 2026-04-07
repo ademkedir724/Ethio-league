@@ -525,3 +525,126 @@ Generate random wrong passwords and short passwords; assert both are rejected wi
 
 **Property 13 test** — `// Feature: ethio-league, Property 13: Notification isolation`
 Generate random users with interleaved notifications; assert each user's query returns only their own notifications.
+
+
+---
+
+## Phase 10 Additions: Squad Request Workflow
+
+### Schema Changes
+
+The following additive changes are required to support the squad request workflow:
+
+**`Player` model** — add origin club marker:
+```prisma
+clubId  String?  @db.Uuid
+club    Club?    @relation("PlayerOriginClub", fields: [clubId], references: [id])
+```
+
+**`Coach` model** — add origin club marker:
+```prisma
+clubId  String?  @db.Uuid
+club    Club?    @relation("CoachOriginClub", fields: [clubId], references: [id])
+```
+
+**`Club` model** — add reverse relations:
+```prisma
+players  Player[]  @relation("PlayerOriginClub")
+coaches  Coach[]   @relation("CoachOriginClub")
+```
+
+**`SeasonClubPlayer` model** — add request workflow fields:
+```prisma
+requestStatus  String   @default("approved")   // pending | approved | rejected
+playerRole     String?                          // starter | reserve
+```
+Default is `"approved"` to preserve backward compatibility with the existing direct-assignment flow used by League Admins.
+
+**`SeasonClubCoach` model** — add request workflow field:
+```prisma
+requestStatus  String   @default("approved")   // pending | approved | rejected
+```
+
+### New API Endpoints
+
+```
+POST   /api/seasons/[id]/squad-request/players     — Club Admin submits player squad request
+POST   /api/seasons/[id]/squad-request/coaches     — Club Admin submits coach squad request
+PATCH  /api/seasons/[id]/players/[scpId]/review    — League Admin approves/rejects player request
+PATCH  /api/seasons/[id]/coaches/[sccId]/review    — League Admin approves/rejects coach request
+```
+
+### Modified API Endpoints
+
+**`POST /api/players`** — when caller is `club_admin`, set `clubId = auth.clubId` on the created player.
+
+**`POST /api/coaches`** — when caller is `club_admin`, set `clubId = auth.clubId` on the created coach.
+
+**`GET /api/players`** — for `club_admin`, change filter from season-based to `where: { clubId: auth.clubId }`. This returns all players the club has ever registered, including those not yet in any season.
+
+**`GET /api/coaches`** — same fix as players for `club_admin`.
+
+**`POST /api/matches/[id]/lineups`** — add validation that all `seasonClubPlayerIds` have `requestStatus = 'approved'`. Return 400 listing unapproved players if validation fails.
+
+**`POST /api/match-events`** — add validation that the player has a `SeasonClubPlayer` record with `requestStatus = 'approved'` for the match's season. Return 400 if not approved.
+
+### Squad Request Data Flow
+
+```
+Club Admin submits squad request
+  → POST /api/seasons/[id]/squad-request/players
+      { players: [{ playerId, jerseyNumber, positionId, playerRole, seasonClubId }] }
+  → assertClubScope(auth, seasonClub.clubId) — 403 on failure
+  → validate jersey uniqueness within seasonClub — 400 on duplicate
+  → validate player not already approved in another club for this season — 400 on conflict
+  → upsert SeasonClubPlayer records with requestStatus = 'pending'
+  → notify League Admin
+  → return created/updated records
+
+League Admin reviews
+  → PATCH /api/seasons/[id]/players/[scpId]/review { action: 'approve' | 'reject' }
+  → assertSeasonScope(auth, season.id) — 403 on failure
+  → update SeasonClubPlayer.requestStatus = action === 'approve' ? 'approved' : 'rejected'
+  → notify Club Admin
+  → return updated record
+```
+
+---
+
+### Property 15: Club pool scoping
+
+For any Club Admin, `GET /api/players` should return only players where `player.clubId = auth.clubId`. Players from other clubs or players with a null `clubId` should never appear in the response.
+
+**Validates: Requirements 22.2, 23.2**
+
+---
+
+### Property 16: Squad request pending state
+
+For any squad request submission by a Club Admin, all submitted `SeasonClubPlayer` records should have `requestStatus = 'pending'` immediately after submission and before any League Admin action.
+
+**Validates: Requirements 24.5, 25.3**
+
+---
+
+### Property 17: League Admin cannot edit squad request fields
+
+For any PATCH to `/api/seasons/[id]/players/[scpId]/review`, the only field that changes is `requestStatus`. Any attempt to change `jerseyNumber`, `positionId`, or `playerRole` via this endpoint should be ignored or rejected — those values must remain identical to their pre-request values.
+
+**Validates: Requirements 26.3**
+
+---
+
+### Property 18: Only approved players in lineups
+
+For any lineup submission, every `seasonClubPlayerId` in the submission must correspond to a `SeasonClubPlayer` record with `requestStatus = 'approved'`. Any lineup containing a player with `requestStatus != 'approved'` must be rejected with a 400 error.
+
+**Validates: Requirements 26.7**
+
+---
+
+### Property 19: Jersey number uniqueness per club per season
+
+For any two `SeasonClubPlayer` records belonging to the same `seasonClubId`, their `jerseyNumber` values must be distinct (when not null). Any submission that would create a duplicate jersey number within the same `seasonClubId` must be rejected with a 400 error.
+
+**Validates: Requirements 24.3**
