@@ -114,6 +114,7 @@ model League {
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   leagueType     LeagueType?     @relation(fields: [leagueTypeId], references: [id])
   seasons        Season[]
+  clubs          Club[]
   userRoleScopes UserRoleScope[]
 
   @@unique([organizationId, name])
@@ -132,11 +133,13 @@ model Club {
   website          String?
   description      String?
   status           String   @default("active")
+  leagueId         String?  @db.Uuid
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   primaryStadium Stadium?  @relation("PrimaryStadium", fields: [primaryStadiumId], references: [id])
   ownedStadiums  Stadium[] @relation("StadiumOwner")
+  league         League?   @relation(fields: [leagueId], references: [id])
   seasonClubs    SeasonClub[]
   homeMatches    Match[]   @relation("HomeClub")
   awayMatches    Match[]   @relation("AwayClub")

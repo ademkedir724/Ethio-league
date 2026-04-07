@@ -102,8 +102,6 @@ function LeagueAdminClubsView() {
   const [isSaving, setIsSaving] = useState(false);
   const [setupLink, setSetupLink] = useState<string | null>(null);
   const [setupEmail, setSetupEmail] = useState("");
-  const [approveTarget, setApproveTarget] = useState<Club | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<Club | null>(null);
 
   const filtered = useMemo(() => {
     return clubs.filter((c) => {
@@ -159,45 +157,8 @@ function LeagueAdminClubsView() {
     }
   };
 
-  const handleApprove = async () => {
-    if (!approveTarget) return;
-    try {
-      const res = await fetchWithAuth(`/api/clubs/${approveTarget.id}/approve`, {
-        method: "POST",
-        body: JSON.stringify({ action: "approve" }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        toast.error(data.error || "Failed to approve club");
-        return;
-      }
-      toast.success(`${approveTarget.name} approved`);
-      setApproveTarget(null);
-      mutate("/api/clubs");
-    } catch {
-      toast.error("Failed to approve club");
-    }
-  };
-
-  const handleReject = async () => {
-    if (!rejectTarget) return;
-    try {
-      const res = await fetchWithAuth(`/api/clubs/${rejectTarget.id}/approve`, {
-        method: "POST",
-        body: JSON.stringify({ action: "reject" }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        toast.error(data.error || "Failed to reject club");
-        return;
-      }
-      toast.success(`${rejectTarget.name} rejected`);
-      setRejectTarget(null);
-      mutate("/api/clubs");
-    } catch {
-      toast.error("Failed to reject club");
-    }
-  };
+  const handleApprove = async () => { /* removed — org admin only */ };
+  const handleReject = async () => { /* removed — org admin only */ };
 
   const columns: Column<Club>[] = [
     {
@@ -237,33 +198,11 @@ function LeagueAdminClubsView() {
       key: "actions",
       header: "",
       className: "w-24",
-      render: (c) => {
-        if (c.status === "pending") {
-          return (
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost" size="icon"
-                className="h-8 w-8 text-emerald-400 hover:text-emerald-400 hover:bg-emerald-400/10"
-                onClick={() => setApproveTarget(c)}
-              >
-                <Check className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost" size="icon"
-                className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                onClick={() => setRejectTarget(c)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          );
-        }
-        return (
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-            <Eye className="h-4 w-4" />
-          </Button>
-        );
-      },
+      render: (c) => (
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+          <Eye className="h-4 w-4" />
+        </Button>
+      ),
     },
   ];
 
@@ -428,26 +367,6 @@ function LeagueAdminClubsView() {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Approve / Reject confirmations */}
-      <ConfirmDialog
-        open={!!approveTarget}
-        onOpenChange={(open) => !open && setApproveTarget(null)}
-        title="Approve Club"
-        description={`Approve "${approveTarget?.name}"? They will be able to participate in the season.`}
-        confirmLabel="Approve"
-        variant="default"
-        onConfirm={handleApprove}
-      />
-      <ConfirmDialog
-        open={!!rejectTarget}
-        onOpenChange={(open) => !open && setRejectTarget(null)}
-        title="Reject Club"
-        description={`Reject "${rejectTarget?.name}"? The club admin will be notified.`}
-        confirmLabel="Reject"
-        variant="destructive"
-        onConfirm={handleReject}
-      />
     </div>
   );
 }
