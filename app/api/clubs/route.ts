@@ -17,16 +17,19 @@ export async function GET(req: NextRequest) {
 
     const isOrgAdmin = auth.roles.some((r) => r.roleName === "organization_admin");
     const isLeagueAdmin = auth.roles.some((r) => r.roleName === "league_admin");
+    const isSuperAdmin = auth.roles.some((r) => r.roleName === "super_admin");
 
-    if (isOrgAdmin) {
+    if (isSuperAdmin) {
+      // no filter
+    } else if (isOrgAdmin) {
       const orgId = auth.roles.find((r) => r.roleName === "organization_admin")?.organizationId;
       if (orgId) {
-        where.seasonClubs = { some: { season: { league: { organizationId: orgId } } } };
+        where.league = { organizationId: orgId };
       }
     } else if (isLeagueAdmin) {
       const leagueId = auth.roles.find((r) => r.roleName === "league_admin")?.leagueId;
       if (leagueId) {
-        where.seasonClubs = { some: { season: { leagueId } } };
+        where.leagueId = leagueId;
       }
     }
 
@@ -78,7 +81,7 @@ export async function POST(req: NextRequest) {
 
       const result = await prisma.$transaction(async (tx) => {
         const club = await tx.club.create({
-          data: { name, status: "pending" },
+          data: { name, status: "pending", leagueId: leagueAdminRole.leagueId },
         });
 
         const user = await tx.user.create({

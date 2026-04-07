@@ -29,33 +29,21 @@ export async function POST(
     const club = await prisma.club.findUnique({
       where: { id: clubId },
       include: {
-        seasonClubs: {
-          include: {
-            season: {
-              include: {
-                league: { select: { organizationId: true } },
-              },
-            },
-          },
-          take: 1,
-        },
+        league: { select: { organizationId: true } },
       },
     });
 
-    if (!club) {
-      return notFound("Club not found");
-    }
+    if (!club) return notFound("Club not found");
 
-    // Get the organization ID from the club's season registration
-    const organizationId = club.seasonClubs[0]?.season?.league?.organizationId;
+    // Derive org from club.leagueId (new flow) or fall back to seasonClubs (legacy)
+    const organizationId = club.league?.organizationId;
 
-    // Auth check: super_admin or org admin of the organization
-    const isSuperAdmin = hasRole(auth, ["super_admin"]);
+    // Auth check: org_admin only (not league_admin, not super_admin)
     const isOrgAdmin = organizationId
       ? hasOrgRole(auth, "organization_admin", organizationId)
       : false;
 
-    if (!isSuperAdmin && !isOrgAdmin) {
+    if (!isOrgAdmin) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
