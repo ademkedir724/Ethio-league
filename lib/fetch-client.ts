@@ -48,11 +48,14 @@ export async function fetchWithAuth(
 
 /**
  * SWR fetcher that uses auth tokens.
+ * Handles 401 by attempting a token refresh before throwing.
  */
 export const authFetcher = async (url: string) => {
   const res = await fetchWithAuth(url);
   if (!res.ok) {
-    const error = new Error("Fetch failed");
+    // fetchWithAuth already attempted a refresh on 401 and retried.
+    // If still not ok, throw so SWR shows an error state (not a redirect).
+    const error = new Error(`Fetch failed: ${res.status}`);
     throw error;
   }
   return res.json();

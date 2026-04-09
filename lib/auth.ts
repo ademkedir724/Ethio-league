@@ -7,8 +7,8 @@ const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production";
 const JWT_REFRESH_SECRET =
   process.env.JWT_REFRESH_SECRET || "change-me-refresh-in-production";
 
-const ACCESS_TOKEN_EXPIRES = "15m";
-const REFRESH_TOKEN_EXPIRES = "7d";
+const ACCESS_TOKEN_EXPIRES = "8h";
+const REFRESH_TOKEN_EXPIRES = "30d";
 
 // ─── Password Helpers ───────────────────────────────────────
 

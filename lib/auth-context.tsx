@@ -53,19 +53,100 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const storedToken = localStorage.getItem("accessToken");
+    const storedRefreshToken = localStorage.getItem("refreshToken");
     const storedUser = localStorage.getItem("user");
-    if (storedToken && storedUser) {
+
+    if (!storedToken || !storedUser) {
+      setIsLoading(false);
+      return;
+    }
+
+    // Check if the access token is expired or close to expiry (within 5 min)
+    const isTokenExpiredOrSoon = (token: string): boolean => {
       try {
-        setToken(storedToken);
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        const expiresAt = payload.exp * 1000;
+        return Date.now() >= expiresAt - 5 * 60 * 1000;
+      } catch {
+        return true;
+      }
+    };
+
+    const initAuth = async () => {
+      try {
+        if (isTokenExpiredOrSoon(storedToken) && storedRefreshToken) {
+          // Proactively refresh before setting state
+          const refreshRes = await fetch("/api/auth/refresh-token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refreshToken: storedRefreshToken }),
+          });
+
+          if (refreshRes.ok) {
+            const data = await refreshRes.json();
+            localStorage.setItem("accessToken", data.accessToken);
+            if (data.refreshToken) {
+              localStorage.setItem("refreshToken", data.refreshToken);
+            }
+            setToken(data.accessToken);
+          } else {
+            // Refresh failed — clear everything
+            localStorage.removeItem("accessToken");
+            localStorage.removeItem("refreshToken");
+            localStorage.removeItem("user");
+            setIsLoading(false);
+            return;
+          }
+        } else {
+          setToken(storedToken);
+        }
+
         setUser(JSON.parse(storedUser));
       } catch {
         localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
         localStorage.removeItem("user");
+      } finally {
+        setIsLoading(false);
       }
-    }
-    setIsLoading(false);
+    };
+
+    initAuth();
   }, []);
+
+  // Proactively refresh the access token every 7 hours while the tab is open
+  useEffect(() => {
+    if (!token) return;
+
+    const REFRESH_INTERVAL = 7 * 60 * 60 * 1000; // 7 hours
+
+    const interval = setInterval(async () => {
+      const refreshToken = localStorage.getItem("refreshToken");
+      if (!refreshToken) return;
+
+      try {
+        const res = await fetch("/api/auth/refresh-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          localStorage.setItem("accessToken", data.accessToken);
+          if (data.refreshToken) {
+            localStorage.setItem("refreshToken", data.refreshToken);
+          }
+          setToken(data.accessToken);
+        }
+        // If refresh fails, let the next API call handle the 401 naturally
+      } catch {
+        // Network error — don't log out, just wait for next interval
+      }
+    }, REFRESH_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [token]);
 
   const login = useCallback(
     async (email: string, password: string) => {
