@@ -30,6 +30,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Trophy, Plus, MoreHorizontal, Pencil, Trash2, Eye, UserX } from "lucide-react";
 import { toast } from "sonner";
 
@@ -43,6 +51,71 @@ interface Coach {
   experienceYears: number;
   club: string;
   role: string;
+  clubId?: string | null;
+  originClub?: { id: string; name: string } | null;
+  seasonClubCoaches?: Array<{
+    id: string;
+    role: string;
+    status: string;
+    requestStatus: string;
+    seasonClub: {
+      season: { id: string; name: string; status: string };
+      club: { id: string; name: string };
+    };
+  }>;
+}
+
+function CoachDetailDialog({ coachId, open, onClose }: { coachId: string | null; open: boolean; onClose: () => void }) {
+  const { data: coach, isLoading } = useSWR<Coach>(
+    open && coachId ? `/api/coaches/${coachId}` : null,
+    authFetcher
+  );
+
+  const currentSeason = coach?.seasonClubCoaches?.find((scc) => scc.seasonClub.season.status === "active");
+  const pastSeasons = coach?.seasonClubCoaches?.filter((scc) => scc.seasonClub.season.status !== "active") ?? [];
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{coach ? `${coach.firstName} ${coach.lastName}` : "Coach Details"}</DialogTitle>
+          <DialogDescription>{coach?.licenseLevel ?? ""} · {coach?.nationality ?? ""}</DialogDescription>
+        </DialogHeader>
+        {isLoading ? <Skeleton className="h-32 w-full" /> : coach ? (
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div><span className="text-muted-foreground">Date of Birth</span><p className="font-medium">{coach.dateOfBirth ? new Date(coach.dateOfBirth).toLocaleDateString() : "—"}</p></div>
+              <div><span className="text-muted-foreground">Experience</span><p className="font-medium">{coach.experienceYears ? `${coach.experienceYears} years` : "—"}</p></div>
+              <div><span className="text-muted-foreground">License</span><p className="font-medium">{coach.licenseLevel ?? "—"}</p></div>
+              <div><span className="text-muted-foreground">Origin Club</span><p className="font-medium">{coach.originClub?.name ?? "—"}</p></div>
+            </div>
+            {currentSeason && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Current Season</p>
+                <div className="rounded-md border border-border p-3 text-sm">
+                  <p className="font-medium">{currentSeason.seasonClub.season.name} — {currentSeason.seasonClub.club.name}</p>
+                  <p className="text-muted-foreground text-xs mt-1 capitalize">{currentSeason.role.replace(/_/g, " ")} · {currentSeason.status}</p>
+                </div>
+              </div>
+            )}
+            {pastSeasons.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Season History</p>
+                <div className="flex flex-col gap-2">
+                  {pastSeasons.map((scc) => (
+                    <div key={scc.id} className="rounded-md border border-border p-3 text-sm">
+                      <p className="font-medium">{scc.seasonClub.season.name} — {scc.seasonClub.club.name}</p>
+                      <p className="text-muted-foreground text-xs mt-1 capitalize">{scc.role.replace(/_/g, " ")}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 const licenseLevelColors: Record<string, string> = {
@@ -93,6 +166,7 @@ export default function CoachesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Coach | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
+  const [detailCoachId, setDetailCoachId] = useState<string | null>(null);
 
   const clubs = useMemo(() => {
     const set = new Set(coaches.map((c) => c.club));
@@ -312,7 +386,8 @@ export default function CoachesPage() {
           header: "",
           className: "w-12",
           render: (c: Coach) => (
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
+              onClick={() => setDetailCoachId(c.id)}>
               <Eye className="h-4 w-4" />
               <span className="sr-only">View</span>
             </Button>
@@ -474,6 +549,7 @@ export default function CoachesPage() {
           />
         </>
       )}
+      <CoachDetailDialog coachId={detailCoachId} open={!!detailCoachId} onClose={() => setDetailCoachId(null)} />
     </div>
   );
 }

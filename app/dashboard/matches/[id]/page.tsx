@@ -34,17 +34,16 @@ import { ArrowLeft, CheckCircle, Pencil } from "lucide-react";
 
 interface Match {
     id: string;
-    homeClub: string;
-    awayClub: string;
+    homeClub: { id: string; name: string; shortName?: string | null };
+    awayClub: { id: string; name: string; shortName?: string | null };
     homeClubId: string;
     awayClubId: string;
     homeScore: number | null;
     awayScore: number | null;
     matchDate: string;
-    stadium: string;
+    stadium: { id: string; name: string } | null;
     status: string;
-    season: string;
-    league: string;
+    season: { id: string; name: string };
     roundNumber: number | null;
 }
 
@@ -144,10 +143,10 @@ export default function MatchDetailPage() {
     const canLogEvents = match?.status === "live" && (isMEA() || isLeagueAdmin() || isSuperAdmin());
 
     const homeLineup = lineups.filter(
-        (l) => l.seasonClubPlayer.seasonClub.club.id === match?.homeClubId
+        (l) => l.seasonClubPlayer.seasonClub.club.id === match?.homeClub?.id
     );
     const awayLineup = lineups.filter(
-        (l) => l.seasonClubPlayer.seasonClub.club.id === match?.awayClubId
+        (l) => l.seasonClubPlayer.seasonClub.club.id === match?.awayClub?.id
     );
 
     // ── Handlers ───────────────────────────────────────────────────────────────
@@ -174,7 +173,7 @@ export default function MatchDetailPage() {
         setSubmittingEvent(true);
         try {
             const clubId =
-                eventForm.clubSide === "home" ? match.homeClubId : match.awayClubId;
+                eventForm.clubSide === "home" ? match.homeClub?.id : match.awayClub?.id;
             const res = await fetchWithAuth("/api/match-events", {
                 method: "POST",
                 body: JSON.stringify({
@@ -222,7 +221,7 @@ export default function MatchDetailPage() {
         setSavingEdit(true);
         try {
             const clubId =
-                editForm.clubSide === "home" ? match.homeClubId : match.awayClubId;
+                editForm.clubSide === "home" ? match.homeClub?.id : match.awayClub?.id;
             const res = await fetchWithAuth(`/api/match-events/${editingEvent.id}`, {
                 method: "PATCH",
                 body: JSON.stringify({
@@ -298,7 +297,7 @@ export default function MatchDetailPage() {
         );
     }
 
-    const matchTitle = `${match.homeClub} vs ${match.awayClub}`;
+    const matchTitle = `${match.homeClub?.name} vs ${match.awayClub?.name}`;
     const matchDate = new Date(match.matchDate).toLocaleString("en-GB", {
         day: "numeric",
         month: "short",
@@ -310,7 +309,7 @@ export default function MatchDetailPage() {
     return (
         <div className="flex flex-col gap-6">
             {/* Header */}
-            <PageHeader title={matchTitle} description={`${match.league} · ${match.season}`}>
+            <PageHeader title={matchTitle} description={`${match.season?.name ?? ""}`}>
                 <Button variant="outline" size="sm" onClick={() => router.back()}>
                     <ArrowLeft className="h-4 w-4" />
                     Back
@@ -322,7 +321,7 @@ export default function MatchDetailPage() {
                 <CardContent className="p-6">
                     <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
                         <div className="flex flex-col items-center gap-1 sm:items-start">
-                            <span className="text-lg font-semibold text-foreground">{match.homeClub}</span>
+                            <span className="text-lg font-semibold text-foreground">{match.homeClub?.name}</span>
                             <span className="text-xs text-muted-foreground">Home</span>
                         </div>
                         <div className="flex flex-col items-center gap-2">
@@ -334,11 +333,11 @@ export default function MatchDetailPage() {
                             <StatusBadge status={match.status} />
                             <span className="text-xs text-muted-foreground">{matchDate}</span>
                             {match.stadium && (
-                                <span className="text-xs text-muted-foreground">{match.stadium}</span>
+                                <span className="text-xs text-muted-foreground">{match.stadium?.name}</span>
                             )}
                         </div>
                         <div className="flex flex-col items-center gap-1 sm:items-end">
-                            <span className="text-lg font-semibold text-foreground">{match.awayClub}</span>
+                            <span className="text-lg font-semibold text-foreground">{match.awayClub?.name}</span>
                             <span className="text-xs text-muted-foreground">Away</span>
                         </div>
                     </div>
@@ -412,12 +411,12 @@ export default function MatchDetailPage() {
                 {/* Lineups */}
                 <div className="flex flex-col gap-4">
                     <LineupPanel
-                        title={`${match.homeClub} Lineup`}
+                        title={`${match.homeClub?.name} Lineup`}
                         entries={homeLineup}
                         isLoading={lineupsLoading}
                     />
                     <LineupPanel
-                        title={`${match.awayClub} Lineup`}
+                        title={`${match.awayClub?.name} Lineup`}
                         entries={awayLineup}
                         isLoading={lineupsLoading}
                     />
@@ -484,8 +483,8 @@ export default function MatchDetailPage() {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="home">{match.homeClub} (Home)</SelectItem>
-                                        <SelectItem value="away">{match.awayClub} (Away)</SelectItem>
+                                        <SelectItem value="home">{match.homeClub?.name} (Home)</SelectItem>
+                                        <SelectItem value="away">{match.awayClub?.name} (Away)</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -608,8 +607,8 @@ export default function MatchDetailPage() {
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="home">{match.homeClub} (Home)</SelectItem>
-                                    <SelectItem value="away">{match.awayClub} (Away)</SelectItem>
+                                    <SelectItem value="home">{match.homeClub?.name} (Home)</SelectItem>
+                                    <SelectItem value="away">{match.awayClub?.name} (Away)</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>

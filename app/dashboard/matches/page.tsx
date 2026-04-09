@@ -35,14 +35,13 @@ import { useRouter } from "next/navigation";
 
 interface Match {
   id: string;
-  homeClub: string;
-  awayClub: string;
+  homeClub: { id: string; name: string; shortName?: string | null };
+  awayClub: { id: string; name: string; shortName?: string | null };
   homeScore: number | null;
   awayScore: number | null;
   matchDate: string;
-  stadium: string;
-  season: string;
-  league: string;
+  stadium: { id: string; name: string } | null;
+  season: { id: string; name: string; leagueId: string };
   roundNumber: number | null;
   status: string;
 }
@@ -65,12 +64,8 @@ export default function MatchesPage() {
 
   const leagueId = getLeagueId();
 
-  // Build API URL based on role
-  const apiUrl = isLeagueAdmin() && leagueId
-    ? `/api/matches?leagueId=${leagueId}`
-    : isOrgAdmin() && orgId
-      ? `/api/matches?organizationId=${orgId}`
-      : "/api/matches";
+  // Build API URL based on role — matches API filters by role server-side
+  const apiUrl = "/api/matches";
 
   const { data, isLoading: matchesLoading, error } = useSWR(apiUrl, authFetcher, {
     fallbackData: undefined,
@@ -93,18 +88,21 @@ export default function MatchesPage() {
   const [form, setForm] = useState(emptyForm);
 
   const leagues = useMemo(() => {
-    const set = new Set(matches.map((m) => m.league));
-    return Array.from(set).sort();
+    const set = new Set(matches.map((m) => m.season?.name ?? ""));
+    return Array.from(set).filter(Boolean).sort();
   }, [matches]);
 
   const filtered = useMemo(() => {
     return matches.filter((m) => {
+      const home = m.homeClub?.name ?? "";
+      const away = m.awayClub?.name ?? "";
+      const stadium = m.stadium?.name ?? "";
       const matchesSearch =
-        m.homeClub.toLowerCase().includes(search.toLowerCase()) ||
-        m.awayClub.toLowerCase().includes(search.toLowerCase()) ||
-        m.stadium.toLowerCase().includes(search.toLowerCase());
+        home.toLowerCase().includes(search.toLowerCase()) ||
+        away.toLowerCase().includes(search.toLowerCase()) ||
+        stadium.toLowerCase().includes(search.toLowerCase());
       const matchesStatus = statusFilter === "all" || m.status === statusFilter;
-      const matchesLeague = leagueFilter === "all" || m.league === leagueFilter;
+      const matchesLeague = leagueFilter === "all" || (m.season?.name ?? "") === leagueFilter;
       return matchesSearch && matchesStatus && matchesLeague;
     });
   }, [matches, search, statusFilter, leagueFilter]);
@@ -125,11 +123,11 @@ export default function MatchesPage() {
   const openEdit = (match: Match) => {
     setEditingMatch(match);
     setForm({
-      homeClub: match.homeClub,
-      awayClub: match.awayClub,
+      homeClub: match.homeClub?.name ?? "",
+      awayClub: match.awayClub?.name ?? "",
       matchDate: match.matchDate.slice(0, 16),
-      stadium: match.stadium,
-      season: match.season,
+      stadium: match.stadium?.name ?? "",
+      season: match.season?.name ?? "",
       roundNumber: match.roundNumber?.toString() ?? "",
     });
     setFormOpen(true);
@@ -261,8 +259,8 @@ export default function MatchesPage() {
           className="flex flex-col cursor-pointer hover:opacity-80"
           onClick={() => router.push(`/dashboard/matches/${m.id}`)}
         >
-          <span className="text-sm font-medium text-foreground">{m.homeClub}</span>
-          <span className="text-xs text-muted-foreground">vs {m.awayClub}</span>
+          <span className="text-sm font-medium text-foreground">{m.homeClub?.name}</span>
+          <span className="text-xs text-muted-foreground">vs {m.awayClub?.name}</span>
         </div>
       ),
     },
@@ -293,10 +291,10 @@ export default function MatchesPage() {
     },
     {
       key: "league",
-      header: "League",
+      header: "Season",
       className: "hidden lg:table-cell",
       render: (m) => (
-        <span className="text-sm text-muted-foreground line-clamp-1">{m.league}</span>
+        <span className="text-sm text-muted-foreground line-clamp-1">{m.season?.name}</span>
       ),
     },
     {
@@ -525,7 +523,7 @@ export default function MatchesPage() {
             open={!!deleteTarget}
             onOpenChange={(open) => !open && setDeleteTarget(null)}
             title="Delete Match"
-            description={`Are you sure you want to delete "${deleteTarget?.homeClub} vs ${deleteTarget?.awayClub}"? This action cannot be undone.`}
+            description={`Are you sure you want to delete "${deleteTarget?.homeClub?.name} vs ${deleteTarget?.awayClub?.name}"? This action cannot be undone.`}
             confirmLabel="Delete"
             variant="destructive"
             onConfirm={handleDelete}
