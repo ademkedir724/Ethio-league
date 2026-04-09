@@ -30,7 +30,15 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { ChevronLeft, Plus, Shield, Users, Check, X, UserCircle } from "lucide-react";
+import { ChevronLeft, Plus, Shield, Users, Check, X, UserCircle, Swords } from "lucide-react";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -131,6 +139,10 @@ export default function SeasonDetailPage() {
                     <p className="text-sm font-medium">{season._count.seasonClubs}{season.requiredClubs ? ` / ${season.requiredClubs}` : ""}</p>
                 </CardContent></Card>
                 <Card><CardContent className="p-4">
+                    <p className="text-xs text-muted-foreground mb-1">Fixtures</p>
+                    <p className="text-sm font-medium">{season._count.matches}</p>
+                </CardContent></Card>
+                <Card><CardContent className="p-4">
                     <p className="text-xs text-muted-foreground mb-1">Format</p>
                     <p className="text-sm font-medium capitalize">{season.roundRobinType ?? "double"} round-robin</p>
                 </CardContent></Card>
@@ -143,6 +155,117 @@ export default function SeasonDetailPage() {
             {/* Role-specific tabs */}
             {isLeagueAdmin() && <LeagueAdminSeasonTabs seasonId={seasonId} season={season} />}
             {isClubAdmin() && <ClubAdminSeasonView seasonId={seasonId} clubId={getClubId() ?? ""} />}
+            {/* Fixtures visible to all roles */}
+            {!isLeagueAdmin() && !isClubAdmin() && <SeasonFixturesTab seasonId={seasonId} />}
+        </div>
+    );
+}
+
+// ─── Fixtures Tab (all roles) ─────────────────────────────────────────────────
+
+interface FixtureMatch {
+    id: string;
+    matchDate: string;
+    roundNumber: number | null;
+    status: string;
+    homeScore: number | null;
+    awayScore: number | null;
+    homeClub: { id: string; name: string };
+    awayClub: { id: string; name: string };
+    stadium: { id: string; name: string } | null;
+}
+
+function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
+    const router = useRouter();
+    const { data: fixtures, isLoading } = useSWR<FixtureMatch[]>(
+        `/api/matches?seasonId=${seasonId}`,
+        authFetcher
+    );
+
+    const formatMatchDate = (d: string) =>
+        new Date(d).toLocaleString(undefined, {
+            day: "numeric", month: "short", year: "numeric",
+            hour: "2-digit", minute: "2-digit",
+        });
+
+    const byRound = (fixtures ?? []).reduce<Record<string, FixtureMatch[]>>((acc, m) => {
+        const key = m.roundNumber ? `Round ${m.roundNumber}` : "Unscheduled";
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(m);
+        return acc;
+    }, {});
+
+    const rounds = Object.keys(byRound).sort((a, b) => {
+        const na = parseInt(a.replace("Round ", "")) || 999;
+        const nb = parseInt(b.replace("Round ", "")) || 999;
+        return na - nb;
+    });
+
+    return (
+        <div className="flex flex-col gap-4 mt-4">
+            {isLoading ? (
+                <div className="flex flex-col gap-2">
+                    {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}
+                </div>
+            ) : fixtures && fixtures.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-12 text-center">
+                    <Swords className="mb-2 h-8 w-8 text-muted-foreground/40" />
+                    <p className="text-sm text-muted-foreground">No fixtures generated yet.</p>
+                </div>
+            ) : (
+                <div className="flex flex-col gap-6">
+                    {rounds.map((round) => (
+                        <div key={round}>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{round}</p>
+                            <Card>
+                                <CardContent className="p-0">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Match</TableHead>
+                                                <TableHead className="hidden sm:table-cell">Date</TableHead>
+                                                <TableHead className="hidden md:table-cell">Stadium</TableHead>
+                                                <TableHead>Score</TableHead>
+                                                <TableHead>Status</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {byRound[round].map((m) => (
+                                                <TableRow
+                                                    key={m.id}
+                                                    className="cursor-pointer hover:bg-muted/30"
+                                                    onClick={() => router.push(`/dashboard/matches/${m.id}`)}
+                                                >
+                                                    <TableCell>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-sm font-medium">{m.homeClub.name}</span>
+                                                            <span className="text-xs text-muted-foreground">vs {m.awayClub.name}</span>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                                                        {formatMatchDate(m.matchDate)}
+                                                    </TableCell>
+                                                    <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+                                                        {m.stadium?.name ?? "—"}
+                                                    </TableCell>
+                                                    <TableCell className="font-mono text-sm font-semibold">
+                                                        {m.homeScore !== null && m.awayScore !== null
+                                                            ? `${m.homeScore} - ${m.awayScore}`
+                                                            : "- vs -"}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <StatusBadge status={m.status} />
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
@@ -154,10 +277,14 @@ function LeagueAdminSeasonTabs({ seasonId, season }: { seasonId: string; season:
         <Tabs defaultValue="clubs">
             <TabsList>
                 <TabsTrigger value="clubs">Clubs</TabsTrigger>
+                <TabsTrigger value="fixtures">Fixtures</TabsTrigger>
                 <TabsTrigger value="players">Players</TabsTrigger>
             </TabsList>
             <TabsContent value="clubs">
                 <SeasonClubsTab seasonId={seasonId} season={season} />
+            </TabsContent>
+            <TabsContent value="fixtures">
+                <SeasonFixturesTab seasonId={seasonId} />
             </TabsContent>
             <TabsContent value="players">
                 <SeasonPlayersTab seasonId={seasonId} />

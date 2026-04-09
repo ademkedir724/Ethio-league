@@ -29,233 +29,140 @@ import {
   Megaphone,
 } from "lucide-react";
 
-const mockRecentMatches = [
-  {
-    id: 1,
-    homeClub: "Ethio Electric SC",
-    awayClub: "St. George FC",
-    score: "2 - 1",
-    status: "completed",
-    date: "2026-03-01",
-  },
-  {
-    id: 2,
-    homeClub: "Fasil Kenema FC",
-    awayClub: "Hawassa Ketema FC",
-    score: "0 - 0",
-    status: "live",
-    date: "2026-03-03",
-  },
-  {
-    id: 3,
-    homeClub: "Adama Ketema FC",
-    awayClub: "Dire Dawa Ketema FC",
-    score: "- vs -",
-    status: "scheduled",
-    date: "2026-03-06",
-  },
-  {
-    id: 4,
-    homeClub: "Wolaita Dicha FC",
-    awayClub: "Sidama Bunna FC",
-    score: "3 - 2",
-    status: "completed",
-    date: "2026-02-28",
-  },
-  {
-    id: 5,
-    homeClub: "Bahir Dar Ketema FC",
-    awayClub: "Jimma Aba Jifar FC",
-    score: "- vs -",
-    status: "upcoming",
-    date: "2026-03-08",
-  },
-];
-
-const mockRecentUsers = [
-  {
-    id: 1,
-    fullName: "Abebe Kebede",
-    email: "abebe@ethioleague.com",
-    role: "Organization Admin",
-    status: "active",
-  },
-  {
-    id: 2,
-    fullName: "Tigist Haile",
-    email: "tigist@ethioleague.com",
-    role: "Club Admin",
-    status: "active",
-  },
-  {
-    id: 3,
-    fullName: "Dawit Mengistu",
-    email: "dawit@ethioleague.com",
-    role: "League Admin",
-    status: "pending",
-  },
-  {
-    id: 4,
-    fullName: "Sara Tesfaye",
-    email: "sara@ethioleague.com",
-    role: "Match Event Admin",
-    status: "active",
-  },
-];
 
 function SuperAdminOverview() {
-  const { data: stats, isLoading } = useSWR(
-    "/api/dashboard/stats",
-    authFetcher,
-    {
-      fallbackData: undefined,
-    }
-  );
+  const { data: stats, isLoading } = useSWR("/api/dashboard/stats", authFetcher, { fallbackData: undefined });
+  const { data: recentMatches, isLoading: matchesLoading } = useSWR("/api/matches?limit=5", authFetcher);
+  const { data: recentUsers, isLoading: usersLoading } = useSWR("/api/users?limit=5", authFetcher);
+  const { data: leagues, isLoading: leaguesLoading } = useSWR("/api/leagues", authFetcher);
 
   const displayStats = stats || {};
+  const matches = (recentMatches || []).slice(0, 5);
+  const users = (recentUsers || []).slice(0, 5);
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Dashboard Overview"
-        description="Welcome to the Ethio-League management dashboard."
-      />
+      <PageHeader title="Dashboard Overview" description="Welcome to the Ethio-League management dashboard." />
 
-      {/* Stat Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {isLoading ? (
           Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i} className="border-border bg-card">
-              <CardContent className="p-6">
-                <Skeleton className="h-16 w-full" />
-              </CardContent>
-            </Card>
+            <Card key={i} className="border-border bg-card"><CardContent className="p-6"><Skeleton className="h-16 w-full" /></CardContent></Card>
           ))
         ) : (
           <>
-            <StatCard
-              title="Organizations"
-              value={displayStats.organizations}
-              icon={Building2}
-              description="Registered organizations"
-            />
-            <StatCard
-              title="Clubs"
-              value={displayStats.clubs}
-              icon={Shield}
-              description="Active clubs"
-            />
-            <StatCard
-              title="Players"
-              value={displayStats.players}
-              icon={UserCircle}
-              description="Registered players"
-            />
-            <StatCard
-              title="Users"
-              value={displayStats.users}
-              icon={Users}
-              description="System users"
-            />
-            <StatCard
-              title="Seasons"
-              value={displayStats.seasons}
-              icon={Calendar}
-              description="Total seasons"
-            />
-            <StatCard
-              title="Matches"
-              value={displayStats.matches}
-              icon={Swords}
-              description="Total matches"
-            />
+            <StatCard title="Organizations" value={displayStats.organizations} icon={Building2} description="Registered organizations" />
+            <StatCard title="Clubs" value={displayStats.clubs} icon={Shield} description="Active clubs" />
+            <StatCard title="Players" value={displayStats.players} icon={UserCircle} description="Registered players" />
+            <StatCard title="Users" value={displayStats.users} icon={Users} description="System users" />
+            <StatCard title="Seasons" value={displayStats.seasons} icon={Calendar} description="Total seasons" />
+            <StatCard title="Matches" value={displayStats.matches} icon={Swords} description="Total matches" />
           </>
         )}
       </div>
 
-      {/* Recent Activity Grid */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Leagues */}
+        <Card className="border-border bg-card">
+          <CardHeader><CardTitle className="text-base font-semibold">Leagues</CardTitle></CardHeader>
+          <CardContent>
+            {leaguesLoading ? <Skeleton className="h-32 w-full" /> : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>League</TableHead>
+                    <TableHead>Seasons</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(leagues || []).slice(0, 5).map((l: { id: string; name: string; status: string; _count: { seasons: number } }) => (
+                    <TableRow key={l.id}>
+                      <TableCell className="text-sm font-medium">{l.name}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{l._count?.seasons ?? 0}</TableCell>
+                      <TableCell><StatusBadge status={l.status} /></TableCell>
+                    </TableRow>
+                  ))}
+                  {(!leagues || leagues.length === 0) && (
+                    <TableRow><TableCell colSpan={3} className="text-sm text-muted-foreground">No leagues yet.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Recent Matches */}
         <Card className="border-border bg-card">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold text-card-foreground">
-              Recent Matches
-            </CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="text-base font-semibold">Recent Matches</CardTitle></CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>Match</TableHead>
-                  <TableHead>Score</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {mockRecentMatches.map((match) => (
-                  <TableRow key={match.id}>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium text-foreground">
-                          {match.homeClub}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          vs {match.awayClub}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-mono text-sm text-foreground">
-                      {match.score}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={match.status} />
-                    </TableCell>
+            {matchesLoading ? <Skeleton className="h-32 w-full" /> : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Match</TableHead>
+                    <TableHead>Score</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {matches.map((m: { id: string; homeClub: { name: string }; awayClub: { name: string }; homeScore: number | null; awayScore: number | null; status: string }) => (
+                    <TableRow key={m.id}>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium">{m.homeClub?.name}</span>
+                          <span className="text-xs text-muted-foreground">vs {m.awayClub?.name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {m.homeScore != null && m.awayScore != null ? `${m.homeScore} - ${m.awayScore}` : "- vs -"}
+                      </TableCell>
+                      <TableCell><StatusBadge status={m.status} /></TableCell>
+                    </TableRow>
+                  ))}
+                  {matches.length === 0 && (
+                    <TableRow><TableCell colSpan={3} className="text-sm text-muted-foreground">No matches yet.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
 
         {/* Recent Users */}
         <Card className="border-border bg-card">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold text-card-foreground">
-              Recent Users
-            </CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="text-base font-semibold">Recent Users</CardTitle></CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>User</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {mockRecentUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium text-foreground">
-                          {user.fullName}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {user.email}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {user.role}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={user.status} />
-                    </TableCell>
+            {usersLoading ? <Skeleton className="h-32 w-full" /> : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>User</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {users.map((u: { id: string; fullName: string; email: string; status: string; userRoleScopes: Array<{ role: { name: string } }> }) => (
+                    <TableRow key={u.id}>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium">{u.fullName}</span>
+                          <span className="text-xs text-muted-foreground">{u.email}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground capitalize">
+                        {u.userRoleScopes?.[0]?.role?.name?.replace(/_/g, " ") ?? "—"}
+                      </TableCell>
+                      <TableCell><StatusBadge status={u.status} /></TableCell>
+                    </TableRow>
+                  ))}
+                  {users.length === 0 && (
+                    <TableRow><TableCell colSpan={3} className="text-sm text-muted-foreground">No users yet.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>
