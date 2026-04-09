@@ -19,21 +19,10 @@ export async function GET(
     const referee = await prisma.referee.findUnique({
       where: { id },
       include: {
+        _count: { select: { matchReferees: true } },
         seasonReferees: {
           include: {
-            season: { select: { id: true, name: true, leagueId: true } },
-          },
-        },
-        matchReferees: {
-          include: {
-            match: {
-              select: {
-                id: true,
-                matchDate: true,
-                homeClub: { select: { name: true } },
-                awayClub: { select: { name: true } },
-              },
-            },
+            season: { select: { id: true, name: true, status: true, leagueId: true } },
           },
         },
       },

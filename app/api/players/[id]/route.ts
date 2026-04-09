@@ -20,16 +20,18 @@ export async function GET(
       where: { id },
       include: {
         primaryPosition: true,
+        originClub: { select: { id: true, name: true } },
         seasonClubPlayers: {
           include: {
             seasonClub: {
               include: {
-                season: { select: { id: true, name: true, leagueId: true } },
+                season: { select: { id: true, name: true, status: true, leagueId: true } },
                 club: { select: { id: true, name: true } },
               },
             },
             position: true,
           },
+          orderBy: { createdAt: "desc" },
         },
       },
     });
