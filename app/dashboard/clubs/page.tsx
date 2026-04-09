@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
@@ -78,6 +79,7 @@ function getInitials(name: string) {
 // ─── League Admin View ────────────────────────────────────────────────────────
 
 function LeagueAdminClubsView() {
+  const router = useRouter();
   const { getLeagueId } = useAuth();
   const leagueId = getLeagueId();
 
@@ -190,6 +192,12 @@ function LeagueAdminClubsView() {
       ) : <span className="text-sm text-muted-foreground">—</span>,
     },
     {
+      key: "league",
+      header: "League",
+      className: "hidden lg:table-cell",
+      render: (c) => <span className="text-sm text-muted-foreground">{(c as Club & { league?: { name: string } | null }).league?.name ?? "—"}</span>,
+    },
+    {
       key: "status",
       header: "Status",
       render: (c) => <StatusBadge status={c.status} />,
@@ -199,7 +207,8 @@ function LeagueAdminClubsView() {
       header: "",
       className: "w-24",
       render: (c) => (
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
+          onClick={() => router.push(`/dashboard/clubs/${c.id}`)}>
           <Eye className="h-4 w-4" />
         </Button>
       ),
@@ -374,6 +383,7 @@ function LeagueAdminClubsView() {
 // ─── Org Admin / Super Admin View ─────────────────────────────────────────────
 
 function OrgAdminClubsView() {
+  const router = useRouter();
   const { getOrganizationId, isOrgAdmin } = useAuth();
   const orgId = getOrganizationId();
 
@@ -454,6 +464,12 @@ function OrgAdminClubsView() {
       ) : <span className="text-sm text-muted-foreground">—</span>,
     },
     {
+      key: "league",
+      header: "League",
+      className: "hidden lg:table-cell",
+      render: (c) => <span className="text-sm text-muted-foreground">{(c as Club & { league?: { name: string } | null }).league?.name ?? "—"}</span>,
+    },
+    {
       key: "status",
       header: "Status",
       render: (c) => <StatusBadge status={c.status} />,
@@ -475,7 +491,7 @@ function OrgAdminClubsView() {
             </div>
           );
         }
-        return <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"><Eye className="h-4 w-4" /></Button>;
+        return <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => router.push(`/dashboard/clubs/${c.id}`)}><Eye className="h-4 w-4" /></Button>;
       },
     },
   ];

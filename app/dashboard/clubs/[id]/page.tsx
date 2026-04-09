@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
@@ -67,8 +67,13 @@ const SURFACE_TYPES = ["natural_grass", "artificial_turf", "hybrid", "indoor"];
 
 export default function ClubProfilePage() {
     const router = useRouter();
-    const { getClubId } = useAuth();
-    const clubId = getClubId();
+    const params = useParams();
+    const { getClubId, isClubAdmin } = useAuth();
+
+    // Club admins use their scoped club ID; other roles use the URL param
+    const urlClubId = params?.id as string | undefined;
+    const scopedClubId = getClubId();
+    const clubId = isClubAdmin() ? (scopedClubId ?? urlClubId) : urlClubId;
 
     if (!clubId) {
         router.replace("/dashboard");
@@ -183,8 +188,8 @@ export default function ClubProfilePage() {
 
     return (
         <div className="flex flex-col gap-6">
-            <PageHeader title="Club Profile" description="Manage your club's profile and stadium.">
-                {!isLoading && !error && club && (
+            <PageHeader title="Club Profile" description={isClubAdmin() ? "Manage your club's profile and stadium." : "Club information."}>
+                {!isLoading && !error && club && isClubAdmin() && (
                     <Button onClick={openEdit}>
                         <Pencil className="h-4 w-4" />
                         Edit Profile
@@ -260,7 +265,7 @@ export default function ClubProfilePage() {
                                 <Building2 className="h-4 w-4" />
                                 Stadium
                             </CardTitle>
-                            {!club.primaryStadium && (
+                            {!club.primaryStadium && isClubAdmin() && (
                                 <Button size="sm" onClick={() => setStadiumOpen(true)}>
                                     <Plus className="h-4 w-4" />
                                     Add Stadium
@@ -298,10 +303,12 @@ export default function ClubProfilePage() {
                                 <div className="flex flex-col items-center justify-center py-8 text-center">
                                     <Building2 className="mb-2 h-8 w-8 text-muted-foreground/40" />
                                     <p className="text-sm text-muted-foreground">No stadium linked yet.</p>
-                                    <Button variant="outline" size="sm" className="mt-3" onClick={() => setStadiumOpen(true)}>
-                                        <Plus className="h-4 w-4" />
-                                        Add Stadium
-                                    </Button>
+                                    {isClubAdmin() && (
+                                        <Button variant="outline" size="sm" className="mt-3" onClick={() => setStadiumOpen(true)}>
+                                            <Plus className="h-4 w-4" />
+                                            Add Stadium
+                                        </Button>
+                                    )}
                                 </div>
                             )}
                         </CardContent>
