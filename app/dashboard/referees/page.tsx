@@ -32,7 +32,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Megaphone, Plus, MoreHorizontal, Pencil, Trash2, UserX, ShieldCheck } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Megaphone, Plus, MoreHorizontal, Pencil, Trash2, UserX, ShieldCheck, Eye } from "lucide-react";
 
 interface Referee {
   id: string;
@@ -76,6 +84,48 @@ const emptyForm = {
   region: "",
 };
 
+function RefereeDetailDialog({ refereeId, open, onClose }: { refereeId: string | null; open: boolean; onClose: () => void }) {
+  const { data: referee, isLoading } = useSWR(
+    open && refereeId ? `/api/referees/${refereeId}` : null,
+    authFetcher
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{referee ? `${referee.firstName} ${referee.lastName}` : "Referee Details"}</DialogTitle>
+          <DialogDescription>{referee?.licenseLevel ?? ""} · {referee?.nationality ?? ""}</DialogDescription>
+        </DialogHeader>
+        {isLoading ? <Skeleton className="h-32 w-full" /> : referee ? (
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div><span className="text-muted-foreground">Date of Birth</span><p className="font-medium">{referee.dateOfBirth ? new Date(referee.dateOfBirth).toLocaleDateString() : "—"}</p></div>
+              <div><span className="text-muted-foreground">Experience</span><p className="font-medium">{referee.experienceYears ? `${referee.experienceYears} years` : "—"}</p></div>
+              <div><span className="text-muted-foreground">License</span><p className="font-medium">{referee.licenseLevel ?? "—"}</p></div>
+              <div><span className="text-muted-foreground">Total Matches</span><p className="font-medium">{referee._count?.matchReferees ?? 0}</p></div>
+              <div><span className="text-muted-foreground">Status</span><p className="font-medium capitalize">{referee.status}</p></div>
+            </div>
+            {referee.seasonReferees?.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Season Assignments</p>
+                <div className="flex flex-col gap-2">
+                  {referee.seasonReferees.map((sr: { id: string; roleLevel: string | null; season: { name: string; status: string } }) => (
+                    <div key={sr.id} className="rounded-md border border-border p-3 text-sm">
+                      <p className="font-medium">{sr.season.name}</p>
+                      <p className="text-muted-foreground text-xs mt-1">{sr.roleLevel ?? "Referee"}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function RefereesPage() {
   const { organization, isLoading: orgLoading } = useOrganization();
   const { getOrganizationId, isOrgAdmin, isSuperAdmin } = useAuth();
@@ -89,7 +139,7 @@ export default function RefereesPage() {
 
   const { data, isLoading: refereesLoading } = useSWR(apiUrl, authFetcher, {
     fallbackData: mockReferees,
-    onError: () => {},
+    onError: () => { },
   });
 
   const referees: Referee[] = data || mockReferees;
@@ -106,6 +156,7 @@ export default function RefereesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Referee | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
+  const [detailRefId, setDetailRefId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     return referees.filter((r) => {
@@ -305,55 +356,71 @@ export default function RefereesPage() {
     },
     ...(canEdit
       ? [
-          {
-            key: "actions",
-            header: "",
-            className: "w-12",
-            render: (r: Referee) => (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-                    <MoreHorizontal className="h-4 w-4" />
-                    <span className="sr-only">Actions</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => openEdit(r)}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  {r.status === "active" ? (
-                    <DropdownMenuItem
-                      onClick={() => handleToggleStatus(r)}
-                      className="text-amber-400 focus:text-amber-400"
-                    >
-                      <UserX className="mr-2 h-4 w-4" />
-                      Deactivate
-                    </DropdownMenuItem>
-                  ) : (
-                    <DropdownMenuItem
-                      onClick={() => handleToggleStatus(r)}
-                      className="text-emerald-400 focus:text-emerald-400"
-                    >
-                      <ShieldCheck className="mr-2 h-4 w-4" />
-                      Activate
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuSeparator />
+        {
+          key: "actions",
+          header: "",
+          className: "w-12",
+          render: (r: Referee) => (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                  <MoreHorizontal className="h-4 w-4" />
+                  <span className="sr-only">Actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => setDetailRefId(r.id)}>
+                  <Eye className="mr-2 h-4 w-4" />
+                  View
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openEdit(r)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {r.status === "active" ? (
                   <DropdownMenuItem
-                    onClick={() => setDeleteTarget(r)}
-                    className="text-destructive focus:text-destructive"
+                    onClick={() => handleToggleStatus(r)}
+                    className="text-amber-400 focus:text-amber-400"
                   >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
+                    <UserX className="mr-2 h-4 w-4" />
+                    Deactivate
                   </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ),
-          },
-        ]
-      : []),
+                ) : (
+                  <DropdownMenuItem
+                    onClick={() => handleToggleStatus(r)}
+                    className="text-emerald-400 focus:text-emerald-400"
+                  >
+                    <ShieldCheck className="mr-2 h-4 w-4" />
+                    Activate
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setDeleteTarget(r)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ),
+        },
+      ]
+      : [
+        {
+          key: "view",
+          header: "",
+          className: "w-12",
+          render: (r: Referee) => (
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
+              onClick={() => setDetailRefId(r.id)}>
+              <Eye className="h-4 w-4" />
+            </Button>
+          ),
+        },
+      ]),
   ];
 
   const pageTitle = isOrgAdmin() && organization
@@ -483,6 +550,7 @@ export default function RefereesPage() {
         variant="destructive"
         onConfirm={handleDelete}
       />
+      <RefereeDetailDialog refereeId={detailRefId} open={!!detailRefId} onClose={() => setDetailRefId(null)} />
     </div>
   );
 }

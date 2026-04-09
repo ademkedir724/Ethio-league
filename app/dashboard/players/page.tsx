@@ -31,6 +31,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { UserCircle, Plus, MoreHorizontal, Pencil, Trash2, Eye } from "lucide-react";
 import { toast } from "sonner";
 
@@ -446,9 +454,94 @@ function ClubAdminPlayersView() {
 
 // ─── Other Roles View (view-only) ─────────────────────────────────────────────
 
+interface PlayerWithHistory extends Player {
+  originClub?: { id: string; name: string } | null;
+  seasonClubPlayers?: Array<{
+    id: string;
+    jerseyNumber: number | null;
+    playerRole: string | null;
+    requestStatus: string;
+    position: { name: string } | null;
+    seasonClub: {
+      season: { id: string; name: string; status: string };
+      club: { id: string; name: string };
+    };
+  }>;
+}
+
+function PlayerDetailDialog({ player, open, onClose }: { player: PlayerWithHistory | null; open: boolean; onClose: () => void }) {
+  const { data: detail, isLoading } = useSWR<PlayerWithHistory>(
+    open && player ? `/api/players/${player.id}` : null,
+    authFetcher
+  );
+  const p = detail ?? player;
+  if (!p) return null;
+
+  const currentSeason = p.seasonClubPlayers?.find((scp) => scp.seasonClub.season.status === "active");
+  const pastSeasons = p.seasonClubPlayers?.filter((scp) => scp.seasonClub.season.status !== "active") ?? [];
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{p.firstName} {p.lastName}</DialogTitle>
+          <DialogDescription>
+            {p.primaryPosition?.name ?? "No position"} · {p.nationality ?? "Unknown nationality"}
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? <Skeleton className="h-32 w-full" /> : (
+          <div className="flex flex-col gap-4">
+            {/* Base info */}
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div><span className="text-muted-foreground">Date of Birth</span><p className="font-medium">{p.dateOfBirth ? new Date(p.dateOfBirth).toLocaleDateString() : "—"}</p></div>
+              <div><span className="text-muted-foreground">Preferred Foot</span><p className="font-medium capitalize">{p.preferredFoot ?? "—"}</p></div>
+              <div><span className="text-muted-foreground">Height</span><p className="font-medium">{p.heightCm ? `${p.heightCm} cm` : "—"}</p></div>
+              <div><span className="text-muted-foreground">Weight</span><p className="font-medium">{p.weightKg ? `${p.weightKg} kg` : "—"}</p></div>
+              <div><span className="text-muted-foreground">Origin Club</span><p className="font-medium">{p.originClub?.name ?? "—"}</p></div>
+              <div><span className="text-muted-foreground">Status</span><p className="font-medium capitalize">{p.status}</p></div>
+            </div>
+
+            {/* Current season */}
+            {currentSeason && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Current Season</p>
+                <div className="rounded-md border border-border p-3 text-sm">
+                  <p className="font-medium">{currentSeason.seasonClub.season.name} — {currentSeason.seasonClub.club.name}</p>
+                  <p className="text-muted-foreground text-xs mt-1">
+                    Jersey #{currentSeason.jerseyNumber ?? "—"} · {currentSeason.position?.name ?? "—"} · {currentSeason.playerRole ?? "—"}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Past seasons */}
+            {pastSeasons.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Season History</p>
+                <div className="flex flex-col gap-2">
+                  {pastSeasons.map((scp) => (
+                    <div key={scp.id} className="rounded-md border border-border p-3 text-sm">
+                      <p className="font-medium">{scp.seasonClub.season.name} — {scp.seasonClub.club.name}</p>
+                      <p className="text-muted-foreground text-xs mt-1">
+                        Jersey #{scp.jerseyNumber ?? "—"} · {scp.position?.name ?? "—"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ReadOnlyPlayersView() {
-  const { data: players, isLoading, error } = useSWR<Player[]>("/api/players", authFetcher);
+  const { data: players, isLoading, error } = useSWR<PlayerWithHistory[]>("/api/players", authFetcher);
   const [search, setSearch] = useState("");
+  const [selectedPlayer, setSelectedPlayer] = useState<PlayerWithHistory | null>(null);
 
   const filtered = useMemo(() => {
     return (players ?? []).filter((p) =>
@@ -481,6 +574,16 @@ function ReadOnlyPlayersView() {
       render: (p) => <span className="text-sm text-muted-foreground">{p.nationality ?? "—"}</span>,
     },
     {
+      key: "club",
+      header: "Club",
+      className: "hidden lg:table-cell",
+      render: (p) => {
+        const ph = p as PlayerWithHistory;
+        const currentClub = ph.seasonClubPlayers?.find((scp) => scp.seasonClub.season.status === "active")?.seasonClub.club.name;
+        return <span className="text-sm text-muted-foreground">{currentClub ?? ph.originClub?.name ?? "—"}</span>;
+      },
+    },
+    {
       key: "status",
       header: "Status",
       render: (p) => <StatusBadge status={p.status} />,
@@ -489,7 +592,12 @@ function ReadOnlyPlayersView() {
       key: "view",
       header: "",
       className: "w-12",
-      render: () => <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"><Eye className="h-4 w-4" /></Button>,
+      render: (p) => (
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
+          onClick={() => setSelectedPlayer(p as PlayerWithHistory)}>
+          <Eye className="h-4 w-4" />
+        </Button>
+      ),
     },
   ];
 
@@ -509,6 +617,11 @@ function ReadOnlyPlayersView() {
         onSearchChange={setSearch}
         searchPlaceholder="Search players..."
         emptyMessage="No players found."
+      />
+      <PlayerDetailDialog
+        player={selectedPlayer}
+        open={!!selectedPlayer}
+        onClose={() => setSelectedPlayer(null)}
       />
     </div>
   );
