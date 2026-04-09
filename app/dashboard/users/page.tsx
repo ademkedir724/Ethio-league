@@ -554,19 +554,67 @@ function SuperAdminUsersView() {
   };
 
   const handleSubmit = async () => {
-    if (!editingUser) return;
+    if (editingUser) {
+      try {
+        const res = await fetchWithAuth(`/api/users/${editingUser.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ fullName: form.fullName, phone: form.phone }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          toast.error(d.error || "Failed to update user");
+          return;
+        }
+        toast.success("User updated");
+        setFormOpen(false);
+        mutate("/api/users");
+      } catch {
+        toast.error("Something went wrong");
+      }
+    } else {
+      // Create new user
+      if (!form.fullName || !form.email || !form.password || !form.role) {
+        toast.error("Full name, email, password, and role are required");
+        return;
+      }
+      try {
+        const res = await fetchWithAuth("/api/users", {
+          method: "POST",
+          body: JSON.stringify({
+            fullName: form.fullName,
+            email: form.email,
+            phone: form.phone || undefined,
+            password: form.password,
+            role: form.role,
+          }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          toast.error(d.error || "Failed to create user");
+          return;
+        }
+        toast.success("User created");
+        setFormOpen(false);
+        mutate("/api/users");
+      } catch {
+        toast.error("Something went wrong");
+      }
+    }
+  };
+
+  const handleSuspend = async (u: User) => {
     try {
-      const res = await fetchWithAuth(`/api/users/${editingUser.id}`, {
+      const newStatus = u.status === "active" ? "inactive" : "active";
+      const res = await fetchWithAuth(`/api/users/${u.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ fullName: form.fullName, phone: form.phone }),
+        body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        toast.error(d.error || "Failed to update user");
+        toast.error(d.error || "Failed to update status");
         return;
       }
-      toast.success("User updated");
-      setFormOpen(false);
+      toast.success(`User ${newStatus === "active" ? "activated" : "suspended"}`);
       mutate("/api/users");
     } catch {
       toast.error("Something went wrong");
@@ -632,10 +680,12 @@ function SuperAdminUsersView() {
     },
     {
       key: "lastLogin",
-      header: "Last Login",
+      header: "Created",
       className: "hidden lg:table-cell",
       render: (u) => (
-        <span className="text-sm text-muted-foreground">{u.lastLogin}</span>
+        <span className="text-sm text-muted-foreground">
+          {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}
+        </span>
       ),
     },
     {
@@ -661,15 +711,21 @@ function SuperAdminUsersView() {
               Edit
             </DropdownMenuItem>
             {u.status === "pending" && (
-              <DropdownMenuItem className="text-emerald-400 focus:text-emerald-400">
+              <DropdownMenuItem className="text-emerald-400 focus:text-emerald-400" onClick={() => handleSuspend(u)}>
                 <ShieldCheck className="mr-2 h-4 w-4" />
-                Approve
+                Activate
               </DropdownMenuItem>
             )}
             {u.status === "active" && (
-              <DropdownMenuItem className="text-amber-400 focus:text-amber-400">
+              <DropdownMenuItem className="text-amber-400 focus:text-amber-400" onClick={() => handleSuspend(u)}>
                 <UserX className="mr-2 h-4 w-4" />
                 Suspend
+              </DropdownMenuItem>
+            )}
+            {u.status === "inactive" && (
+              <DropdownMenuItem className="text-emerald-400 focus:text-emerald-400" onClick={() => handleSuspend(u)}>
+                <ShieldCheck className="mr-2 h-4 w-4" />
+                Activate
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />

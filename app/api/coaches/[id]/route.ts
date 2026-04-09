@@ -19,15 +19,17 @@ export async function GET(
     const coach = await prisma.coach.findUnique({
       where: { id },
       include: {
+        originClub: { select: { id: true, name: true } },
         seasonClubCoaches: {
           include: {
             seasonClub: {
               include: {
-                season: { select: { id: true, name: true, leagueId: true } },
+                season: { select: { id: true, name: true, status: true, leagueId: true } },
                 club: { select: { id: true, name: true } },
               },
             },
           },
+          orderBy: { createdAt: "desc" },
         },
       },
     });
