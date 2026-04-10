@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { success, badRequest, notFound, serverError, parseUUID } from "@/lib/api-helpers";
+import { success, badRequest, notFound, forbidden, serverError, parseUUID } from "@/lib/api-helpers";
 
 // GET /api/coaches/:id
 export async function GET(
@@ -89,12 +89,24 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireAuth(req, ["super_admin"]);
+    const auth = await requireAuth(req, ["super_admin", "club_admin"]);
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
     const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid coach ID");
+
+    const coach = await prisma.coach.findUnique({ where: { id } });
+    if (!coach) return notFound("Coach not found");
+
+    // Club admin can only delete coaches belonging to their club
+    const isClubAdmin = auth.roles.some((r) => r.roleName === "club_admin");
+    if (isClubAdmin) {
+      const clubId = auth.roles.find((r) => r.roleName === "club_admin")?.clubId;
+      if (coach.clubId !== clubId) {
+        return forbidden("You can only delete coaches from your own club");
+      }
+    }
 
     await prisma.coach.delete({ where: { id } });
     return success({ message: "Coach deleted" });

@@ -3,35 +3,124 @@ import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, created, badRequest, serverError } from "@/lib/api-helpers";
 
-// GET /api/coaches — list coaches (scope-filtered by role)
+// GET /api/coaches — list coaches, scoped by role
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req);
     if (isAuthError(auth)) return auth;
 
-    const where: Record<string, unknown> = {};
-
     const isClubAdmin = auth.roles.some((r) => r.roleName === "club_admin");
     const isOrgAdmin = auth.roles.some((r) => r.roleName === "organization_admin");
+    const isLeagueAdmin = auth.roles.some((r) => r.roleName === "league_admin");
 
+    // ── Club Admin: query Coach table — own coaches + any assigned to their club ──
     if (isClubAdmin) {
-      // Return all coaches whose origin club is this club (the full club pool)
       const clubId = auth.roles.find((r) => r.roleName === "club_admin")?.clubId;
-      if (clubId) {
-        where.clubId = clubId;
-      }
+
+      const coaches = await prisma.coach.findMany({
+        where: clubId
+          ? {
+            OR: [
+              { clubId },
+              { seasonClubCoaches: { some: { seasonClub: { clubId } } } },
+            ],
+          }
+          : {},
+        orderBy: { lastName: "asc" },
+        include: {
+          originClub: { select: { id: true, name: true } },
+          seasonClubCoaches: {
+            where: { seasonClub: { season: { status: "active" } } },
+            select: {
+              role: true,
+              seasonClub: {
+                select: {
+                  club: { select: { id: true, name: true } },
+                  season: { select: { id: true, name: true, status: true } },
+                },
+              },
+            },
+            take: 1,
+            orderBy: { createdAt: "desc" },
+          },
+        },
+      });
+
+      const result = coaches.map((c) => {
+        const active = c.seasonClubCoaches[0];
+        return {
+          ...c,
+          currentClub: active?.seasonClub.club.name ?? c.originClub?.name ?? null,
+          currentClubId: active?.seasonClub.club.id ?? c.originClub?.id ?? null,
+          coachingRole: active?.role ?? null,
+          seasonName: active?.seasonClub.season.name ?? null,
+          seasonStatus: active?.seasonClub.season.status ?? null,
+        };
+      });
+      return success(result);
+    }
+
+    // ── Org Admin / League Admin / Super Admin: query SeasonClubCoach ──
+    const sccWhere: Record<string, unknown> = {};
+
+    if (isLeagueAdmin) {
+      const leagueId = auth.roles.find((r) => r.roleName === "league_admin")?.leagueId;
+      if (leagueId) sccWhere.seasonClub = { season: { leagueId } };
     } else if (isOrgAdmin) {
       const orgId = auth.roles.find((r) => r.roleName === "organization_admin")?.organizationId;
-      if (orgId) {
-        where.seasonClubCoaches = { some: { seasonClub: { season: { league: { organizationId: orgId } } } } };
+      if (orgId) sccWhere.seasonClub = { season: { league: { organizationId: orgId } } };
+    }
+    // super_admin: no filter
+
+    const assignments = await prisma.seasonClubCoach.findMany({
+      where: sccWhere,
+      include: {
+        coach: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            dateOfBirth: true,
+            nationality: true,
+            licenseLevel: true,
+            experienceYears: true,
+            status: true,
+            clubId: true,
+          },
+        },
+        seasonClub: {
+          include: {
+            club: { select: { id: true, name: true } },
+            season: { select: { id: true, name: true, status: true } },
+          },
+        },
+      },
+      orderBy: { coach: { lastName: "asc" } },
+    });
+
+    // Deduplicate per coach — prefer active season assignment
+    const seen = new Map<string, typeof assignments[0]>();
+    for (const a of assignments) {
+      const existing = seen.get(a.coachId);
+      if (!existing) {
+        seen.set(a.coachId, a);
+      } else {
+        const currentActive = a.seasonClub.season.status === "active";
+        const existingActive = existing.seasonClub.season.status === "active";
+        if (currentActive && !existingActive) seen.set(a.coachId, a);
       }
     }
 
-    const coaches = await prisma.coach.findMany({
-      where,
-      orderBy: { lastName: "asc" },
-    });
-    return success(coaches);
+    const result = Array.from(seen.values()).map((a) => ({
+      ...a.coach,
+      currentClub: a.seasonClub.club.name,
+      currentClubId: a.seasonClub.club.id,
+      coachingRole: a.role,
+      seasonName: a.seasonClub.season.name,
+      seasonStatus: a.seasonClub.season.status,
+    }));
+
+    return success(result);
   } catch (error) {
     return serverError(error);
   }
