@@ -15,23 +15,71 @@ import { NextResponse } from "next/server";
 // GET /api/users — list users scoped by role
 export async function GET(req: NextRequest) {
   try {
-    const auth = await requireAuth(req, ["super_admin", "organization_admin"]);
+    const auth = await requireAuth(req, ["super_admin", "organization_admin", "league_admin"]);
     if (isAuthError(auth)) return auth;
 
     const isSuperAdmin = auth.roles.some((r) => r.roleName === "super_admin");
     const orgAdminRole = auth.roles.find((r) => r.roleName === "organization_admin");
+    const leagueAdminRole = auth.roles.find((r) => r.roleName === "league_admin");
 
     let where: Record<string, unknown> = {};
 
-    if (!isSuperAdmin && orgAdminRole?.organizationId) {
-      // Org admin sees only users scoped to their organization
+    if (isSuperAdmin) {
+      // no filter — sees all
+    } else if (orgAdminRole?.organizationId) {
+      const orgId = orgAdminRole.organizationId;
+      // Get all club IDs that belong to this org (via league)
+      const orgClubs = await prisma.club.findMany({
+        where: { league: { organizationId: orgId } },
+        select: { id: true },
+      });
+      const clubIds = orgClubs.map((c) => c.id);
+
+      // Users scoped to this org directly (org_admin, league_admin, mea)
+      // OR scoped to a club that belongs to this org (club_admin)
       where = {
         userRoleScopes: {
-          some: { organizationId: orgAdminRole.organizationId },
+          some: {
+            OR: [
+              { organizationId: orgId },
+              ...(clubIds.length > 0 ? [{ clubId: { in: clubIds } }] : []),
+            ],
+          },
         },
       };
+    } else if (leagueAdminRole?.leagueId) {
+      const league = await prisma.league.findUnique({
+        where: { id: leagueAdminRole.leagueId },
+        select: { organizationId: true },
+      });
+      if (league) {
+        const orgId = league.organizationId;
+        // Get all club IDs in this org
+        const orgClubs = await prisma.club.findMany({
+          where: { league: { organizationId: orgId } },
+          select: { id: true },
+        });
+        const clubIds = orgClubs.map((c) => c.id);
+
+        where = {
+          userRoleScopes: {
+            some: {
+              AND: [
+                {
+                  role: { name: { in: ["league_admin", "match_event_admin", "club_admin"] } },
+                },
+                {
+                  OR: [
+                    { organizationId: orgId },
+                    ...(clubIds.length > 0 ? [{ clubId: { in: clubIds } }] : []),
+                  ],
+                },
+              ],
+            },
+          },
+        };
+      }
     }
-    // super_admin sees all users (no filter)
 
     const users = await prisma.user.findMany({
       where,
