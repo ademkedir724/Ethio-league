@@ -79,6 +79,33 @@ interface SeasonClubPlayer {
     position?: { name: string } | null;
 }
 
+// ─── Readiness Helpers ────────────────────────────────────────────────────────
+
+function computeReadiness(playerCount: number, coachCount: number): { isReady: boolean; reasons: string[] } {
+    const reasons: string[] = [];
+    if (playerCount < 3) reasons.push(`${playerCount}/3 players`);
+    if (coachCount < 1) reasons.push("no coach");
+    return { isReady: reasons.length === 0, reasons };
+}
+
+function ReadinessBadge({ playerCount, coachCount }: { playerCount: number; coachCount: number }) {
+    const { isReady, reasons } = computeReadiness(playerCount, coachCount);
+    if (isReady) {
+        return (
+            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                Ready
+            </span>
+        );
+    }
+    return (
+        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-red-500/10 text-red-400 border border-red-500/25">
+            <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+            {reasons.join(" · ")}
+        </span>
+    );
+}
+
 function getInitials(name: string) {
     return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
 }
@@ -402,13 +429,16 @@ function SeasonClubsTab({ seasonId, season }: { seasonId: string; season: Season
                                         {getInitials(sc.club.name)}
                                     </AvatarFallback>
                                 </Avatar>
-                                <div>
-                                    <p className="text-sm font-medium">{sc.club.name}</p>
-                                    <p className="text-xs text-muted-foreground">{sc._count.players} players</p>
+                                <div className="flex flex-col gap-0.5">
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-sm font-medium">{sc.club.name}</p>
+                                        <StatusBadge status={sc.status} />
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">{sc._count.players} players · {sc._count.coaches} coach{sc._count.coaches !== 1 ? "es" : ""}</p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <StatusBadge status={sc.status} />
+                            <div className="flex items-center gap-3">
+                                <ReadinessBadge playerCount={sc._count.players} coachCount={sc._count.coaches} />
                                 <Button
                                     variant="ghost" size="icon"
                                     className="h-7 w-7 text-destructive hover:bg-destructive/10"

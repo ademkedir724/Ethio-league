@@ -906,11 +906,101 @@ function SuperAdminOrganizationsView() {
 // ─── Main Page Router ────────────────────────────────────────────────────────
 // Routes to appropriate view based on user role
 
+// ─── League Admin View ────────────────────────────────────────────────────────
+// Shows the organization this league admin belongs to (read-only)
+
+function LeagueAdminOrganizationView() {
+  const { getLeagueId } = useAuth();
+  const leagueId = getLeagueId();
+
+  const { data: league, isLoading } = useSWR(
+    leagueId ? `/api/leagues/${leagueId}` : null,
+    authFetcher
+  );
+
+  const org = league?.organization;
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title="My Organization" description="Organization this league belongs to." />
+        <Card className="border-border bg-card">
+          <CardContent className="p-6 space-y-4">
+            <Skeleton className="h-8 w-1/3" />
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-4 w-2/3" />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!org) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title="My Organization" description="Organization this league belongs to." />
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Building2 className="mb-4 h-12 w-12 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">No organization found.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader title="My Organization" description="Organization this league belongs to." />
+      <Card className="border-border bg-card">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-xl font-semibold">{org.name}</CardTitle>
+          <StatusBadge status={league.status ?? "active"} />
+        </CardHeader>
+        <CardContent className="pt-4">
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
+                <h4 className="mb-3 text-sm font-medium text-foreground">Organization Information</h4>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">{org.name}</span>
+                  </div>
+                  {(org.city || org.country) && (
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">{[org.city, org.country].filter(Boolean).join(", ")}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {league.name && (
+                <div className="rounded-lg border border-border bg-muted/30 p-4">
+                  <h4 className="mb-2 text-sm font-medium text-foreground">My League</h4>
+                  <p className="text-sm text-foreground">{league.name}</p>
+                  {league.leagueType && (
+                    <p className="text-xs text-muted-foreground mt-1">{league.leagueType.name}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function OrganizationsPage() {
-  const { isOrgAdmin } = useAuth();
+  const { isOrgAdmin, isLeagueAdmin } = useAuth();
 
   if (isOrgAdmin()) {
     return <OrgAdminOrganizationsView />;
+  }
+
+  if (isLeagueAdmin()) {
+    return <LeagueAdminOrganizationView />;
   }
 
   return <SuperAdminOrganizationsView />;
