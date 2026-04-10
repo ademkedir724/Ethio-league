@@ -110,9 +110,10 @@ export function DashboardSidebar({
 }: DashboardSidebarProps) {
   const pathname = usePathname();
   const { canViewNavItem } = usePermissions();
-  const { isSuperAdmin, isLeagueAdmin, isClubAdmin, user, getLeagueId } = useAuth();
+  const { isSuperAdmin, isLeagueAdmin, isClubAdmin, user, getLeagueId, getClubId } = useAuth();
 
   const leagueId = isLeagueAdmin() ? getLeagueId() : null;
+  const clubId = isClubAdmin() ? getClubId() : null;
   const { data: leagueData } = useSWR(
     leagueId ? `/api/leagues/${leagueId}` : null,
     authFetcher
@@ -132,6 +133,7 @@ export function DashboardSidebar({
       : []),
     ...(isClubAdmin()
       ? [
+        ...(clubId ? [{ title: "My Club", href: `/dashboard/clubs/${clubId}`, icon: Shield }] : []),
         { title: "Lineups", href: "/dashboard/lineups", icon: ClipboardList },
         { title: "Squad Request", href: "/dashboard/squad-request", icon: Users },
       ]

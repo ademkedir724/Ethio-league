@@ -41,3 +41,7 @@ export function parseUUID(params: { id?: string } | string): string | null {
   if (!raw) return null;
   return UUID_RE.test(raw) ? raw : null;
 }
+
+export function unprocessableEntity(body: unknown) {
+  return NextResponse.json(body, { status: 422 });
+}
