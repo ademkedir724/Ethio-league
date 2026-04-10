@@ -509,8 +509,39 @@ export default function SquadRequestPage() {
                             </CardContent>
                         </Card>
                     </div>
+
+                    {/* Current coach squad status */}
+                    {currentCoachSquad && currentCoachSquad.length > 0 && (
+                        <Card>
+                            <CardHeader className="pb-3">
+                                <CardTitle className="text-base">Current Season Coach Squad Status</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Coach</TableHead>
+                                            <TableHead className="hidden sm:table-cell">Role</TableHead>
+                                            <TableHead className="hidden sm:table-cell">Status</TableHead>
+                                            <TableHead>Request</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {currentCoachSquad.map((scc) => (
+                                            <TableRow key={scc.id}>
+                                                <TableCell className="text-sm font-medium">{scc.coach.firstName} {scc.coach.lastName}</TableCell>
+                                                <TableCell className="hidden sm:table-cell text-sm text-muted-foreground capitalize">{scc.role.replace(/_/g, " ")}</TableCell>
+                                                <TableCell className="hidden sm:table-cell text-sm text-muted-foreground capitalize">{scc.status}</TableCell>
+                                                <TableCell><RequestStatusBadge status={scc.requestStatus} /></TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
+                    )}
                 </TabsContent>
             </Tabs>
-        </div>
+        </div >
     );
 }

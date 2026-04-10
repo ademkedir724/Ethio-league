@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
 import useSWR, { mutate } from "swr";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
@@ -29,7 +30,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Calendar, Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Calendar, Eye, Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -65,6 +66,7 @@ const emptyForm = {
 export default function SeasonsPage() {
   const { isLeagueAdmin, getLeagueId } = useAuth();
   const { canManage } = usePermissions();
+  const router = useRouter();
   const canEdit = canManage("seasons");
 
   // Fetch seasons — server already scopes by role
@@ -210,8 +212,8 @@ export default function SeasonsPage() {
       key: "season",
       header: "Season",
       render: (s) => (
-        <div className="flex flex-col">
-          <span className="text-sm font-medium text-foreground">{s.name}</span>
+        <div className="flex flex-col cursor-pointer" onClick={() => router.push(`/dashboard/seasons/${s.id}`)}>
+          <span className="text-sm font-medium text-foreground hover:text-primary transition-colors">{s.name}</span>
           <span className="text-xs text-muted-foreground">{s.league?.name}</span>
         </div>
       ),
@@ -276,6 +278,10 @@ export default function SeasonsPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => router.push(`/dashboard/seasons/${s.id}`)}>
+                  <Eye className="mr-2 h-4 w-4" />
+                  Manage
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => openEdit(s)}>
                   <Pencil className="mr-2 h-4 w-4" />
                   Edit
@@ -293,7 +299,24 @@ export default function SeasonsPage() {
           ),
         },
       ]
-      : []),
+      : [
+        {
+          key: "actions",
+          header: "",
+          className: "w-12",
+          render: (s: Season) => (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground"
+              onClick={() => router.push(`/dashboard/seasons/${s.id}`)}
+            >
+              <Eye className="h-4 w-4" />
+              <span className="sr-only">View</span>
+            </Button>
+          ),
+        },
+      ]),
   ];
 
   return (
