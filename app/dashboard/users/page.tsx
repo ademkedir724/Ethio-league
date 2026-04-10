@@ -857,15 +857,133 @@ function SuperAdminUsersView() {
   );
 }
 
+// ─── League Admin View ────────────────────────────────────────────────────────
+// Shows league admins, club admins, and match event admins in the same org
+
+function LeagueAdminUsersView() {
+  const { data: rawData, isLoading } = useSWR<ApiUser[]>("/api/users", authFetcher);
+  const users: User[] = useMemo(() => (rawData ?? []).map(mapApiUser), [rawData]);
+
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+
+  const filtered = useMemo(() => {
+    return users.filter((u) => {
+      const matchesSearch =
+        u.fullName.toLowerCase().includes(search.toLowerCase()) ||
+        u.email.toLowerCase().includes(search.toLowerCase());
+      const matchesRole = roleFilter === "all" || u.roles.includes(roleFilter);
+      return matchesSearch && matchesRole;
+    });
+  }, [users, search, roleFilter]);
+
+  const stats = useMemo(() => {
+    const leagueAdmins = users.filter((u) => u.roles.includes("LEAGUE_ADMIN")).length;
+    const clubAdmins = users.filter((u) => u.roles.includes("CLUB_ADMIN")).length;
+    const matchAdmins = users.filter((u) => u.roles.includes("MATCH_EVENT_ADMIN")).length;
+    return { total: users.length, leagueAdmins, clubAdmins, matchAdmins };
+  }, [users]);
+
+  const getInitials = (name: string) =>
+    name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+
+  const columns: Column<User>[] = [
+    {
+      key: "user",
+      header: "User",
+      render: (u) => (
+        <div className="flex items-center gap-3">
+          <Avatar className="h-9 w-9">
+            <AvatarFallback className="bg-primary/10 text-xs text-primary">
+              {getInitials(u.fullName)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium text-foreground">{u.fullName}</span>
+            <span className="text-xs text-muted-foreground">{u.email}</span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "roles",
+      header: "Role",
+      className: "hidden md:table-cell",
+      render: (u) => (
+        <div className="flex flex-wrap gap-1">
+          {u.roles?.map((role) => (
+            <Badge key={role} variant="outline" className={`text-[10px] capitalize ${roleColors[role] || ""}`}>
+              {role.replace(/_/g, " ").toLowerCase()}
+            </Badge>
+          ))}
+        </div>
+      ),
+    },
+    {
+      key: "phone",
+      header: "Phone",
+      className: "hidden lg:table-cell",
+      render: (u) => <span className="text-sm text-muted-foreground">{u.phone || "N/A"}</span>,
+    },
+    {
+      key: "created",
+      header: "Created",
+      className: "hidden lg:table-cell",
+      render: (u) => <span className="text-sm text-muted-foreground">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}</span>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (u) => <StatusBadge status={u.status} />,
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Users" description="Users in your organization." />
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <StatCard title="Total" value={stats.total} icon={Users} />
+        <StatCard title="League Admins" value={stats.leagueAdmins} icon={Users} />
+        <StatCard title="Club Admins" value={stats.clubAdmins} icon={Users} />
+        <StatCard title="Match Admins" value={stats.matchAdmins} icon={Users} />
+      </div>
+
+      <DataTable
+        columns={columns}
+        data={filtered}
+        isLoading={isLoading}
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search users..."
+        emptyMessage="No users found."
+        filterSlot={
+          <Select value={roleFilter} onValueChange={setRoleFilter}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Role" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Roles</SelectItem>
+              <SelectItem value="LEAGUE_ADMIN">League Admin</SelectItem>
+              <SelectItem value="CLUB_ADMIN">Club Admin</SelectItem>
+              <SelectItem value="MATCH_EVENT_ADMIN">Match Admin</SelectItem>
+            </SelectContent>
+          </Select>
+        }
+      />
+    </div>
+  );
+}
+
 // ─── Page Entry Point ────────────────────────────────────────────────────────
 
 export default function UsersPage() {
-  const { isSuperAdmin, isOrgAdmin } = useAuth();
+  const { isSuperAdmin, isOrgAdmin, isLeagueAdmin } = useAuth();
 
   if (isSuperAdmin()) return <SuperAdminUsersView />;
   if (isOrgAdmin()) return <OrgAdminUsersView />;
+  if (isLeagueAdmin()) return <LeagueAdminUsersView />;
 
-  // Fallback — should not happen if sidebar guards are correct
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Users" description="You do not have permission to view this page." />

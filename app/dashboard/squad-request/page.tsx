@@ -119,7 +119,7 @@ export default function SquadRequestPage() {
     const [systemSearchQuery, setSystemSearchQuery] = useState("");
     const { data: systemPlayers, isLoading: systemSearchLoading } = useSWR<Player[]>(
         systemSearchQuery.length >= 2
-            ? `/api/players?search=${encodeURIComponent(systemSearchQuery)}`
+            ? `/api/players?scope=system&search=${encodeURIComponent(systemSearchQuery)}`
             : null,
         authFetcher
     );
