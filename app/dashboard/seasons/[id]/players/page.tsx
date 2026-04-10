@@ -32,6 +32,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Check, Plus, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
 
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
 interface Club {
     id: string;
     name: string;
@@ -70,6 +74,17 @@ interface SeasonClubPlayer {
     requestStatus: string;
     player: Player;
     position: Position | null;
+    seasonClub: { club: { id: string; name: string } };
+}
+
+interface SeasonClubCoach {
+    id: string;
+    seasonClubId: string;
+    coachId: string;
+    role: string;
+    status: string;
+    requestStatus: string;
+    coach: { id: string; firstName: string; lastName: string; licenseLevel?: string | null };
     seasonClub: { club: { id: string; name: string } };
 }
 
@@ -328,6 +343,118 @@ function ClubPlayerCard({
     );
 }
 
+// ── Per-club card for coaches ──────────────────────────────────────────────────
+
+function ClubCoachCard({
+    seasonId,
+    seasonClub,
+    allCoaches,
+    onMutate,
+}: {
+    seasonId: string;
+    seasonClub: SeasonClub;
+    allCoaches: SeasonClubCoach[];
+    onMutate: () => void;
+}) {
+    const [acting, setActing] = useState<string | null>(null);
+
+    const pending = allCoaches.filter((c) => c.requestStatus === "pending");
+    const approved = allCoaches.filter((c) => c.requestStatus === "approved");
+    const rejected = allCoaches.filter((c) => c.requestStatus === "rejected");
+
+    const handleReview = async (sccId: string, action: "approve" | "reject") => {
+        setActing(sccId);
+        try {
+            const res = await fetchWithAuth(`/api/seasons/${seasonId}/coaches/${sccId}/review`, {
+                method: "PATCH",
+                body: JSON.stringify({ action }),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || "Failed to update request");
+            }
+            toast.success(`Coach request ${action === "approve" ? "approved" : "rejected"}.`);
+            onMutate();
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : "Something went wrong.");
+        } finally {
+            setActing(null);
+        }
+    };
+
+    const CoachRow = ({ scc, showActions }: { scc: SeasonClubCoach; showActions: boolean }) => (
+        <TableRow key={scc.id}>
+            <TableCell className="text-sm font-medium">
+                {scc.coach.firstName} {scc.coach.lastName}
+            </TableCell>
+            <TableCell className="hidden sm:table-cell text-sm text-muted-foreground capitalize">
+                {scc.role.replace(/_/g, " ")}
+            </TableCell>
+            <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                {scc.coach.licenseLevel ?? "—"}
+            </TableCell>
+            <TableCell><RequestBadge status={scc.requestStatus} /></TableCell>
+            <TableCell>
+                {showActions && (
+                    <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-green-600 hover:text-green-700"
+                            disabled={acting === scc.id} onClick={() => handleReview(scc.id, "approve")} title="Approve">
+                            <Check className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600"
+                            disabled={acting === scc.id} onClick={() => handleReview(scc.id, "reject")} title="Reject">
+                            <X className="h-3.5 w-3.5" />
+                        </Button>
+                    </div>
+                )}
+            </TableCell>
+        </TableRow>
+    );
+
+    const CoachTable = ({ coaches, showActions }: { coaches: SeasonClubCoach[]; showActions: boolean }) => (
+        coaches.length === 0
+            ? <p className="text-sm text-muted-foreground py-2">None.</p>
+            : <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>Coach</TableHead>
+                        <TableHead className="hidden sm:table-cell">Role</TableHead>
+                        <TableHead className="hidden sm:table-cell">License</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="w-24" />
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {coaches.map((scc) => <CoachRow key={scc.id} scc={scc} showActions={showActions} />)}
+                </TableBody>
+            </Table>
+    );
+
+    return (
+        <Card>
+            <CardHeader className="flex flex-row items-center gap-3 pb-3">
+                <CardTitle className="text-base">{seasonClub.club.name}</CardTitle>
+                <StatusBadge status={seasonClub.status} />
+                {pending.length > 0 && (
+                    <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">{pending.length} pending</Badge>
+                )}
+            </CardHeader>
+            <CardContent>
+                <Tabs defaultValue="pending">
+                    <TabsList className="mb-3">
+                        <TabsTrigger value="pending">Pending ({pending.length})</TabsTrigger>
+                        <TabsTrigger value="approved">Approved ({approved.length})</TabsTrigger>
+                        <TabsTrigger value="rejected">Rejected ({rejected.length})</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="pending"><CoachTable coaches={pending} showActions={true} /></TabsContent>
+                    <TabsContent value="approved"><CoachTable coaches={approved} showActions={false} /></TabsContent>
+                    <TabsContent value="rejected"><CoachTable coaches={rejected} showActions={true} /></TabsContent>
+                </Tabs>
+            </CardContent>
+        </Card>
+    );
+}
+
 export default function SeasonPlayersPage() {
     const params = useParams();
     const seasonId = params.id as string;
@@ -338,10 +465,14 @@ export default function SeasonPlayersPage() {
     const { data: seasonPlayers, isLoading: playersLoading, error: playersError } =
         useSWR<SeasonClubPlayer[]>(seasonId ? `/api/seasons/${seasonId}/players` : null, authFetcher);
 
-    const isLoading = clubsLoading || playersLoading;
+    const { data: seasonCoaches, isLoading: coachesLoading } =
+        useSWR<SeasonClubCoach[]>(seasonId ? `/api/seasons/${seasonId}/coaches` : null, authFetcher);
+
+    const isLoading = clubsLoading || playersLoading || coachesLoading;
     const error = clubsError || playersError;
 
-    const handleMutate = () => mutate(`/api/seasons/${seasonId}/players`);
+    const handleMutatePlayers = () => mutate(`/api/seasons/${seasonId}/players`);
+    const handleMutateCoaches = () => mutate(`/api/seasons/${seasonId}/coaches`);
 
     const playersByClub = (seasonPlayers || []).reduce<Record<string, SeasonClubPlayer[]>>((acc, scp) => {
         const key = scp.seasonClubId;
@@ -350,11 +481,21 @@ export default function SeasonPlayersPage() {
         return acc;
     }, {});
 
+    const coachesByClub = (seasonCoaches || []).reduce<Record<string, SeasonClubCoach[]>>((acc, scc) => {
+        const key = scc.seasonClubId;
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(scc);
+        return acc;
+    }, {});
+
+    const pendingCoachCount = (seasonCoaches || []).filter((c) => c.requestStatus === "pending").length;
+    const pendingPlayerCount = (seasonPlayers || []).filter((p) => p.requestStatus === "pending").length;
+
     return (
         <div className="flex flex-col gap-6">
             <PageHeader
                 title="Season Squad Management"
-                description="Review pending squad requests and manage approved players per club."
+                description="Review pending squad requests and manage approved players and coaches per club."
             />
 
             {error && (
@@ -363,36 +504,90 @@ export default function SeasonPlayersPage() {
                 </div>
             )}
 
-            {isLoading ? (
-                <div className="flex flex-col gap-4">
-                    {[1, 2, 3].map((i) => (
-                        <Card key={i}>
-                            <CardHeader className="pb-3"><Skeleton className="h-5 w-48" /></CardHeader>
-                            <CardContent className="flex flex-col gap-2">
-                                <Skeleton className="h-4 w-full" />
-                                <Skeleton className="h-4 w-3/4" />
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
-            ) : !seasonClubs || seasonClubs.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 py-12 text-center text-muted-foreground">
-                    <Users className="h-10 w-10 opacity-30" />
-                    <p className="text-sm">No clubs registered in this season yet.</p>
-                </div>
-            ) : (
-                <div className="flex flex-col gap-4">
-                    {seasonClubs.map((sc) => (
-                        <ClubPlayerCard
-                            key={sc.id}
-                            seasonId={seasonId}
-                            seasonClub={sc}
-                            allPlayers={playersByClub[sc.id] || []}
-                            onMutate={handleMutate}
-                        />
-                    ))}
-                </div>
-            )}
+            <Tabs defaultValue="players">
+                <TabsList>
+                    <TabsTrigger value="players" className="flex items-center gap-1.5">
+                        Players
+                        {pendingPlayerCount > 0 && (
+                            <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-[10px] px-1.5 py-0">{pendingPlayerCount}</Badge>
+                        )}
+                    </TabsTrigger>
+                    <TabsTrigger value="coaches" className="flex items-center gap-1.5">
+                        Coaches
+                        {pendingCoachCount > 0 && (
+                            <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-[10px] px-1.5 py-0">{pendingCoachCount}</Badge>
+                        )}
+                    </TabsTrigger>
+                </TabsList>
+
+                {/* ── Players Tab ── */}
+                <TabsContent value="players" className="mt-4">
+                    {isLoading ? (
+                        <div className="flex flex-col gap-4">
+                            {[1, 2, 3].map((i) => (
+                                <Card key={i}>
+                                    <CardHeader className="pb-3"><Skeleton className="h-5 w-48" /></CardHeader>
+                                    <CardContent className="flex flex-col gap-2">
+                                        <Skeleton className="h-4 w-full" />
+                                        <Skeleton className="h-4 w-3/4" />
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    ) : !seasonClubs || seasonClubs.length === 0 ? (
+                        <div className="flex flex-col items-center gap-2 py-12 text-center text-muted-foreground">
+                            <Users className="h-10 w-10 opacity-30" />
+                            <p className="text-sm">No clubs registered in this season yet.</p>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-4">
+                            {seasonClubs.map((sc) => (
+                                <ClubPlayerCard
+                                    key={sc.id}
+                                    seasonId={seasonId}
+                                    seasonClub={sc}
+                                    allPlayers={playersByClub[sc.id] || []}
+                                    onMutate={handleMutatePlayers}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </TabsContent>
+
+                {/* ── Coaches Tab ── */}
+                <TabsContent value="coaches" className="mt-4">
+                    {isLoading ? (
+                        <div className="flex flex-col gap-4">
+                            {[1, 2].map((i) => (
+                                <Card key={i}>
+                                    <CardHeader className="pb-3"><Skeleton className="h-5 w-48" /></CardHeader>
+                                    <CardContent className="flex flex-col gap-2">
+                                        <Skeleton className="h-4 w-full" />
+                                        <Skeleton className="h-4 w-3/4" />
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    ) : !seasonClubs || seasonClubs.length === 0 ? (
+                        <div className="flex flex-col items-center gap-2 py-12 text-center text-muted-foreground">
+                            <Users className="h-10 w-10 opacity-30" />
+                            <p className="text-sm">No clubs registered in this season yet.</p>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-4">
+                            {seasonClubs.map((sc) => (
+                                <ClubCoachCard
+                                    key={sc.id}
+                                    seasonId={seasonId}
+                                    seasonClub={sc}
+                                    allCoaches={coachesByClub[sc.id] || []}
+                                    onMutate={handleMutateCoaches}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </TabsContent>
+            </Tabs>
         </div>
     );
 }

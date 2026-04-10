@@ -306,6 +306,7 @@ function LeagueAdminSeasonTabs({ seasonId, season }: { seasonId: string; season:
                 <TabsTrigger value="clubs">Clubs</TabsTrigger>
                 <TabsTrigger value="fixtures">Fixtures</TabsTrigger>
                 <TabsTrigger value="players">Players</TabsTrigger>
+                <TabsTrigger value="coaches">Coaches</TabsTrigger>
             </TabsList>
             <TabsContent value="clubs">
                 <SeasonClubsTab seasonId={seasonId} season={season} />
@@ -315,6 +316,9 @@ function LeagueAdminSeasonTabs({ seasonId, season }: { seasonId: string; season:
             </TabsContent>
             <TabsContent value="players">
                 <SeasonPlayersTab seasonId={seasonId} />
+            </TabsContent>
+            <TabsContent value="coaches">
+                <SeasonCoachesTab seasonId={seasonId} />
             </TabsContent>
         </Tabs>
     );
@@ -577,6 +581,118 @@ function SeasonPlayersTab({ seasonId }: { seasonId: string }) {
                         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-12 text-center">
                             <UserCircle className="mb-2 h-8 w-8 text-muted-foreground/40" />
                             <p className="text-sm text-muted-foreground">No players submitted yet.</p>
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
+    );
+}
+
+// ─── Coaches Tab (League Admin) ──────────────────────────────────────────────
+
+interface SeasonCoachRecord {
+    id: string;
+    coachId: string;
+    role: string;
+    status: string;
+    requestStatus: string;
+    coach: { id: string; firstName: string; lastName: string; licenseLevel?: string | null; nationality?: string | null };
+    seasonClub: { club: { id: string; name: string } };
+}
+
+function SeasonCoachesTab({ seasonId }: { seasonId: string }) {
+    const { data: coaches, isLoading } = useSWR<SeasonCoachRecord[]>(
+        `/api/seasons/${seasonId}/coaches`,
+        authFetcher
+    );
+
+    const handleReview = async (sccId: string, action: "approve" | "reject") => {
+        try {
+            const res = await fetchWithAuth(`/api/seasons/${seasonId}/coaches/${sccId}/review`, {
+                method: "PATCH",
+                body: JSON.stringify({ action }),
+            });
+            if (!res.ok) { toast.error(`Failed to ${action} coach`); return; }
+            toast.success(`Coach ${action === "approve" ? "approved" : "rejected"}`);
+            mutate(`/api/seasons/${seasonId}/coaches`);
+        } catch { toast.error("Something went wrong"); }
+    };
+
+    const pending = (coaches ?? []).filter((c) => c.requestStatus === "pending");
+    const approved = (coaches ?? []).filter((c) => c.requestStatus === "approved");
+    const rejected = (coaches ?? []).filter((c) => c.requestStatus === "rejected");
+
+    return (
+        <div className="flex flex-col gap-4 mt-4">
+            {isLoading ? (
+                <div className="flex flex-col gap-2">
+                    {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}
+                </div>
+            ) : (
+                <>
+                    {pending.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                            <p className="text-sm font-medium text-amber-400">Pending Approval ({pending.length})</p>
+                            {pending.map((scc) => (
+                                <div key={scc.id} className="flex items-center justify-between rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5">
+                                    <div>
+                                        <p className="text-sm font-medium">{scc.coach.firstName} {scc.coach.lastName}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {scc.seasonClub.club.name} · {scc.role.replace(/_/g, " ")}
+                                            {scc.coach.licenseLevel && ` · ${scc.coach.licenseLevel}`}
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-1">
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-400 hover:bg-emerald-400/10" onClick={() => handleReview(scc.id, "approve")}>
+                                            <Check className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" onClick={() => handleReview(scc.id, "reject")}>
+                                            <X className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {approved.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                            <p className="text-sm font-medium text-muted-foreground">Approved ({approved.length})</p>
+                            {approved.map((scc) => (
+                                <div key={scc.id} className="flex items-center justify-between rounded-lg border border-border px-4 py-2.5">
+                                    <div>
+                                        <p className="text-sm font-medium">{scc.coach.firstName} {scc.coach.lastName}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {scc.seasonClub.club.name} · {scc.role.replace(/_/g, " ")}
+                                            {scc.coach.licenseLevel && ` · ${scc.coach.licenseLevel}`}
+                                        </p>
+                                    </div>
+                                    <StatusBadge status={scc.status} />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {rejected.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                            <p className="text-sm font-medium text-red-400/70">Rejected ({rejected.length})</p>
+                            {rejected.map((scc) => (
+                                <div key={scc.id} className="flex items-center justify-between rounded-lg border border-border px-4 py-2.5 opacity-60">
+                                    <div>
+                                        <p className="text-sm font-medium">{scc.coach.firstName} {scc.coach.lastName}</p>
+                                        <p className="text-xs text-muted-foreground">{scc.seasonClub.club.name} · {scc.role.replace(/_/g, " ")}</p>
+                                    </div>
+                                    <StatusBadge status="rejected" />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {pending.length === 0 && approved.length === 0 && rejected.length === 0 && (
+                        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-12 text-center">
+                            <UserCircle className="mb-2 h-8 w-8 text-muted-foreground/40" />
+                            <p className="text-sm text-muted-foreground">No coach requests submitted yet.</p>
                         </div>
                     )}
                 </>
