@@ -567,6 +567,11 @@ export default function ClubsPage() {
 // ─── Club Admin Read-Only View ────────────────────────────────────────────────
 
 function ClubAdminReadOnlyView() {
+  const router = useRouter();
+  const { getClubId } = useAuth();
+  const clubId = getClubId();
+
+  // Club admin sees all clubs in their league (for context), but primarily their own
   const { data: clubsData, isLoading, error } = useSWR<Club[]>("/api/clubs", authFetcher);
   const clubs: Club[] = clubsData ?? [];
   const [search, setSearch] = useState("");
@@ -582,11 +587,14 @@ function ClubAdminReadOnlyView() {
       render: (c) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
-            <AvatarFallback className="bg-primary/10 text-xs text-primary">{getInitials(c.name)}</AvatarFallback>
+            <AvatarFallback className={`text-xs ${c.id === clubId ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"}`}>
+              {getInitials(c.name)}
+            </AvatarFallback>
           </Avatar>
           <div className="flex flex-col">
             <span className="text-sm font-medium text-foreground">{c.name}</span>
-            {c.shortName && <span className="text-xs text-muted-foreground">{c.shortName}</span>}
+            {c.id === clubId && <span className="text-xs text-primary">My Club</span>}
+            {c.shortName && c.id !== clubId && <span className="text-xs text-muted-foreground">{c.shortName}</span>}
           </div>
         </div>
       ),
@@ -603,6 +611,12 @@ function ClubAdminReadOnlyView() {
       ) : <span className="text-sm text-muted-foreground">—</span>,
     },
     {
+      key: "league",
+      header: "League",
+      className: "hidden lg:table-cell",
+      render: (c) => <span className="text-sm text-muted-foreground">{(c as Club & { league?: { name: string } | null }).league?.name ?? "—"}</span>,
+    },
+    {
       key: "status",
       header: "Status",
       render: (c) => <StatusBadge status={c.status} />,
@@ -611,7 +625,12 @@ function ClubAdminReadOnlyView() {
       key: "view",
       header: "",
       className: "w-12",
-      render: () => <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"><Eye className="h-4 w-4" /></Button>,
+      render: (c) => (
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
+          onClick={() => router.push(`/dashboard/clubs/${c.id}`)}>
+          <Eye className="h-4 w-4" />
+        </Button>
+      ),
     },
   ];
 

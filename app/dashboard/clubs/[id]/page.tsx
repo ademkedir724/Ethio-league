@@ -70,10 +70,13 @@ export default function ClubProfilePage() {
     const params = useParams();
     const { getClubId, isClubAdmin } = useAuth();
 
-    // Club admins use their scoped club ID; other roles use the URL param
+    // Always use the URL param as the club to display
     const urlClubId = params?.id as string | undefined;
-    const scopedClubId = getClubId();
-    const clubId = isClubAdmin() ? (scopedClubId ?? urlClubId) : urlClubId;
+    const myClubId = getClubId(); // the club admin's own club
+    const clubId = urlClubId; // show whatever club is in the URL
+
+    // Only show edit controls when viewing their own club
+    const canEdit = isClubAdmin() && myClubId === clubId;
 
     if (!clubId) {
         router.replace("/dashboard");
@@ -188,8 +191,8 @@ export default function ClubProfilePage() {
 
     return (
         <div className="flex flex-col gap-6">
-            <PageHeader title="Club Profile" description={isClubAdmin() ? "Manage your club's profile and stadium." : "Club information."}>
-                {!isLoading && !error && club && isClubAdmin() && (
+            <PageHeader title={canEdit ? "My Club" : "Club Profile"} description={canEdit ? "Manage your club's profile and stadium." : "Club information."}>
+                {!isLoading && !error && club && canEdit && (
                     <Button onClick={openEdit}>
                         <Pencil className="h-4 w-4" />
                         Edit Profile
@@ -265,7 +268,7 @@ export default function ClubProfilePage() {
                                 <Building2 className="h-4 w-4" />
                                 Stadium
                             </CardTitle>
-                            {!club.primaryStadium && isClubAdmin() && (
+                            {!club.primaryStadium && canEdit && (
                                 <Button size="sm" onClick={() => setStadiumOpen(true)}>
                                     <Plus className="h-4 w-4" />
                                     Add Stadium
@@ -303,7 +306,7 @@ export default function ClubProfilePage() {
                                 <div className="flex flex-col items-center justify-center py-8 text-center">
                                     <Building2 className="mb-2 h-8 w-8 text-muted-foreground/40" />
                                     <p className="text-sm text-muted-foreground">No stadium linked yet.</p>
-                                    {isClubAdmin() && (
+                                    {canEdit && (
                                         <Button variant="outline" size="sm" className="mt-3" onClick={() => setStadiumOpen(true)}>
                                             <Plus className="h-4 w-4" />
                                             Add Stadium
