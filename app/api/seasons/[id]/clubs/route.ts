@@ -21,7 +21,12 @@ export async function GET(
       where: { seasonId },
       include: {
         club: true,
-        _count: { select: { players: true, coaches: true } },
+        _count: {
+          select: {
+            players: { where: { status: "active" } },
+            coaches: { where: { status: "active" } },
+          },
+        },
       },
     });
     return success(seasonClubs);
