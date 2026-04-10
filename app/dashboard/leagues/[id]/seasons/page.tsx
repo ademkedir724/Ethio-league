@@ -36,7 +36,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
-import { Calendar, ChevronLeft, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { AlertCircle, Calendar, ChevronLeft, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -57,6 +57,12 @@ interface Season {
     roundRobinType?: string | null;
     daysBetweenRounds?: number | null;
     _count?: { seasonClubs: number; matches: number };
+}
+
+interface ValidationDetail {
+    criterion: "required_clubs" | "min_players" | "min_coaches";
+    message: string;
+    clubs: string[];
 }
 
 const emptyForm = {
@@ -130,6 +136,7 @@ export default function LeagueSeasonsPage() {
     const [deleteTarget, setDeleteTarget] = useState<Season | null>(null);
     const [form, setForm] = useState(emptyForm);
     const [isSaving, setIsSaving] = useState(false);
+    const [activationErrors, setActivationErrors] = useState<ValidationDetail[]>([]);
 
     const openCreate = () => {
         setEditingSeason(null);
@@ -194,11 +201,16 @@ export default function LeagueSeasonsPage() {
 
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
+                if (res.status === 422 && data.code === "ACTIVATION_VALIDATION_FAILED") {
+                    setActivationErrors(data.details ?? []);
+                    return;
+                }
                 toast.error(data.error || (editingSeason ? "Failed to update season" : "Failed to create season"));
                 return;
             }
 
             toast.success(editingSeason ? "Season updated" : "Season created");
+            setActivationErrors([]);
             setFormOpen(false);
             mutate(`/api/leagues/${leagueId}/seasons`);
         } catch {
@@ -289,7 +301,7 @@ export default function LeagueSeasonsPage() {
             )}
 
             {/* Create / Edit Dialog */}
-            <Dialog open={formOpen} onOpenChange={(open) => { if (!open) setFormOpen(false); }}>
+            <Dialog open={formOpen} onOpenChange={(open) => { if (!open) { setFormOpen(false); setActivationErrors([]); } }}>
                 <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>{editingSeason ? "Edit Season" : "Create Season"}</DialogTitle>
@@ -299,6 +311,31 @@ export default function LeagueSeasonsPage() {
                     </DialogHeader>
 
                     <SeasonFormFields form={form} setForm={setForm} editingSeason={editingSeason} />
+
+                    {activationErrors.length > 0 && (
+                        <div className="rounded-lg border border-destructive/40 bg-destructive/5 overflow-hidden">
+                            <div className="flex items-center gap-2 px-4 py-2.5 bg-destructive/10 border-b border-destructive/20">
+                                <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+                                <p className="text-sm font-semibold text-destructive">Season cannot be activated</p>
+                            </div>
+                            <div className="flex flex-col divide-y divide-destructive/10">
+                                {activationErrors.map((detail) => (
+                                    <div key={detail.criterion} className="px-4 py-2.5 flex flex-col gap-1">
+                                        <p className="text-xs font-medium text-foreground">{detail.message}</p>
+                                        {detail.clubs.length > 0 && (
+                                            <div className="flex flex-wrap gap-1 mt-0.5">
+                                                {detail.clubs.map((club) => (
+                                                    <span key={club} className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-destructive/10 text-destructive/80 border border-destructive/20">
+                                                        {club}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setFormOpen(false)}>

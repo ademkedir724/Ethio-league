@@ -89,10 +89,15 @@ const emptyForm = {
 
 export default function LeaguesPage() {
   const router = useRouter();
-  const { isOrgAdmin, getOrganizationId } = useAuth();
+  const { isOrgAdmin, getOrganizationId, isClubAdmin, getClubId } = useAuth();
 
   const canEdit = isOrgAdmin();
   const orgId = getOrganizationId();
+
+  // Club admin gets their own view
+  if (isClubAdmin()) {
+    return <ClubAdminLeaguesView />;
+  }
 
   const { data: leaguesData, isLoading, error } = useSWR<League[]>("/api/leagues", authFetcher);
   const { data: leagueTypesData } = useSWR<LeagueType[]>("/api/seasons/league-types", authFetcher);
@@ -529,6 +534,154 @@ export default function LeaguesPage() {
         variant="destructive"
         onConfirm={handleDelete}
       />
+    </div>
+  );
+}
+
+// ─── Club Admin Leagues View ──────────────────────────────────────────────────
+// Shows the club's league → seasons → fixtures in a drill-down
+
+function ClubAdminLeaguesView() {
+  const router = useRouter();
+  const { getClubId } = useAuth();
+  const clubId = getClubId();
+
+  // Fetch seasons this club participates in
+  const { data: seasons, isLoading: seasonsLoading } = useSWR(
+    clubId ? `/api/seasons?clubId=${clubId}` : null,
+    authFetcher
+  );
+
+  const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
+
+  // Fetch fixtures for selected season
+  const { data: fixtures, isLoading: fixturesLoading } = useSWR(
+    selectedSeasonId ? `/api/matches?seasonId=${selectedSeasonId}` : null,
+    authFetcher
+  );
+
+  const formatDate = (d: string) =>
+    new Date(d).toLocaleString(undefined, {
+      day: "numeric", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+
+  const selectedSeason = (seasons ?? []).find((s: { id: string }) => s.id === selectedSeasonId);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader title="My League" description="View your league, seasons, and scheduled fixtures." />
+
+      {seasonsLoading ? (
+        <div className="flex flex-col gap-3">
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+        </div>
+      ) : !seasons || seasons.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
+          <Layers className="mb-3 h-10 w-10 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">Your club is not registered in any season yet.</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {/* League info from first season */}
+          {seasons[0]?.league && (
+            <Card>
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                  <Layers className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">{seasons[0].league.name}</p>
+                  <p className="text-xs text-muted-foreground">{seasons[0].league.organization?.name}</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Seasons list */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Seasons</p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {seasons.map((season: { id: string; name: string; status: string; startDate: string; endDate: string; _count?: { matches: number } }) => (
+                <Card
+                  key={season.id}
+                  className={`cursor-pointer transition-colors hover:border-primary/40 ${selectedSeasonId === season.id ? "border-primary/60 bg-primary/5" : ""}`}
+                  onClick={() => setSelectedSeasonId(selectedSeasonId === season.id ? null : season.id)}
+                >
+                  <CardContent className="p-4 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">{season.name}</p>
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] ${season.status === "active" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" : "text-muted-foreground"}`}
+                      >
+                        {season.status}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(season.startDate).toLocaleDateString()} — {new Date(season.endDate).toLocaleDateString()}
+                    </p>
+                    {season._count && (
+                      <p className="text-xs text-muted-foreground">{season._count.matches} fixture{season._count.matches !== 1 ? "s" : ""}</p>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+
+          {/* Fixtures for selected season */}
+          {selectedSeasonId && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                Fixtures — {selectedSeason?.name}
+              </p>
+              {fixturesLoading ? (
+                <div className="flex flex-col gap-2">
+                  {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}
+                </div>
+              ) : !fixtures || fixtures.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-10 text-center">
+                  <Calendar className="mb-2 h-8 w-8 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">No fixtures generated for this season yet.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {fixtures.map((m: { id: string; matchDate: string; roundNumber: number | null; status: string; homeScore: number | null; awayScore: number | null; homeClub: { name: string }; awayClub: { name: string }; stadium: { name: string } | null }) => (
+                    <div
+                      key={m.id}
+                      className="flex items-center justify-between rounded-lg border border-border px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors"
+                      onClick={() => router.push(`/dashboard/matches/${m.id}`)}
+                    >
+                      <div className="flex flex-col gap-0.5">
+                        <p className="text-sm font-medium">
+                          {m.homeClub?.name} <span className="text-muted-foreground font-normal">vs</span> {m.awayClub?.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDate(m.matchDate)}
+                          {m.stadium && ` · ${m.stadium.name}`}
+                          {m.roundNumber && ` · Round ${m.roundNumber}`}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-sm font-semibold">
+                          {m.homeScore !== null && m.awayScore !== null ? `${m.homeScore} - ${m.awayScore}` : "- vs -"}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] ${m.status === "live" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" : m.status === "completed" ? "text-muted-foreground" : "text-amber-400 border-amber-500/30 bg-amber-500/10"}`}
+                        >
+                          {m.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
