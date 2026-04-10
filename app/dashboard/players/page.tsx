@@ -543,6 +543,14 @@ function ReadOnlyPlayersView() {
   const [search, setSearch] = useState("");
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerWithHistory | null>(null);
 
+  // System-wide search
+  const [systemInput, setSystemInput] = useState("");
+  const [systemQuery, setSystemQuery] = useState("");
+  const { data: systemPlayers, isLoading: systemLoading } = useSWR<PlayerWithHistory[]>(
+    systemQuery.length >= 2 ? `/api/players?scope=system&search=${encodeURIComponent(systemQuery)}` : null,
+    authFetcher
+  );
+
   const filtered = useMemo(() => {
     return (players ?? []).filter((p) =>
       `${p.firstName} ${p.lastName}`.toLowerCase().includes(search.toLowerCase())
@@ -609,15 +617,191 @@ function ReadOnlyPlayersView() {
           Failed to load players.
         </div>
       )}
-      <DataTable
-        columns={columns}
-        data={filtered}
-        isLoading={isLoading}
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search players..."
-        emptyMessage="No players found."
+
+      <Tabs defaultValue="scoped">
+        <TabsList>
+          <TabsTrigger value="scoped">Players</TabsTrigger>
+          <TabsTrigger value="system">Search All Players</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="scoped" className="mt-4">
+          <DataTable
+            columns={columns}
+            data={filtered}
+            isLoading={isLoading}
+            searchValue={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search players..."
+            emptyMessage="No players found."
+          />
+        </TabsContent>
+
+        <TabsContent value="system" className="mt-4">
+          <div className="flex gap-2 mb-4">
+            <Input
+              placeholder="Search all players by name (min 2 chars)..."
+              value={systemInput}
+              onChange={(e) => setSystemInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && systemInput.length >= 2) setSystemQuery(systemInput); }}
+              className="max-w-sm"
+            />
+            <Button variant="outline" disabled={systemInput.length < 2}
+              onClick={() => setSystemQuery(systemInput)}>
+              Search
+            </Button>
+          </div>
+          {systemQuery.length < 2 ? (
+            <p className="text-sm text-muted-foreground">Type at least 2 characters and press Search.</p>
+          ) : (
+            <DataTable
+              columns={columns}
+              data={systemPlayers ?? []}
+              isLoading={systemLoading}
+              searchPlaceholder="Search players..."
+              emptyMessage={`No players found for "${systemQuery}".`}
+            />
+          )}
+        </TabsContent>
+      </Tabs>
+
+      <PlayerDetailDialog
+        player={selectedPlayer}
+        open={!!selectedPlayer}
+        onClose={() => setSelectedPlayer(null)}
       />
+    </div>
+  );
+}
+
+// ─── League Admin Players View ────────────────────────────────────────────────
+// Tab 1: Players in this league's org | Tab 2: System-wide search
+
+function LeagueAdminPlayersView() {
+  // Org-scoped players (API already filters by leagueId for league_admin)
+  const { data: leaguePlayers, isLoading, error } = useSWR<PlayerWithHistory[]>("/api/players", authFetcher);
+  const [search, setSearch] = useState("");
+  const [selectedPlayer, setSelectedPlayer] = useState<PlayerWithHistory | null>(null);
+
+  // System-wide search
+  const [systemInput, setSystemInput] = useState("");
+  const [systemQuery, setSystemQuery] = useState("");
+  const { data: systemPlayers, isLoading: systemLoading } = useSWR<PlayerWithHistory[]>(
+    systemQuery.length >= 2 ? `/api/players?scope=system&search=${encodeURIComponent(systemQuery)}` : null,
+    authFetcher
+  );
+
+  const filtered = useMemo(() =>
+    (leaguePlayers ?? []).filter((p) =>
+      `${p.firstName} ${p.lastName}`.toLowerCase().includes(search.toLowerCase())
+    ), [leaguePlayers, search]);
+
+  const columns: Column<Player>[] = [
+    {
+      key: "player",
+      header: "Player",
+      render: (p) => (
+        <div className="flex items-center gap-3">
+          <Avatar className="h-9 w-9">
+            <AvatarFallback className="bg-primary/10 text-xs text-primary">
+              {getInitials(p.firstName, p.lastName)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium">{p.firstName} {p.lastName}</span>
+            {p.primaryPosition && <span className="text-xs text-muted-foreground">{p.primaryPosition.name}</span>}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "nationality",
+      header: "Nationality",
+      className: "hidden md:table-cell",
+      render: (p) => <span className="text-sm text-muted-foreground">{p.nationality ?? "—"}</span>,
+    },
+    {
+      key: "club",
+      header: "Club",
+      className: "hidden lg:table-cell",
+      render: (p) => {
+        const ph = p as PlayerWithHistory;
+        const currentClub = ph.seasonClubPlayers?.find((scp) => scp.seasonClub.season.status === "active")?.seasonClub.club.name;
+        return <span className="text-sm text-muted-foreground">{currentClub ?? ph.originClub?.name ?? "—"}</span>;
+      },
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (p) => <StatusBadge status={p.status} />,
+    },
+    {
+      key: "view",
+      header: "",
+      className: "w-12",
+      render: (p) => (
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
+          onClick={() => setSelectedPlayer(p as PlayerWithHistory)}>
+          <Eye className="h-4 w-4" />
+        </Button>
+      ),
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Players" description="Players in your league's organization." />
+      {error && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+          Failed to load players.
+        </div>
+      )}
+
+      <Tabs defaultValue="league">
+        <TabsList>
+          <TabsTrigger value="league">My League Players</TabsTrigger>
+          <TabsTrigger value="system">Search All Players</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="league" className="mt-4">
+          <DataTable
+            columns={columns}
+            data={filtered}
+            isLoading={isLoading}
+            searchValue={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search players..."
+            emptyMessage="No players found in your league."
+          />
+        </TabsContent>
+
+        <TabsContent value="system" className="mt-4">
+          <div className="flex gap-2 mb-4">
+            <Input
+              placeholder="Search all players by name (min 2 chars)..."
+              value={systemInput}
+              onChange={(e) => setSystemInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && systemInput.length >= 2) setSystemQuery(systemInput); }}
+              className="max-w-sm"
+            />
+            <Button variant="outline" disabled={systemInput.length < 2}
+              onClick={() => setSystemQuery(systemInput)}>
+              Search
+            </Button>
+          </div>
+          {systemQuery.length < 2 ? (
+            <p className="text-sm text-muted-foreground">Type at least 2 characters and press Search.</p>
+          ) : (
+            <DataTable
+              columns={columns}
+              data={systemPlayers ?? []}
+              isLoading={systemLoading}
+              searchPlaceholder="Search players..."
+              emptyMessage={`No players found for "${systemQuery}".`}
+            />
+          )}
+        </TabsContent>
+      </Tabs>
+
       <PlayerDetailDialog
         player={selectedPlayer}
         open={!!selectedPlayer}
@@ -630,7 +814,8 @@ function ReadOnlyPlayersView() {
 // ─── Entry Point ──────────────────────────────────────────────────────────────
 
 export default function PlayersPage() {
-  const { isClubAdmin } = useAuth();
+  const { isClubAdmin, isLeagueAdmin } = useAuth();
   if (isClubAdmin()) return <ClubAdminPlayersView />;
+  if (isLeagueAdmin()) return <LeagueAdminPlayersView />;
   return <ReadOnlyPlayersView />;
 }

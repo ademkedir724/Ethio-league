@@ -49,9 +49,11 @@ interface Coach {
   nationality: string;
   licenseLevel: string;
   experienceYears: number;
-  club: string;
-  role: string;
+  status: string;
   clubId?: string | null;
+  currentClub?: string | null;
+  currentClubId?: string | null;
+  coachingRole?: string | null;
   originClub?: { id: string; name: string } | null;
   seasonClubCoaches?: Array<{
     id: string;
@@ -138,14 +140,12 @@ const emptyForm = {
 
 export default function CoachesPage() {
   const { organization, isLoading: orgLoading } = useOrganization();
-  const { getOrganizationId, isOrgAdmin, isSuperAdmin } = useAuth();
+  const { getOrganizationId, isOrgAdmin, isSuperAdmin, isLeagueAdmin } = useAuth();
   const { canManage, isViewOnly } = usePermissions();
   const orgId = getOrganizationId();
 
-  // Org admins see coaches from clubs in their org, super admins see all
-  const apiUrl = isOrgAdmin() && orgId
-    ? `/api/coaches?organizationId=${orgId}`
-    : "/api/coaches";
+  // Scope the API URL by role — league_admin scoping is handled server-side
+  const apiUrl = "/api/coaches";
 
   const { data, isLoading: coachesLoading, error } = useSWR(apiUrl, authFetcher, {
     fallbackData: undefined,
@@ -169,26 +169,29 @@ export default function CoachesPage() {
   const [detailCoachId, setDetailCoachId] = useState<string | null>(null);
 
   const clubs = useMemo(() => {
-    const set = new Set(coaches.map((c) => c.club));
+    const set = new Set(coaches.map((c) => c.currentClub).filter(Boolean) as string[]);
     return Array.from(set).sort();
   }, [coaches]);
 
   const filtered = useMemo(() => {
     return coaches.filter((c) => {
       const fullName = `${c.firstName} ${c.lastName}`.toLowerCase();
+      const clubName = (c.currentClub ?? "").toLowerCase();
       const matchesSearch =
         fullName.includes(search.toLowerCase()) ||
-        c.club.toLowerCase().includes(search.toLowerCase());
+        clubName.includes(search.toLowerCase());
       const matchesLicense = licenseFilter === "all" || c.licenseLevel === licenseFilter;
-      const matchesClub = clubFilter === "all" || c.club === clubFilter;
+      const matchesClub = clubFilter === "all" || c.currentClub === clubFilter;
       return matchesSearch && matchesLicense && matchesClub;
     });
   }, [coaches, search, licenseFilter, clubFilter]);
 
   const stats = useMemo(() => {
-    const headCoaches = coaches.filter((c) => c.role === "Head Coach").length;
+    const headCoaches = coaches.filter((c) =>
+      c.coachingRole?.toLowerCase().includes("head")
+    ).length;
     const avgExperience = coaches.length
-      ? Math.round(coaches.reduce((s, c) => s + c.experienceYears, 0) / coaches.length)
+      ? Math.round(coaches.reduce((s, c) => s + (c.experienceYears || 0), 0) / coaches.length)
       : 0;
     const proCertified = coaches.filter((c) =>
       c.licenseLevel === "CAF Pro" || c.licenseLevel === "FIFA Pro"
@@ -211,7 +214,7 @@ export default function CoachesPage() {
       nationality: coach.nationality,
       licenseLevel: coach.licenseLevel,
       experienceYears: coach.experienceYears.toString(),
-      role: coach.role,
+      role: coach.coachingRole ?? "",
     });
     setFormOpen(true);
   };
@@ -303,17 +306,27 @@ export default function CoachesPage() {
             <span className="text-sm font-medium text-foreground">
               {c.firstName} {c.lastName}
             </span>
-            <span className="text-xs text-muted-foreground">{c.club}</span>
+            <span className="text-xs text-muted-foreground">{c.nationality ?? "—"}</span>
           </div>
         </div>
       ),
     },
     {
-      key: "role",
-      header: "Role",
+      key: "club",
+      header: "Club",
+      className: "hidden sm:table-cell",
+      render: (c) => (
+        <span className="text-sm text-muted-foreground">{c.currentClub ?? "—"}</span>
+      ),
+    },
+    {
+      key: "coachingRole",
+      header: "Coaching Role",
       className: "hidden md:table-cell",
       render: (c) => (
-        <span className="text-sm text-muted-foreground">{c.role}</span>
+        <span className="text-sm text-muted-foreground capitalize">
+          {c.coachingRole ? c.coachingRole.replace(/_/g, " ") : "—"}
+        </span>
       ),
     },
     {
@@ -322,7 +335,7 @@ export default function CoachesPage() {
       className: "hidden md:table-cell",
       render: (c) => (
         <Badge variant="outline" className={`text-[10px] ${licenseLevelColors[c.licenseLevel] || ""}`}>
-          {c.licenseLevel}
+          {c.licenseLevel || "—"}
         </Badge>
       ),
     },
@@ -331,25 +344,19 @@ export default function CoachesPage() {
       header: "Experience",
       className: "hidden lg:table-cell",
       render: (c) => (
-        <span className="text-sm text-muted-foreground">{c.experienceYears} years</span>
+        <span className="text-sm text-muted-foreground">
+          {c.experienceYears ? `${c.experienceYears} yrs` : "—"}
+        </span>
       ),
     },
+    // Actions column
     {
-      key: "nationality",
-      header: "Nationality",
-      className: "hidden xl:table-cell",
-      render: (c) => (
-        <span className="text-sm text-muted-foreground">{c.nationality}</span>
-      ),
-    },
-    // Only show actions if user can edit (club admin)
-    ...(canEdit
-      ? [
-        {
-          key: "actions",
-          header: "",
-          className: "w-12",
-          render: (c: Coach) => (
+      key: "actions",
+      header: "",
+      className: "w-12",
+      render: (c: Coach) => {
+        if (canEdit) {
+          return (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
@@ -376,24 +383,20 @@ export default function CoachesPage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          ),
-        },
-      ]
-      : [
-        // View-only action for org admin / super admin
-        {
-          key: "actions",
-          header: "",
-          className: "w-12",
-          render: (c: Coach) => (
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
-              onClick={() => setDetailCoachId(c.id)}>
-              <Eye className="h-4 w-4" />
-              <span className="sr-only">View</span>
-            </Button>
-          ),
-        },
-      ]),
+          );
+        }
+        return (
+          <Button
+            variant="ghost" size="icon"
+            className="h-8 w-8 text-muted-foreground"
+            onClick={() => setDetailCoachId(c.id)}
+          >
+            <Eye className="h-4 w-4" />
+            <span className="sr-only">View</span>
+          </Button>
+        );
+      },
+    },
   ];
 
   const pageTitle = isOrgAdmin() && organization
@@ -402,9 +405,11 @@ export default function CoachesPage() {
 
   const pageDescription = isOrgAdmin()
     ? "View coaching staff from clubs in your organization."
-    : canEdit
-      ? "Manage coaching staff across all clubs."
-      : "View coaching staff across all clubs.";
+    : isLeagueAdmin()
+      ? "View coaching staff in your league."
+      : canEdit
+        ? "Manage coaching staff across all clubs."
+        : "View coaching staff across all clubs.";
 
   return (
     <div className="flex flex-col gap-6">
