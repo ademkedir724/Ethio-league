@@ -79,21 +79,28 @@ export async function POST(
     const body = await req.json();
     const { refereeIds, matchEventAdminIds } = body;
 
-    // 2. Quota enforcement (only when requiredClubs is set)
+    // 2. Quota enforcement based on matches per round
+    // matchesPerRound = floor(n/2) where n = requiredClubs
+    // Need matchesPerRound + 1 MEAs and (matchesPerRound + 1) * 4 referees
+    // (one MEA and one set of 4 referees take a break each round)
     if (season.requiredClubs !== null) {
-      if (refereeIds && Array.isArray(refereeIds) && refereeIds.length > 4 * season.requiredClubs) {
+      const matchesPerRound = Math.floor(season.requiredClubs / 2);
+      const maxMEAs = matchesPerRound + 1;
+      const maxReferees = (matchesPerRound + 1) * 4;
+
+      if (refereeIds && Array.isArray(refereeIds) && refereeIds.length > maxReferees) {
         return unprocessableEntity({
-          error: `Referee quota exceeded. Max ${4 * season.requiredClubs} allowed, you selected ${refereeIds.length}`,
+          error: `Referee quota exceeded. Max ${maxReferees} allowed (${matchesPerRound + 1} sets of 4), you selected ${refereeIds.length}`,
           code: "QUOTA_EXCEEDED_REFEREES",
-          limit: 4 * season.requiredClubs,
+          limit: maxReferees,
           requested: refereeIds.length,
         });
       }
-      if (matchEventAdminIds && Array.isArray(matchEventAdminIds) && matchEventAdminIds.length > season.requiredClubs) {
+      if (matchEventAdminIds && Array.isArray(matchEventAdminIds) && matchEventAdminIds.length > maxMEAs) {
         return unprocessableEntity({
-          error: `MEA quota exceeded. Max ${season.requiredClubs} allowed, you selected ${matchEventAdminIds.length}`,
+          error: `MEA quota exceeded. Max ${maxMEAs} allowed (${matchesPerRound} active + 1 on break), you selected ${matchEventAdminIds.length}`,
           code: "QUOTA_EXCEEDED_MEAS",
-          limit: season.requiredClubs,
+          limit: maxMEAs,
           requested: matchEventAdminIds.length,
         });
       }

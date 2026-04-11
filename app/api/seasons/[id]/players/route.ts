@@ -20,12 +20,21 @@ export async function GET(
         const season = await prisma.season.findUnique({ where: { id: seasonId }, include: { league: true } });
         if (!season) return badRequest("Season not found");
 
-        if (!assertLeagueScope(auth, season.leagueId) && !assertOrgScope(auth, season.league.organizationId)) {
+        const isClubAdmin = auth.roles.some((r) => r.roleName === "club_admin");
+        const clubId = isClubAdmin ? auth.roles.find((r) => r.roleName === "club_admin")?.clubId : null;
+
+        if (!isClubAdmin && !assertLeagueScope(auth, season.leagueId) && !assertOrgScope(auth, season.league.organizationId)) {
             return forbidden();
         }
 
+        const where: Record<string, unknown> = { seasonClub: { seasonId } };
+        // Club admin: only see their own club's players
+        if (isClubAdmin && clubId) {
+            where.seasonClub = { seasonId, clubId };
+        }
+
         const records = await prisma.seasonClubPlayer.findMany({
-            where: { seasonClub: { seasonId } },
+            where,
             include: {
                 player: true,
                 seasonClub: { include: { club: { select: { id: true, name: true } } } },
