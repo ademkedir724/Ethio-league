@@ -81,9 +81,27 @@ export async function PATCH(
     if (!id) return badRequest("Invalid match ID");
 
     const data = await req.json();
+
+    // Validate status transitions
+    if (data.status) {
+      const current = await prisma.match.findUnique({ where: { id }, select: { status: true, seasonId: true } });
+      if (!current) return notFound("Match not found");
+
+      const isMEA = auth.roles.some((r) => r.roleName === "match_event_admin");
+      const isPrivileged = auth.roles.some((r) => r.roleName === "super_admin" || r.roleName === "league_admin");
+
+      // MEA can only: approved → live, live → completed
+      if (isMEA && !isPrivileged) {
+        const validTransitions: Record<string, string> = { approved: "live", live: "completed" };
+        if (validTransitions[current.status] !== data.status) {
+          return badRequest(`Cannot transition match from '${current.status}' to '${data.status}'`);
+        }
+      }
+    }
+
     const allowedFields = [
       "stadiumId", "matchDate", "roundNumber", "status",
-      "homeScore", "awayScore", "attendance",
+      "homeScore", "awayScore", "attendance", "liveStartedAt",
     ];
     const updateData: Record<string, unknown> = {};
     for (const field of allowedFields) {
