@@ -307,6 +307,7 @@ function LeagueAdminSeasonTabs({ seasonId, season }: { seasonId: string; season:
                 <TabsTrigger value="fixtures">Fixtures</TabsTrigger>
                 <TabsTrigger value="players">Players</TabsTrigger>
                 <TabsTrigger value="coaches">Coaches</TabsTrigger>
+                <TabsTrigger value="assignments">Assignments</TabsTrigger>
             </TabsList>
             <TabsContent value="clubs">
                 <SeasonClubsTab seasonId={seasonId} season={season} />
@@ -320,7 +321,109 @@ function LeagueAdminSeasonTabs({ seasonId, season }: { seasonId: string; season:
             <TabsContent value="coaches">
                 <SeasonCoachesTab seasonId={seasonId} />
             </TabsContent>
+            <TabsContent value="assignments">
+                <SeasonAssignmentsTab seasonId={seasonId} />
+            </TabsContent>
         </Tabs>
+    );
+}
+
+// ─── Assignments Tab (League Admin — read-only view) ─────────────────────────
+
+interface AssignmentResponse {
+    referees: Array<{ id: string; firstName: string; lastName: string; licenseLevel?: string | null; nationality?: string | null; roleLevel?: string | null }>;
+    matchEventAdmins: Array<{ id: string; fullName: string; email: string; status: string }>;
+}
+
+function SeasonAssignmentsTab({ seasonId }: { seasonId: string }) {
+    const { data, isLoading } = useSWR<AssignmentResponse>(
+        `/api/seasons/${seasonId}/assignments`,
+        authFetcher
+    );
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-col gap-3 mt-4">
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}
+            </div>
+        );
+    }
+
+    const referees = data?.referees ?? [];
+    const meas = data?.matchEventAdmins ?? [];
+
+    return (
+        <div className="flex flex-col gap-6 mt-4">
+            {/* Match Event Admins */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                        <CardTitle className="text-base">Match Event Admins</CardTitle>
+                        <Badge variant="outline" className="text-xs">{meas.length} assigned</Badge>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    {meas.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-2">No match event admins assigned yet.</p>
+                    ) : (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Name</TableHead>
+                                    <TableHead className="hidden sm:table-cell">Email</TableHead>
+                                    <TableHead>Status</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {meas.map((mea) => (
+                                    <TableRow key={mea.id}>
+                                        <TableCell className="text-sm font-medium">{mea.fullName}</TableCell>
+                                        <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{mea.email}</TableCell>
+                                        <TableCell><StatusBadge status={mea.status} /></TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* Referees */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                        <CardTitle className="text-base">Referees</CardTitle>
+                        <Badge variant="outline" className="text-xs">{referees.length} assigned</Badge>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    {referees.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-2">No referees assigned yet.</p>
+                    ) : (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Name</TableHead>
+                                    <TableHead className="hidden sm:table-cell">License</TableHead>
+                                    <TableHead className="hidden md:table-cell">Nationality</TableHead>
+                                    <TableHead className="hidden md:table-cell">Role</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {referees.map((ref) => (
+                                    <TableRow key={ref.id}>
+                                        <TableCell className="text-sm font-medium">{ref.firstName} {ref.lastName}</TableCell>
+                                        <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{ref.licenseLevel ?? "—"}</TableCell>
+                                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground">{ref.nationality ?? "—"}</TableCell>
+                                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground capitalize">{ref.roleLevel?.replace(/_/g, " ") ?? "—"}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
     );
 }
 
