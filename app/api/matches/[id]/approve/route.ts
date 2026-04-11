@@ -34,14 +34,25 @@ export async function POST(
 
         if (!assertMEASeasonScope(auth, match.seasonId)) return forbidden();
 
-        if (match.matchDate.getTime() - Date.now() > 24 * 60 * 60 * 1000) {
-            return badRequest(
-                "Match can only be approved within 24 hours of the scheduled start time"
-            );
-        }
-
         if (match.status !== "scheduled" && match.status !== "upcoming") {
             return badRequest("Match cannot be approved in its current status");
+        }
+
+        // Check both clubs have submitted lineups
+        const lineupCount = await prisma.matchLineup.count({
+            where: { matchId },
+        });
+        const homeLineupCount = await prisma.matchLineup.count({
+            where: { matchId, seasonClubPlayer: { seasonClub: { clubId: match.homeClubId } } },
+        });
+        const awayLineupCount = await prisma.matchLineup.count({
+            where: { matchId, seasonClubPlayer: { seasonClub: { clubId: match.awayClubId } } },
+        });
+
+        if (homeLineupCount === 0 || awayLineupCount === 0) {
+            return badRequest(
+                `Both clubs must submit their lineup before approving. ${homeLineupCount === 0 ? "Home club" : "Away club"} has not submitted a lineup.`
+            );
         }
 
         const updatedMatch = await prisma.match.update({
