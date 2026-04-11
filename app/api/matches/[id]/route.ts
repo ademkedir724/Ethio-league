@@ -50,7 +50,16 @@ export async function GET(
     });
 
     if (!match) return notFound("Match not found");
-    return success(match);
+
+    // Fetch MEAs for this match via raw SQL (new table, client may be stale)
+    const matchMEAs = await prisma.$queryRaw<Array<{ id: string; userId: string; fullName: string; email: string }>>`
+      SELECT mm.id, mm."userId", u."fullName", u.email
+      FROM match_meas mm
+      JOIN users u ON u.id = mm."userId"
+      WHERE mm."matchId" = ${id}::uuid
+    `;
+
+    return success({ ...match, matchMEAs: matchMEAs.map((m) => ({ id: m.id, user: { id: m.userId, fullName: m.fullName, email: m.email } })) });
   } catch (error) {
     return serverError(error);
   }
