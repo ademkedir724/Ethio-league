@@ -110,7 +110,7 @@ export function DashboardSidebar({
 }: DashboardSidebarProps) {
   const pathname = usePathname();
   const { canViewNavItem } = usePermissions();
-  const { isSuperAdmin, isLeagueAdmin, isClubAdmin, isOrgAdmin, user, getLeagueId, getClubId } = useAuth();
+  const { isSuperAdmin, isLeagueAdmin, isClubAdmin, isOrgAdmin, isMEA, user, getLeagueId, getClubId } = useAuth();
 
   const leagueId = isLeagueAdmin() ? getLeagueId() : null;
   const clubId = isClubAdmin() ? getClubId() : null;
@@ -127,6 +127,7 @@ export function DashboardSidebar({
   const roleNavItems = [
     ...(isOrgAdmin()
       ? [
+        { title: "Standings", href: "/dashboard/standings", icon: BarChart3 },
         { title: "Assignments", href: "/dashboard/seasons/assignments", icon: ClipboardCheck },
       ]
       : []),
@@ -139,12 +140,19 @@ export function DashboardSidebar({
     ...(isClubAdmin()
       ? [
         ...(clubId ? [{ title: "My Club", href: `/dashboard/clubs/${clubId}`, icon: Shield }] : []),
+        { title: "Standings", href: "/dashboard/standings", icon: BarChart3 },
         { title: "Lineups", href: "/dashboard/lineups", icon: ClipboardList },
         { title: "Squad Request", href: "/dashboard/squad-request", icon: Users },
       ]
       : []),
+    ...(isMEA() && !isLeagueAdmin() && !isOrgAdmin() && !isClubAdmin()
+      ? [
+        { title: "Standings", href: "/dashboard/standings", icon: BarChart3 },
+      ]
+      : []),
     ...(isSuperAdmin()
       ? [
+        { title: "Standings", href: "/dashboard/standings", icon: BarChart3 },
         { title: "Audit Log", href: "/dashboard/audit-log", icon: FileText },
         { title: "System Config", href: "/dashboard/system-config", icon: Settings },
       ]
