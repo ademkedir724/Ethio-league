@@ -43,6 +43,9 @@ export const HIDDEN_NAV_FOR_ALL = ["seasons"] as const;
 // Nav items hidden specifically for club_admin
 const CLUB_ADMIN_HIDDEN_NAV = ["users", "organizations", "referees"] as const;
 
+// Nav items visible for match_event_admin (allowlist — everything else is hidden)
+const MEA_VISIBLE_NAV = ["overview", "matches", "notifications", "profile"] as const;
+
 export type ManageableResource =
   | "organizations"
   | "users"
@@ -127,6 +130,11 @@ export function usePermissions() {
 
     // Club admin: hide users, organizations, referees
     if (hasRole(["club_admin"]) && (CLUB_ADMIN_HIDDEN_NAV as readonly string[]).includes(navKey)) {
+      return false;
+    }
+
+    // Match event admin: allowlist — only show overview, matches, notifications, profile
+    if (hasRole(["match_event_admin"]) && !(MEA_VISIBLE_NAV as readonly string[]).includes(navKey)) {
       return false;
     }
 
