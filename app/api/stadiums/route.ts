@@ -4,12 +4,29 @@ import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, created, badRequest, serverError } from "@/lib/api-helpers";
 
 // GET /api/stadiums
+// Optional query: ?seasonId=<uuid> — returns only stadiums owned by clubs in that season
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req);
     if (isAuthError(auth)) return auth;
 
+    const { searchParams } = new URL(req.url);
+    const seasonId = searchParams.get("seasonId");
+
+    let where: Record<string, unknown> = {};
+
+    if (seasonId) {
+      // Get club IDs in this season
+      const seasonClubs = await prisma.seasonClub.findMany({
+        where: { seasonId },
+        select: { clubId: true },
+      });
+      const clubIds = seasonClubs.map((sc) => sc.clubId);
+      where = { ownerClubId: { in: clubIds } };
+    }
+
     const stadiums = await prisma.stadium.findMany({
+      where,
       include: {
         ownerClub: { select: { id: true, name: true } },
       },

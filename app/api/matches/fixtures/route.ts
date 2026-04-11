@@ -64,6 +64,20 @@ export async function POST(req: NextRequest) {
           message: `${existingCount} fixture(s) already exist. Pass force: true to regenerate.`,
         });
       }
+    } else {
+      // force=true: block if any match has progressed beyond scheduled
+      const nonScheduled = await prisma.match.count({
+        where: {
+          seasonId,
+          status: { not: "scheduled" },
+        },
+      });
+      if (nonScheduled > 0) {
+        details.push({
+          criterion: "matches_in_progress",
+          message: `Cannot regenerate: ${nonScheduled} match(es) are already live, completed, or approved. Only seasons with all matches in "scheduled" status can be regenerated.`,
+        });
+      }
     }
 
     // 3. Per-club readiness: ≥3 active players + ≥1 active coach
@@ -120,20 +134,21 @@ export async function POST(req: NextRequest) {
       : [];
 
     if (season.requiredClubs !== null) {
-      const requiredReferees = 4 * season.requiredClubs;
-      const requiredMEAs = season.requiredClubs;
+      const matchesPerRound = Math.floor(season.requiredClubs / 2);
+      const requiredReferees = (matchesPerRound + 1) * 4;
+      const requiredMEAs = matchesPerRound + 1;
 
       if (refereeAssignments.length < requiredReferees) {
         details.push({
           criterion: "referee_quota",
-          message: `Need ${requiredReferees} referees (4 × ${season.requiredClubs} clubs), only ${refereeAssignments.length} assigned`,
+          message: `Need ${requiredReferees} referees (${matchesPerRound + 1} sets of 4 for ${matchesPerRound} matches/round + 1 on break), only ${refereeAssignments.length} assigned`,
         });
       }
 
       if (meaAssignments.length < requiredMEAs) {
         details.push({
           criterion: "mea_quota",
-          message: `Need ${requiredMEAs} match event admins (1 × ${season.requiredClubs} clubs), only ${meaAssignments.length} assigned`,
+          message: `Need ${requiredMEAs} match event admins (${matchesPerRound} active + 1 on break per round), only ${meaAssignments.length} assigned`,
         });
       }
     }
