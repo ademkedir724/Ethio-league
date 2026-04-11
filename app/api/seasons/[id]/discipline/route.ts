@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, badRequest, forbidden, serverError, parseUUID } from "@/lib/api-helpers";
-import { assertLeagueScope, assertOrgScope } from "@/lib/scope-guard";
+import { assertLeagueScope, assertOrgScope, assertMEASeasonScope } from "@/lib/scope-guard";
 
 export async function GET(
     req: NextRequest,
@@ -18,13 +18,22 @@ export async function GET(
 
         const season = await prisma.season.findUnique({
             where: { id: seasonId },
-            include: { league: true },
+            include: { league: true, seasonClubs: { select: { clubId: true } } },
         });
         if (!season) return badRequest("Season not found");
 
-        if (!assertLeagueScope(auth, season.leagueId) && !assertOrgScope(auth, season.league.organizationId)) {
-            return forbidden();
-        }
+        const clubAdminRole = auth.roles.find((r) => r.roleName === "club_admin");
+        const isClubInSeason = clubAdminRole?.clubId
+            ? season.seasonClubs.some((sc) => sc.clubId === clubAdminRole.clubId)
+            : false;
+
+        const allowed =
+            assertLeagueScope(auth, season.leagueId) ||
+            assertOrgScope(auth, season.league.organizationId) ||
+            assertMEASeasonScope(auth, seasonId) ||
+            isClubInSeason;
+
+        if (!allowed) return forbidden();
 
         // Find card event type IDs
         const cardEventTypes = await prisma.eventType.findMany({
