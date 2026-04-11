@@ -204,10 +204,39 @@ interface FixtureMatch {
 
 function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
     const router = useRouter();
-    const { data: fixtures, isLoading } = useSWR<FixtureMatch[]>(
+    const { isLeagueAdmin } = useAuth();
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [generateErrors, setGenerateErrors] = useState<Array<{ criterion: string; message: string; clubs?: string[] }>>([]);
+
+    const { data: fixtures, isLoading, mutate: mutateFixtures } = useSWR<FixtureMatch[]>(
         `/api/matches?seasonId=${seasonId}`,
         authFetcher
     );
+
+    const handleGenerate = async (force = false) => {
+        setIsGenerating(true);
+        setGenerateErrors([]);
+        try {
+            const res = await fetchWithAuth("/api/matches/fixtures", {
+                method: "POST",
+                body: JSON.stringify({ seasonId, force }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.status === 201) {
+                toast.success(`Generated ${data.matchesCreated} fixture(s) across ${data.rounds} round(s).`);
+                mutateFixtures();
+                mutate(`/api/seasons/${seasonId}`);
+            } else if (res.status === 422 && data.code === "FIXTURE_PRECONDITION_FAILED") {
+                setGenerateErrors(data.details ?? []);
+            } else {
+                toast.error(data.error || "Failed to generate fixtures");
+            }
+        } catch {
+            toast.error("Something went wrong");
+        } finally {
+            setIsGenerating(false);
+        }
+    };
 
     const formatMatchDate = (d: string) =>
         new Date(d).toLocaleString(undefined, {
@@ -230,17 +259,54 @@ function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
 
     return (
         <div className="flex flex-col gap-4 mt-4">
+            {/* Generate errors */}
+            {generateErrors.length > 0 && (
+                <div className="rounded-lg border border-destructive/40 bg-destructive/5 overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-2.5 bg-destructive/10 border-b border-destructive/20">
+                        <p className="text-sm font-semibold text-destructive">Cannot generate fixtures</p>
+                    </div>
+                    <div className="flex flex-col divide-y divide-destructive/10">
+                        {generateErrors.map((d) => (
+                            <div key={d.criterion} className="px-4 py-2.5 flex flex-col gap-1">
+                                <p className="text-xs font-medium text-foreground">{d.message}</p>
+                                {d.clubs && d.clubs.length > 0 && (
+                                    <div className="flex flex-wrap gap-1">
+                                        {d.clubs.map((c) => (
+                                            <span key={c} className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-destructive/10 text-destructive/80 border border-destructive/20">{c}</span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {isLoading ? (
                 <div className="flex flex-col gap-2">
                     {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}
                 </div>
             ) : fixtures && fixtures.length === 0 ? (
-                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-12 text-center">
-                    <Swords className="mb-2 h-8 w-8 text-muted-foreground/40" />
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-12 text-center gap-3">
+                    <Swords className="h-8 w-8 text-muted-foreground/40" />
                     <p className="text-sm text-muted-foreground">No fixtures generated yet.</p>
+                    {isLeagueAdmin() && (
+                        <Button size="sm" onClick={() => handleGenerate(false)} disabled={isGenerating}>
+                            <Swords className="h-3.5 w-3.5 mr-1" />
+                            {isGenerating ? "Generating..." : "Generate Fixtures"}
+                        </Button>
+                    )}
                 </div>
             ) : (
                 <div className="flex flex-col gap-6">
+                    {isLeagueAdmin() && (
+                        <div className="flex justify-end">
+                            <Button size="sm" variant="outline" onClick={() => handleGenerate(true)} disabled={isGenerating}>
+                                <Swords className="h-3.5 w-3.5 mr-1" />
+                                {isGenerating ? "Regenerating..." : "Regenerate Fixtures"}
+                            </Button>
+                        </div>
+                    )}
                     {rounds.map((round) => (
                         <div key={round}>
                             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{round}</p>

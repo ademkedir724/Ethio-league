@@ -45,6 +45,15 @@ interface Match {
     status: string;
     season: { id: string; name: string };
     roundNumber: number | null;
+    matchReferees?: Array<{
+        id: string;
+        role: string;
+        referee: { id: string; firstName: string; lastName: string };
+    }>;
+    matchMEAs?: Array<{
+        id: string;
+        user: { id: string; fullName: string; email: string };
+    }>;
 }
 
 interface EventType {
@@ -344,9 +353,49 @@ export default function MatchDetailPage() {
                 </CardContent>
             </Card>
 
+            {/* Referees + MEA */}
+            {((match.matchReferees && match.matchReferees.length > 0) || (match.matchMEAs && match.matchMEAs.length > 0)) && (
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-base">Match Officials</CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-4">
+                        {match.matchReferees && match.matchReferees.length > 0 && (
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Referees</p>
+                                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                    {match.matchReferees.map((mr) => (
+                                        <div key={mr.id} className="flex flex-col gap-0.5 rounded-md border border-border px-3 py-2">
+                                            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                                {mr.role.replace(/_/g, " ")}
+                                            </span>
+                                            <span className="text-sm font-medium">
+                                                {mr.referee.firstName} {mr.referee.lastName}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        {match.matchMEAs && match.matchMEAs.length > 0 && (
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Match Event Admin</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {match.matchMEAs.map((m) => (
+                                        <div key={m.id} className="flex flex-col gap-0.5 rounded-md border border-border px-3 py-2">
+                                            <span className="text-sm font-medium">{m.user.fullName}</span>
+                                            <span className="text-xs text-muted-foreground">{m.user.email}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
+
             {/* Two-column grid: events + lineups */}
-            <div className="grid gap-6 lg:grid-cols-2">
-                {/* Event Log */}
+            <div className="grid gap-6 lg:grid-cols-2">                {/* Event Log */}
                 <Card>
                     <CardHeader>
                         <CardTitle className="text-base">Event Log</CardTitle>
