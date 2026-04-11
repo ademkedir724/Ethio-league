@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
@@ -28,7 +28,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, CheckCircle, Pencil } from "lucide-react";
+import { ArrowLeft, CheckCircle, Pencil, Play, Square, Goal, ArrowLeftRight, CircleAlert } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,6 +41,7 @@ interface Match {
     homeScore: number | null;
     awayScore: number | null;
     matchDate: string;
+    liveStartedAt?: string | null;
     stadium: { id: string; name: string } | null;
     status: string;
     season: { id: string; name: string };
@@ -54,6 +55,15 @@ interface Match {
         id: string;
         user: { id: string; fullName: string; email: string };
     }>;
+}
+
+// Determine what fields an event type needs
+function getEventCategory(typeName: string): "goal" | "substitution" | "card" | "simple" {
+    const n = typeName.toLowerCase();
+    if (n.includes("goal") || n.includes("penalty")) return "goal";
+    if (n.includes("substitut")) return "substitution";
+    if (n.includes("card")) return "card";
+    return "simple";
 }
 
 interface EventType {
@@ -138,18 +148,34 @@ export default function MatchDetailPage() {
     const [editingEvent, setEditingEvent] = useState<MatchEvent | null>(null);
     const [editForm, setEditForm] = useState<Partial<typeof emptyEventForm>>({});
     const [savingEdit, setSavingEdit] = useState(false);
+    const [startingGame, setStartingGame] = useState(false);
+    const [elapsedMinutes, setElapsedMinutes] = useState(0);
+    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // ── Live timer — updates every second for accurate minute display ──────────
+    useEffect(() => {
+        if (match?.status === "live" && match.liveStartedAt) {
+            const update = () => {
+                const elapsed = Math.floor((Date.now() - new Date(match.liveStartedAt!).getTime()) / 60000);
+                setElapsedMinutes(elapsed);
+            };
+            update();
+            timerRef.current = setInterval(update, 1000);
+        } else {
+            if (timerRef.current) clearInterval(timerRef.current);
+        }
+        return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    }, [match?.status, match?.liveStartedAt]);
 
     // ── Derived ────────────────────────────────────────────────────────────────
-    const isWithin24h = match
-        ? new Date(match.matchDate).getTime() - Date.now() <= 24 * 60 * 60 * 1000
-        : false;
-
-    const canApprove =
-        (match?.status === "scheduled" || match?.status === "upcoming") &&
-        isWithin24h &&
-        isMEA();
-
-    const canLogEvents = match?.status === "live" && (isMEA() || isLeagueAdmin() || isSuperAdmin());
+    // State machine: scheduled/upcoming → MEA can approve (if lineups submitted)
+    const canApprove = (match?.status === "scheduled" || match?.status === "upcoming") && isMEA();
+    // approved → MEA can start
+    const canStart = match?.status === "approved" && isMEA();
+    // live → MEA can log events
+    const canLogEvents = match?.status === "live" && isMEA();
+    // live → MEA can end
+    const canEnd = match?.status === "live" && isMEA();
 
     const homeLineup = lineups.filter(
         (l) => l.seasonClubPlayer.seasonClub.club.id === match?.homeClub?.id
@@ -157,6 +183,18 @@ export default function MatchDetailPage() {
     const awayLineup = lineups.filter(
         (l) => l.seasonClubPlayer.seasonClub.club.id === match?.awayClub?.id
     );
+
+    // Feature 3: players from lineup for selected club side
+    const clubLineupForEvent = eventForm.clubSide === "home" ? homeLineup : awayLineup;
+    const editClubLineup = editForm.clubSide === "home" ? homeLineup : awayLineup;
+
+    // Feature 2: event type category
+    const selectedEventType = eventTypes.find((et) => et.id === eventForm.eventTypeId);
+    const eventCategory = selectedEventType ? getEventCategory(selectedEventType.name) : "simple";
+
+    // Edit dialog event category
+    const editEventType = eventTypes.find((et) => et.id === editForm.eventTypeId);
+    const editEventCategory = editEventType ? getEventCategory(editEventType.name) : "simple";
 
     // ── Handlers ───────────────────────────────────────────────────────────────
     const handleApprove = async () => {
@@ -183,26 +221,52 @@ export default function MatchDetailPage() {
         try {
             const clubId =
                 eventForm.clubSide === "home" ? match.homeClub?.id : match.awayClub?.id;
-            const res = await fetchWithAuth("/api/match-events", {
-                method: "POST",
-                body: JSON.stringify({
-                    matchId,
-                    eventTypeId: eventForm.eventTypeId,
-                    playerId: eventForm.playerId,
-                    relatedPlayerId: eventForm.relatedPlayerId || undefined,
-                    clubId,
-                    minute: Number(eventForm.minute),
-                    extraTime: eventForm.extraTime ? Number(eventForm.extraTime) : undefined,
-                    description: eventForm.description || undefined,
-                }),
+            // Use elapsed minutes as default if minute field is empty
+            const effectiveMinute = eventForm.minute !== "" ? Number(eventForm.minute) : elapsedMinutes;
+
+            const eventsToLog: Array<{ matchId: string; eventTypeId: string; playerId: string; relatedPlayerId?: string; clubId?: string; minute: number; extraTime?: number; description?: string }> = [];
+
+            // Primary event
+            eventsToLog.push({
+                matchId,
+                eventTypeId: eventForm.eventTypeId,
+                playerId: eventForm.playerId,
+                relatedPlayerId: eventForm.relatedPlayerId || undefined,
+                clubId,
+                minute: effectiveMinute,
+                extraTime: eventForm.extraTime ? Number(eventForm.extraTime) : undefined,
+                description: eventForm.description || undefined,
             });
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                toast.error(data.error || "Failed to log event");
-                return;
+
+            // For goal: if assist player provided, also log an assist event
+            if (eventCategory === "goal" && eventForm.relatedPlayerId) {
+                const assistType = eventTypes.find((et) => et.name.toLowerCase() === "assist");
+                if (assistType) {
+                    eventsToLog.push({
+                        matchId,
+                        eventTypeId: assistType.id,
+                        playerId: eventForm.relatedPlayerId,
+                        clubId,
+                        minute: effectiveMinute,
+                        extraTime: eventForm.extraTime ? Number(eventForm.extraTime) : undefined,
+                    });
+                }
             }
-            toast.success("Event logged");
-            setEventForm(emptyEventForm);
+
+            for (const evt of eventsToLog) {
+                const res = await fetchWithAuth("/api/match-events", {
+                    method: "POST",
+                    body: JSON.stringify(evt),
+                });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    toast.error(data.error || "Failed to log event");
+                    return;
+                }
+            }
+
+            toast.success(eventsToLog.length > 1 ? "Goal + assist logged" : "Event logged");
+            setEventForm({ ...emptyEventForm });
             mutateEvents();
             mutateMatch();
         } catch {
@@ -210,6 +274,34 @@ export default function MatchDetailPage() {
         } finally {
             setSubmittingEvent(false);
         }
+    };
+
+    const handleStartGame = async () => {
+        setStartingGame(true);
+        try {
+            const res = await fetchWithAuth(`/api/matches/${matchId}`, {
+                method: "PATCH",
+                body: JSON.stringify({ status: "live", liveStartedAt: new Date().toISOString() }),
+            });
+            if (!res.ok) { toast.error("Failed to start match"); return; }
+            toast.success("Match started");
+            mutateMatch();
+        } catch { toast.error("Failed to start match"); }
+        finally { setStartingGame(false); }
+    };
+
+    const handleEndGame = async () => {
+        setStartingGame(true);
+        try {
+            const res = await fetchWithAuth(`/api/matches/${matchId}`, {
+                method: "PATCH",
+                body: JSON.stringify({ status: "completed" }),
+            });
+            if (!res.ok) { toast.error("Failed to end match"); return; }
+            toast.success("Match ended");
+            mutateMatch();
+        } catch { toast.error("Failed to end match"); }
+        finally { setStartingGame(false); }
     };
 
     const openEditEvent = (event: MatchEvent) => {
@@ -340,9 +432,29 @@ export default function MatchDetailPage() {
                                     : "– vs –"}
                             </span>
                             <StatusBadge status={match.status} />
+                            {/* Feature 5: live timer */}
+                            {match.status === "live" && match.liveStartedAt && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-3 py-1 text-sm font-semibold text-emerald-400 border border-emerald-500/30">
+                                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                                    {elapsedMinutes}&apos;
+                                </span>
+                            )}
                             <span className="text-xs text-muted-foreground">{matchDate}</span>
                             {match.stadium && (
                                 <span className="text-xs text-muted-foreground">{match.stadium?.name}</span>
+                            )}
+                            {/* Feature 4: Start/End game buttons for MEA */}
+                            {canStart && (
+                                <Button size="sm" onClick={handleStartGame} disabled={startingGame} className="mt-1">
+                                    <Play className="h-3.5 w-3.5 mr-1" />
+                                    {startingGame ? "Starting..." : "Start Match"}
+                                </Button>
+                            )}
+                            {canEnd && (
+                                <Button size="sm" variant="destructive" onClick={handleEndGame} disabled={startingGame} className="mt-1">
+                                    <Square className="h-3.5 w-3.5 mr-1" />
+                                    {startingGame ? "Ending..." : "End Match"}
+                                </Button>
                             )}
                         </div>
                         <div className="flex flex-col items-center gap-1 sm:items-end">
@@ -404,53 +516,17 @@ export default function MatchDetailPage() {
                         {events.length === 0 ? (
                             <p className="text-sm text-muted-foreground">No events recorded yet.</p>
                         ) : (
-                            <div className="flex flex-col gap-2">
+                            <div className="flex flex-col gap-1">
                                 {[...events]
                                     .sort((a, b) => a.minute - b.minute)
                                     .map((event) => (
-                                        <div
+                                        <EventRow
                                             key={event.id}
-                                            className="flex items-start justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
-                                        >
-                                            <div className="flex flex-col gap-0.5">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-mono text-xs font-semibold text-muted-foreground">
-                                                        {event.minute}&apos;
-                                                        {event.extraTime ? `+${event.extraTime}` : ""}
-                                                    </span>
-                                                    <span className="font-medium capitalize text-foreground">
-                                                        {event.eventType.name.replace(/_/g, " ")}
-                                                    </span>
-                                                </div>
-                                                {event.player && (
-                                                    <span className="text-xs text-muted-foreground">
-                                                        {event.player.firstName} {event.player.lastName}
-                                                        {event.club ? ` · ${event.club.name}` : ""}
-                                                    </span>
-                                                )}
-                                                {event.relatedPlayer && (
-                                                    <span className="text-xs text-muted-foreground">
-                                                        ↔ {event.relatedPlayer.firstName} {event.relatedPlayer.lastName}
-                                                    </span>
-                                                )}
-                                                {event.description && (
-                                                    <span className="text-xs text-muted-foreground italic">
-                                                        {event.description}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            {canEditEvent(event) && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-7 w-7 shrink-0 text-muted-foreground"
-                                                    onClick={() => openEditEvent(event)}
-                                                >
-                                                    <Pencil className="h-3.5 w-3.5" />
-                                                    <span className="sr-only">Edit event</span>
-                                                </Button>
-                                            )}
-                                        </div>
+                                            event={event}
+                                            match={match}
+                                            canEdit={canEditEvent(event)}
+                                            onEdit={openEditEvent}
+                                        />
                                     ))}
                             </div>
                         )}
@@ -504,33 +580,31 @@ export default function MatchDetailPage() {
                                 <Label htmlFor="evt-type">Event Type</Label>
                                 <Select
                                     value={eventForm.eventTypeId}
-                                    onValueChange={(v) => setEventForm({ ...eventForm, eventTypeId: v })}
+                                    onValueChange={(v) => setEventForm({
+                                        ...eventForm,
+                                        eventTypeId: v,
+                                        playerId: "",
+                                        relatedPlayerId: "",
+                                        minute: eventForm.minute || String(elapsedMinutes),
+                                    })}
                                 >
-                                    <SelectTrigger id="evt-type">
-                                        <SelectValue placeholder="Select type" />
-                                    </SelectTrigger>
+                                    <SelectTrigger id="evt-type"><SelectValue placeholder="Select type" /></SelectTrigger>
                                     <SelectContent>
                                         {eventTypes.map((et) => (
-                                            <SelectItem key={et.id} value={et.id}>
-                                                {et.name.replace(/_/g, " ")}
-                                            </SelectItem>
+                                            <SelectItem key={et.id} value={et.id}>{et.name.replace(/_/g, " ")}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
 
-                            {/* Club */}
+                            {/* Club side */}
                             <div className="flex flex-col gap-2">
                                 <Label htmlFor="evt-club">Club</Label>
                                 <Select
                                     value={eventForm.clubSide}
-                                    onValueChange={(v) =>
-                                        setEventForm({ ...eventForm, clubSide: v as "home" | "away" })
-                                    }
+                                    onValueChange={(v) => setEventForm({ ...eventForm, clubSide: v as "home" | "away", playerId: "", relatedPlayerId: "" })}
                                 >
-                                    <SelectTrigger id="evt-club">
-                                        <SelectValue />
-                                    </SelectTrigger>
+                                    <SelectTrigger id="evt-club"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="home">{match.homeClub?.name} (Home)</SelectItem>
                                         <SelectItem value="away">{match.awayClub?.name} (Away)</SelectItem>
@@ -538,18 +612,78 @@ export default function MatchDetailPage() {
                                 </Select>
                             </div>
 
-                            {/* Player ID */}
+                            {/* Feature 3: Player from lineup */}
                             <div className="flex flex-col gap-2">
-                                <Label htmlFor="evt-player">Player ID</Label>
-                                <Input
-                                    id="evt-player"
+                                <Label htmlFor="evt-player">
+                                    {eventCategory === "substitution" ? "Player Out" : "Player"}
+                                </Label>
+                                <Select
                                     value={eventForm.playerId}
-                                    onChange={(e) => setEventForm({ ...eventForm, playerId: e.target.value })}
-                                    placeholder="Player UUID"
-                                />
+                                    onValueChange={(v) => setEventForm({ ...eventForm, playerId: v })}
+                                >
+                                    <SelectTrigger id="evt-player"><SelectValue placeholder="Select player" /></SelectTrigger>
+                                    <SelectContent>
+                                        {clubLineupForEvent.length === 0 && (
+                                            <SelectItem value="_none" disabled>No lineup submitted</SelectItem>
+                                        )}
+                                        {clubLineupForEvent.map((l) => (
+                                            <SelectItem key={l.seasonClubPlayer.player.id} value={l.seasonClubPlayer.player.id}>
+                                                {l.seasonClubPlayer.player.firstName} {l.seasonClubPlayer.player.lastName}
+                                                {l.shirtNumber ? ` #${l.shirtNumber}` : ""}
+                                                {l.position ? ` (${l.position.name})` : ""}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
 
-                            {/* Minute */}
+                            {/* Feature 2: Smart related player field */}
+                            {eventCategory === "goal" && (
+                                <div className="flex flex-col gap-2">
+                                    <Label htmlFor="evt-assist">Assist (optional)</Label>
+                                    <Select
+                                        value={eventForm.relatedPlayerId}
+                                        onValueChange={(v) => setEventForm({ ...eventForm, relatedPlayerId: v === "_none" ? "" : v })}
+                                    >
+                                        <SelectTrigger id="evt-assist"><SelectValue placeholder="Select assister (optional)" /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="_none">No assist</SelectItem>
+                                            {clubLineupForEvent
+                                                .filter((l) => l.seasonClubPlayer.player.id !== eventForm.playerId)
+                                                .map((l) => (
+                                                    <SelectItem key={l.seasonClubPlayer.player.id} value={l.seasonClubPlayer.player.id}>
+                                                        {l.seasonClubPlayer.player.firstName} {l.seasonClubPlayer.player.lastName}
+                                                        {l.shirtNumber ? ` #${l.shirtNumber}` : ""}
+                                                    </SelectItem>
+                                                ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
+
+                            {eventCategory === "substitution" && (
+                                <div className="flex flex-col gap-2">
+                                    <Label htmlFor="evt-in">Player In</Label>
+                                    <Select
+                                        value={eventForm.relatedPlayerId}
+                                        onValueChange={(v) => setEventForm({ ...eventForm, relatedPlayerId: v })}
+                                    >
+                                        <SelectTrigger id="evt-in"><SelectValue placeholder="Select player coming on" /></SelectTrigger>
+                                        <SelectContent>
+                                            {clubLineupForEvent
+                                                .filter((l) => l.seasonClubPlayer.player.id !== eventForm.playerId)
+                                                .map((l) => (
+                                                    <SelectItem key={l.seasonClubPlayer.player.id} value={l.seasonClubPlayer.player.id}>
+                                                        {l.seasonClubPlayer.player.firstName} {l.seasonClubPlayer.player.lastName}
+                                                        {l.shirtNumber ? ` #${l.shirtNumber}` : ""}
+                                                    </SelectItem>
+                                                ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
+
+                            {/* Minute auto-filled from elapsed time */}
                             <div className="flex flex-col gap-2">
                                 <Label htmlFor="evt-minute">Minute</Label>
                                 <Input
@@ -557,13 +691,11 @@ export default function MatchDetailPage() {
                                     type="number"
                                     min={1}
                                     max={120}
-                                    value={eventForm.minute}
+                                    value={eventForm.minute !== "" ? eventForm.minute : String(elapsedMinutes)}
                                     onChange={(e) => setEventForm({ ...eventForm, minute: e.target.value })}
-                                    placeholder="45"
                                 />
                             </div>
 
-                            {/* Extra Time */}
                             <div className="flex flex-col gap-2">
                                 <Label htmlFor="evt-extra">Extra Time (optional)</Label>
                                 <Input
@@ -576,20 +708,6 @@ export default function MatchDetailPage() {
                                 />
                             </div>
 
-                            {/* Related Player */}
-                            <div className="flex flex-col gap-2">
-                                <Label htmlFor="evt-related">Related Player ID (optional)</Label>
-                                <Input
-                                    id="evt-related"
-                                    value={eventForm.relatedPlayerId}
-                                    onChange={(e) =>
-                                        setEventForm({ ...eventForm, relatedPlayerId: e.target.value })
-                                    }
-                                    placeholder="For substitutions"
-                                />
-                            </div>
-
-                            {/* Description */}
                             <div className="flex flex-col gap-2 sm:col-span-2">
                                 <Label htmlFor="evt-desc">Description (optional)</Label>
                                 <Input
@@ -608,7 +726,8 @@ export default function MatchDetailPage() {
                                     submittingEvent ||
                                     !eventForm.eventTypeId ||
                                     !eventForm.playerId ||
-                                    !eventForm.minute
+                                    !eventForm.minute ||
+                                    (eventCategory === "substitution" && !eventForm.relatedPlayerId)
                                 }
                             >
                                 {submittingEvent ? "Logging..." : "Log Event"}
@@ -630,16 +749,12 @@ export default function MatchDetailPage() {
                             <Label>Event Type</Label>
                             <Select
                                 value={editForm.eventTypeId}
-                                onValueChange={(v) => setEditForm({ ...editForm, eventTypeId: v })}
+                                onValueChange={(v) => setEditForm({ ...editForm, eventTypeId: v, playerId: "", relatedPlayerId: "" })}
                             >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select type" />
-                                </SelectTrigger>
+                                <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                                 <SelectContent>
                                     {eventTypes.map((et) => (
-                                        <SelectItem key={et.id} value={et.id}>
-                                            {et.name.replace(/_/g, " ")}
-                                        </SelectItem>
+                                        <SelectItem key={et.id} value={et.id}>{et.name.replace(/_/g, " ")}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
@@ -648,13 +763,9 @@ export default function MatchDetailPage() {
                             <Label>Club</Label>
                             <Select
                                 value={editForm.clubSide}
-                                onValueChange={(v) =>
-                                    setEditForm({ ...editForm, clubSide: v as "home" | "away" })
-                                }
+                                onValueChange={(v) => setEditForm({ ...editForm, clubSide: v as "home" | "away", playerId: "", relatedPlayerId: "" })}
                             >
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="home">{match.homeClub?.name} (Home)</SelectItem>
                                     <SelectItem value="away">{match.awayClub?.name} (Away)</SelectItem>
@@ -662,16 +773,74 @@ export default function MatchDetailPage() {
                             </Select>
                         </div>
                         <div className="flex flex-col gap-2">
-                            <Label>Player ID</Label>
-                            <Input
+                            <Label>{editEventCategory === "substitution" ? "Player Out" : "Player"}</Label>
+                            <Select
                                 value={editForm.playerId}
-                                onChange={(e) => setEditForm({ ...editForm, playerId: e.target.value })}
-                            />
+                                onValueChange={(v) => setEditForm({ ...editForm, playerId: v })}
+                            >
+                                <SelectTrigger><SelectValue placeholder="Select player" /></SelectTrigger>
+                                <SelectContent>
+                                    {editClubLineup.length === 0 && (
+                                        <SelectItem value="_none" disabled>No lineup submitted</SelectItem>
+                                    )}
+                                    {editClubLineup.map((l) => (
+                                        <SelectItem key={l.seasonClubPlayer.player.id} value={l.seasonClubPlayer.player.id}>
+                                            {l.seasonClubPlayer.player.firstName} {l.seasonClubPlayer.player.lastName}
+                                            {l.shirtNumber ? ` #${l.shirtNumber}` : ""}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
+                        {editEventCategory === "goal" && (
+                            <div className="flex flex-col gap-2">
+                                <Label>Assist (optional)</Label>
+                                <Select
+                                    value={editForm.relatedPlayerId || "_none"}
+                                    onValueChange={(v) => setEditForm({ ...editForm, relatedPlayerId: v === "_none" ? "" : v })}
+                                >
+                                    <SelectTrigger><SelectValue placeholder="No assist" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="_none">No assist</SelectItem>
+                                        {editClubLineup
+                                            .filter((l) => l.seasonClubPlayer.player.id !== editForm.playerId)
+                                            .map((l) => (
+                                                <SelectItem key={l.seasonClubPlayer.player.id} value={l.seasonClubPlayer.player.id}>
+                                                    {l.seasonClubPlayer.player.firstName} {l.seasonClubPlayer.player.lastName}
+                                                    {l.shirtNumber ? ` #${l.shirtNumber}` : ""}
+                                                </SelectItem>
+                                            ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
+                        {editEventCategory === "substitution" && (
+                            <div className="flex flex-col gap-2">
+                                <Label>Player In</Label>
+                                <Select
+                                    value={editForm.relatedPlayerId}
+                                    onValueChange={(v) => setEditForm({ ...editForm, relatedPlayerId: v })}
+                                >
+                                    <SelectTrigger><SelectValue placeholder="Select player coming on" /></SelectTrigger>
+                                    <SelectContent>
+                                        {editClubLineup
+                                            .filter((l) => l.seasonClubPlayer.player.id !== editForm.playerId)
+                                            .map((l) => (
+                                                <SelectItem key={l.seasonClubPlayer.player.id} value={l.seasonClubPlayer.player.id}>
+                                                    {l.seasonClubPlayer.player.firstName} {l.seasonClubPlayer.player.lastName}
+                                                    {l.shirtNumber ? ` #${l.shirtNumber}` : ""}
+                                                </SelectItem>
+                                            ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
                         <div className="flex flex-col gap-2">
                             <Label>Minute</Label>
                             <Input
                                 type="number"
+                                min={1}
+                                max={120}
                                 value={editForm.minute}
                                 onChange={(e) => setEditForm({ ...editForm, minute: e.target.value })}
                             />
@@ -680,17 +849,9 @@ export default function MatchDetailPage() {
                             <Label>Extra Time</Label>
                             <Input
                                 type="number"
+                                min={0}
                                 value={editForm.extraTime}
                                 onChange={(e) => setEditForm({ ...editForm, extraTime: e.target.value })}
-                            />
-                        </div>
-                        <div className="flex flex-col gap-2">
-                            <Label>Related Player ID</Label>
-                            <Input
-                                value={editForm.relatedPlayerId}
-                                onChange={(e) =>
-                                    setEditForm({ ...editForm, relatedPlayerId: e.target.value })
-                                }
                             />
                         </div>
                         <div className="flex flex-col gap-2 sm:col-span-2">
@@ -702,15 +863,184 @@ export default function MatchDetailPage() {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setEditingEvent(null)}>
-                            Cancel
-                        </Button>
+                        <Button variant="outline" onClick={() => setEditingEvent(null)}>Cancel</Button>
                         <Button onClick={handleSaveEdit} disabled={savingEdit}>
                             {savingEdit ? "Saving..." : "Save Changes"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+        </div>
+    );
+}
+
+// ─── Event Row ────────────────────────────────────────────────────────────────
+
+function getEventMeta(typeName: string): {
+    icon: React.ReactNode;
+    label: string;
+    iconBg: string;
+} {
+    const n = typeName.toLowerCase();
+    if (n === "goal" || n === "penalty_goal") {
+        return {
+            icon: <Goal className="h-3.5 w-3.5 text-emerald-400" />,
+            label: n === "penalty_goal" ? "Penalty Goal" : "Goal",
+            iconBg: "bg-emerald-500/15 border-emerald-500/30",
+        };
+    }
+    if (n === "own_goal") {
+        return {
+            icon: <Goal className="h-3.5 w-3.5 text-orange-400" />,
+            label: "Own Goal",
+            iconBg: "bg-orange-500/15 border-orange-500/30",
+        };
+    }
+    if (n === "assist") {
+        return {
+            icon: <span className="text-[11px] font-bold text-sky-400">A</span>,
+            label: "Assist",
+            iconBg: "bg-sky-500/15 border-sky-500/30",
+        };
+    }
+    if (n === "yellow_card") {
+        return {
+            icon: <span className="block h-3.5 w-2.5 rounded-[2px] bg-yellow-400" />,
+            label: "Yellow Card",
+            iconBg: "bg-yellow-500/15 border-yellow-500/30",
+        };
+    }
+    if (n === "red_card") {
+        return {
+            icon: <span className="block h-3.5 w-2.5 rounded-[2px] bg-red-500" />,
+            label: "Red Card",
+            iconBg: "bg-red-500/15 border-red-500/30",
+        };
+    }
+    if (n === "substitution") {
+        return {
+            icon: <ArrowLeftRight className="h-3.5 w-3.5 text-violet-400" />,
+            label: "Substitution",
+            iconBg: "bg-violet-500/15 border-violet-500/30",
+        };
+    }
+    if (n === "injury") {
+        return {
+            icon: <CircleAlert className="h-3.5 w-3.5 text-rose-400" />,
+            label: "Injury",
+            iconBg: "bg-rose-500/15 border-rose-500/30",
+        };
+    }
+    return {
+        icon: <span className="h-2 w-2 rounded-full bg-muted-foreground/50" />,
+        label: typeName.replace(/_/g, " "),
+        iconBg: "bg-muted border-border",
+    };
+}
+
+function EventRow({
+    event,
+    match,
+    canEdit,
+    onEdit,
+}: {
+    event: MatchEvent;
+    match: Match;
+    canEdit: boolean;
+    onEdit: (e: MatchEvent) => void;
+}) {
+    const { icon, label, iconBg } = getEventMeta(event.eventType.name);
+    const n = event.eventType.name.toLowerCase();
+    const isGoal = n === "goal" || n === "penalty_goal" || n === "own_goal";
+    const isSub = n === "substitution";
+    const isCard = n === "yellow_card" || n === "red_card";
+
+    const playerName = event.player
+        ? `${event.player.firstName} ${event.player.lastName}`
+        : null;
+    const relatedName = event.relatedPlayer
+        ? `${event.relatedPlayer.firstName} ${event.relatedPlayer.lastName}`
+        : null;
+
+    // Determine which side this event belongs to
+    const isHome = event.club?.id === match.homeClubId;
+    const clubShort = event.club
+        ? (isHome ? match.homeClub?.shortName || match.homeClub?.name : match.awayClub?.shortName || match.awayClub?.name)
+        : null;
+
+    return (
+        <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/40 transition-colors group">
+            {/* Minute */}
+            <span className="w-9 shrink-0 text-right font-mono text-xs font-semibold text-muted-foreground">
+                {event.minute}&apos;{event.extraTime ? `+${event.extraTime}` : ""}
+            </span>
+
+            {/* Icon badge */}
+            <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border ${iconBg}`}>
+                {icon}
+            </span>
+
+            {/* Content */}
+            <div className="flex min-w-0 flex-1 flex-col gap-0">
+                {isGoal && playerName && (
+                    <span className="font-semibold text-foreground truncate">
+                        {playerName}
+                        {clubShort && <span className="ml-1 text-xs font-normal text-muted-foreground">({clubShort})</span>}
+                        {n === "own_goal" && <span className="ml-1 text-xs text-orange-400">(OG)</span>}
+                        {n === "penalty_goal" && <span className="ml-1 text-xs text-emerald-400">(P)</span>}
+                    </span>
+                )}
+                {isGoal && relatedName && (
+                    <span className="text-xs text-muted-foreground">
+                        <span className="text-sky-400">A:</span> {relatedName}
+                    </span>
+                )}
+                {isSub && (
+                    <span className="text-xs text-foreground">
+                        {relatedName && (
+                            <span className="text-emerald-400">▲ {relatedName}</span>
+                        )}
+                        {playerName && relatedName && <span className="text-muted-foreground mx-1">/</span>}
+                        {playerName && (
+                            <span className="text-red-400">▼ {playerName}</span>
+                        )}
+                        {clubShort && <span className="ml-1 text-muted-foreground">({clubShort})</span>}
+                    </span>
+                )}
+                {isCard && playerName && (
+                    <span className="font-medium text-foreground truncate">
+                        {playerName}
+                        {clubShort && <span className="ml-1 text-xs font-normal text-muted-foreground">({clubShort})</span>}
+                    </span>
+                )}
+                {!isGoal && !isSub && !isCard && (
+                    <span className="text-foreground truncate">
+                        {playerName || label}
+                        {clubShort && playerName && <span className="ml-1 text-xs text-muted-foreground">({clubShort})</span>}
+                    </span>
+                )}
+                {event.description && (
+                    <span className="text-xs text-muted-foreground italic truncate">{event.description}</span>
+                )}
+            </div>
+
+            {/* Label tag */}
+            <span className="hidden sm:inline-flex shrink-0 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">
+                {label}
+            </span>
+
+            {/* Edit button */}
+            {canEdit && (
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground"
+                    onClick={() => onEdit(event)}
+                >
+                    <Pencil className="h-3 w-3" />
+                    <span className="sr-only">Edit</span>
+                </Button>
+            )}
         </div>
     );
 }
