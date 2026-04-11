@@ -237,8 +237,10 @@ export default function SeasonAssignmentsPage() {
     const availableReferees = (allReferees ?? []).filter((r) => !pendingRefereeIds.includes(r.id));
     const availableMEAs = meaUsers.filter((u) => !pendingMEAIds.includes(u.id));
 
-    const refereeLimit = season?.requiredClubs != null ? 4 * season.requiredClubs : null;
-    const meaLimit = season?.requiredClubs ?? null;
+    // Correct quota: matchesPerRound = floor(n/2), need matchesPerRound+1 MEAs and (matchesPerRound+1)*4 referees
+    const matchesPerRound = season?.requiredClubs != null ? Math.floor(season.requiredClubs / 2) : null;
+    const refereeLimit = matchesPerRound != null ? (matchesPerRound + 1) * 4 : null;
+    const meaLimit = matchesPerRound != null ? matchesPerRound + 1 : null;
 
     // ── Handlers ──
     const handleRemoveReferee = (id: string) => {
@@ -344,6 +346,15 @@ export default function SeasonAssignmentsPage() {
             {!isSeasonActive && (
                 <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
                     Assignments can only be made to active seasons.
+                </div>
+            )}
+
+            {/* Quota info */}
+            {season.requiredClubs != null && matchesPerRound != null && (
+                <div className="rounded-md border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-sm text-blue-400">
+                    {season.requiredClubs} clubs → {matchesPerRound} match{matchesPerRound !== 1 ? "es" : ""}/round →
+                    need <strong>{meaLimit} MEAs</strong> and <strong>{refereeLimit} referees</strong>
+                    ({matchesPerRound} active + 1 on break per round)
                 </div>
             )}
 

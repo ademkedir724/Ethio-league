@@ -30,7 +30,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { ChevronLeft, Plus, Shield, Users, Check, X, UserCircle, Swords } from "lucide-react";
+import { ChevronLeft, Plus, Shield, Users, Check, X, UserCircle, Swords, Pencil } from "lucide-react";
 import {
     Table,
     TableBody,
@@ -207,9 +207,27 @@ function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
     const { isLeagueAdmin } = useAuth();
     const [isGenerating, setIsGenerating] = useState(false);
     const [generateErrors, setGenerateErrors] = useState<Array<{ criterion: string; message: string; clubs?: string[] }>>([]);
+    const [editingMatch, setEditingMatch] = useState<FixtureMatch | null>(null);
+    const [editForm, setEditForm] = useState({ matchDate: "", matchTime: "", stadiumId: "" });
+    const [isSavingEdit, setIsSavingEdit] = useState(false);
 
     const { data: fixtures, isLoading, mutate: mutateFixtures } = useSWR<FixtureMatch[]>(
         `/api/matches?seasonId=${seasonId}`,
+        authFetcher
+    );
+
+    // Fetch season assignments for MEA/referee pickers in edit dialog
+    const { data: seasonAssignments } = useSWR<{
+        referees: Array<{ id: string; firstName: string; lastName: string; licenseLevel?: string | null }>;
+        matchEventAdmins: Array<{ id: string; fullName: string; email: string }>;
+    }>(
+        editingMatch ? `/api/seasons/${seasonId}/assignments` : null,
+        authFetcher
+    );
+
+    // Fetch stadiums for the season's clubs
+    const { data: stadiums } = useSWR<Array<{ id: string; name: string; city?: string | null; ownerClub?: { name: string } | null }>>(
+        editingMatch ? `/api/stadiums?seasonId=${seasonId}` : null,
         authFetcher
     );
 
@@ -238,6 +256,47 @@ function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
         }
     };
 
+    const openEdit = (m: FixtureMatch, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const d = new Date(m.matchDate);
+        setEditForm({
+            matchDate: d.toISOString().slice(0, 10),
+            matchTime: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
+            stadiumId: m.stadium?.id ?? "",
+        });
+        setEditingMatch(m);
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editingMatch) return;
+        setIsSavingEdit(true);
+        try {
+            const [h, min] = editForm.matchTime.split(":").map(Number);
+            const matchDate = new Date(editForm.matchDate);
+            matchDate.setHours(h, min, 0, 0);
+
+            const res = await fetchWithAuth(`/api/matches/${editingMatch.id}`, {
+                method: "PATCH",
+                body: JSON.stringify({
+                    matchDate: matchDate.toISOString(),
+                    stadiumId: editForm.stadiumId || null,
+                }),
+            });
+            if (!res.ok) {
+                const d = await res.json().catch(() => ({}));
+                toast.error(d.error || "Failed to update match");
+                return;
+            }
+            toast.success("Match updated");
+            setEditingMatch(null);
+            mutateFixtures();
+        } catch {
+            toast.error("Something went wrong");
+        } finally {
+            setIsSavingEdit(false);
+        }
+    };
+
     const formatMatchDate = (d: string) =>
         new Date(d).toLocaleString(undefined, {
             day: "numeric", month: "short", year: "numeric",
@@ -256,6 +315,8 @@ function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
         const nb = parseInt(b.replace("Round ", "")) || 999;
         return na - nb;
     });
+
+    const canEdit = isLeagueAdmin();
 
     return (
         <div className="flex flex-col gap-4 mt-4">
@@ -290,7 +351,7 @@ function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
                 <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-12 text-center gap-3">
                     <Swords className="h-8 w-8 text-muted-foreground/40" />
                     <p className="text-sm text-muted-foreground">No fixtures generated yet.</p>
-                    {isLeagueAdmin() && (
+                    {canEdit && (
                         <Button size="sm" onClick={() => handleGenerate(false)} disabled={isGenerating}>
                             <Swords className="h-3.5 w-3.5 mr-1" />
                             {isGenerating ? "Generating..." : "Generate Fixtures"}
@@ -299,7 +360,7 @@ function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
                 </div>
             ) : (
                 <div className="flex flex-col gap-6">
-                    {isLeagueAdmin() && (
+                    {canEdit && (
                         <div className="flex justify-end">
                             <Button size="sm" variant="outline" onClick={() => handleGenerate(true)} disabled={isGenerating}>
                                 <Swords className="h-3.5 w-3.5 mr-1" />
@@ -320,6 +381,7 @@ function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
                                                 <TableHead className="hidden md:table-cell">Stadium</TableHead>
                                                 <TableHead>Score</TableHead>
                                                 <TableHead>Status</TableHead>
+                                                {canEdit && <TableHead className="w-10" />}
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -349,6 +411,17 @@ function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
                                                     <TableCell>
                                                         <StatusBadge status={m.status} />
                                                     </TableCell>
+                                                    {canEdit && (
+                                                        <TableCell>
+                                                            <Button
+                                                                variant="ghost" size="icon"
+                                                                className="h-7 w-7 text-muted-foreground"
+                                                                onClick={(e) => openEdit(m, e)}
+                                                            >
+                                                                <Pencil className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        </TableCell>
+                                                    )}
                                                 </TableRow>
                                             ))}
                                         </TableBody>
@@ -359,6 +432,86 @@ function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
                     ))}
                 </div>
             )}
+
+            {/* Match Edit Dialog */}
+            <Dialog open={!!editingMatch} onOpenChange={(open) => !open && setEditingMatch(null)}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Edit Match</DialogTitle>
+                        <DialogDescription>
+                            {editingMatch ? `${editingMatch.homeClub.name} vs ${editingMatch.awayClub.name}` : ""}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex flex-col gap-4">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-xs font-medium text-muted-foreground">Date</label>
+                                <input
+                                    type="date"
+                                    value={editForm.matchDate}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditForm({ ...editForm, matchDate: e.target.value })}
+                                    className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                                />
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-xs font-medium text-muted-foreground">Kickoff Time</label>
+                                <Select
+                                    value={editForm.matchTime}
+                                    onValueChange={(v) => setEditForm({ ...editForm, matchTime: v })}
+                                >
+                                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="15:00">15:00</SelectItem>
+                                        <SelectItem value="17:00">17:00</SelectItem>
+                                        <SelectItem value="19:00">19:00</SelectItem>
+                                        <SelectItem value="20:00">20:00</SelectItem>
+                                        <SelectItem value="20:45">20:45</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-medium text-muted-foreground">Stadium</label>
+                            <Select
+                                value={editForm.stadiumId || "none"}
+                                onValueChange={(v) => setEditForm({ ...editForm, stadiumId: v === "none" ? "" : v })}
+                            >
+                                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="No stadium" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">No stadium</SelectItem>
+                                    {(stadiums ?? []).map((s) => (
+                                        <SelectItem key={s.id} value={s.id}>
+                                            {s.name}{s.ownerClub ? ` (${s.ownerClub.name})` : ""}{s.city ? ` · ${s.city}` : ""}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            {stadiums && stadiums.length === 0 && (
+                                <p className="text-xs text-muted-foreground">No stadiums found for clubs in this season.</p>
+                            )}
+                        </div>
+                        {seasonAssignments && (
+                            <div className="flex flex-col gap-1.5">
+                                <p className="text-xs font-medium text-muted-foreground">
+                                    To edit referees or MEA, go to the{" "}
+                                    <button
+                                        className="text-primary underline"
+                                        onClick={() => { setEditingMatch(null); router.push(`/dashboard/matches/${editingMatch?.id}`); }}
+                                    >
+                                        match detail page
+                                    </button>
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditingMatch(null)}>Cancel</Button>
+                        <Button onClick={handleSaveEdit} disabled={isSavingEdit}>
+                            {isSavingEdit ? "Saving..." : "Save"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
