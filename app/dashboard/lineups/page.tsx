@@ -23,15 +23,13 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { AlertTriangle, Calendar, Users } from "lucide-react";
 
-interface Club {
-    id: string;
-    name: string;
-    shortName?: string;
-}
+interface Club { id: string; name: string; shortName?: string }
+interface Season { id: string; name: string; status: string }
 
 interface Match {
     id: string;
@@ -44,23 +42,13 @@ interface Match {
     seasonId?: string;
 }
 
-interface Player {
-    id: string;
-    firstName: string;
-    lastName: string;
-}
-
-interface Position {
-    id: number;
-    name: string;
-}
-
 interface SeasonClubPlayer {
     id: string;
-    player: Player;
-    position?: Position | null;
+    player: { id: string; firstName: string; lastName: string };
+    position?: { id: number; name: string } | null;
     jerseyNumber?: number | null;
     seasonClub: { club: Club };
+    requestStatus: string;
 }
 
 interface LineupEntry {
@@ -71,24 +59,20 @@ interface LineupEntry {
 }
 
 const POSITIONS = [
-    { id: 1, name: "GK" },
-    { id: 2, name: "CB" },
-    { id: 3, name: "LB" },
-    { id: 4, name: "RB" },
-    { id: 5, name: "CDM" },
-    { id: 6, name: "CM" },
-    { id: 7, name: "CAM" },
-    { id: 8, name: "LW" },
-    { id: 9, name: "RW" },
-    { id: 10, name: "ST" },
-    { id: 11, name: "CF" },
+    { id: 1, name: "GK" }, { id: 2, name: "CB" }, { id: 3, name: "LB" },
+    { id: 4, name: "RB" }, { id: 5, name: "CDM" }, { id: 6, name: "CM" },
+    { id: 7, name: "CAM" }, { id: 8, name: "LW" }, { id: 9, name: "RW" },
+    { id: 10, name: "ST" }, { id: 11, name: "CF" },
 ];
 
 export default function LineupsPage() {
     const { getClubId } = useAuth();
     const clubId = getClubId();
 
-    // Dialog state — declared early so seasonId can be derived for the players fetch
+    // Season selector
+    const [selectedSeasonId, setSelectedSeasonId] = useState<string>("");
+
+    // Dialog state
     const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
     const [starters, setStarters] = useState<Set<string>>(new Set());
     const [substitutes, setSubstitutes] = useState<Set<string>>(new Set());
@@ -97,16 +81,30 @@ export default function LineupsPage() {
     const [submitting, setSubmitting] = useState(false);
     const [apiErrors, setApiErrors] = useState<string[]>([]);
 
+    // Fetch all seasons for this club
+    const { data: seasonsData } = useSWR<Season[]>(
+        clubId ? `/api/seasons?clubId=${clubId}` : null,
+        authFetcher
+    );
+    const seasons = seasonsData ?? [];
+
+    // Auto-select active season on first load
+    useMemo(() => {
+        if (!selectedSeasonId && seasons.length > 0) {
+            const active = seasons.find((s) => s.status === "active") ?? seasons[0];
+            if (active) setSelectedSeasonId(active.id);
+        }
+    }, [seasons, selectedSeasonId]);
+
+    // Fetch matches for selected season + club
     const { data: matchesData, isLoading: matchesLoading, error: matchesError } = useSWR(
-        clubId ? `/api/matches?clubId=${clubId}` : null,
+        clubId && selectedSeasonId ? `/api/matches?clubId=${clubId}&seasonId=${selectedSeasonId}` : null,
         authFetcher
     );
 
-    // Derive seasonId from the selected match — avoids relying on getSeasonId() which is MEA-only
-    const matchSeasonId = selectedMatch?.season?.id ?? selectedMatch?.seasonId ?? null;
-
-    const { data: playersData, isLoading: playersLoading } = useSWR(
-        matchSeasonId ? `/api/seasons/${matchSeasonId}/players` : null,
+    // Fetch players for the selected season (club-scoped by the API)
+    const { data: playersData, isLoading: playersLoading } = useSWR<SeasonClubPlayer[]>(
+        selectedSeasonId ? `/api/seasons/${selectedSeasonId}/players` : null,
         authFetcher
     );
 
@@ -115,8 +113,7 @@ export default function LineupsPage() {
         authFetcher
     );
 
-    const club = clubData as { status?: string } | undefined;
-    const isPending = club?.status === "pending";
+    const isPending = (clubData as { status?: string } | undefined)?.status === "pending";
 
     const allMatches: Match[] = matchesData || [];
     const upcomingMatches = useMemo(
@@ -124,11 +121,12 @@ export default function LineupsPage() {
         [allMatches]
     );
 
-    const allPlayers: SeasonClubPlayer[] = playersData || [];
-    // Only show players from this club
+    // Only approved players from this club
     const clubPlayers = useMemo(
-        () => allPlayers.filter((p) => p.seasonClub?.club?.id === clubId),
-        [allPlayers, clubId]
+        () => (playersData ?? []).filter(
+            (p) => p.seasonClub?.club?.id === clubId && p.requestStatus === "approved"
+        ),
+        [playersData, clubId]
     );
 
     const openDialog = (match: Match) => {
@@ -153,12 +151,7 @@ export default function LineupsPage() {
                 if (captainId === scpId) setCaptainId("");
             } else {
                 next.add(scpId);
-                // Remove from subs if added as starter
-                setSubstitutes((s) => {
-                    const ns = new Set(s);
-                    ns.delete(scpId);
-                    return ns;
-                });
+                setSubstitutes((s) => { const ns = new Set(s); ns.delete(scpId); return ns; });
             }
             return next;
         });
@@ -171,12 +164,7 @@ export default function LineupsPage() {
                 next.delete(scpId);
             } else {
                 next.add(scpId);
-                // Remove from starters if added as sub
-                setStarters((s) => {
-                    const ns = new Set(s);
-                    ns.delete(scpId);
-                    return ns;
-                });
+                setStarters((s) => { const ns = new Set(s); ns.delete(scpId); return ns; });
                 if (captainId === scpId) setCaptainId("");
             }
             return next;
@@ -244,13 +232,41 @@ export default function LineupsPage() {
                 </div>
             )}
 
+            {/* Season selector */}
+            {seasons.length > 0 && (
+                <div className="flex items-center gap-3">
+                    <Label className="text-sm shrink-0">Season</Label>
+                    <Select value={selectedSeasonId} onValueChange={setSelectedSeasonId}>
+                        <SelectTrigger className="w-56">
+                            <SelectValue placeholder="Select a season" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {seasons.map((s) => (
+                                <SelectItem key={s.id} value={s.id}>
+                                    {s.name}
+                                    {s.status === "active" && (
+                                        <span className="ml-2 text-xs text-emerald-400">(active)</span>
+                                    )}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            )}
+
             {matchesError && (
                 <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                     Failed to load matches. Please try again.
                 </div>
             )}
 
-            {matchesLoading ? (
+            {!selectedSeasonId ? (
+                <Card>
+                    <CardContent className="flex h-32 items-center justify-center text-sm text-muted-foreground">
+                        Select a season to view matches.
+                    </CardContent>
+                </Card>
+            ) : matchesLoading ? (
                 <div className="flex flex-col gap-3">
                     {Array.from({ length: 3 }).map((_, i) => (
                         <Skeleton key={i} className="h-24 w-full rounded-lg" />
@@ -259,7 +275,7 @@ export default function LineupsPage() {
             ) : upcomingMatches.length === 0 ? (
                 <Card>
                     <CardContent className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-                        No upcoming matches found.
+                        No upcoming matches found for this season.
                     </CardContent>
                 </Card>
             ) : (
@@ -276,25 +292,14 @@ export default function LineupsPage() {
                                             <span className="flex items-center gap-1">
                                                 <Calendar className="h-3 w-3" />
                                                 {new Date(match.matchDate).toLocaleDateString(undefined, {
-                                                    weekday: "short",
-                                                    year: "numeric",
-                                                    month: "short",
-                                                    day: "numeric",
+                                                    weekday: "short", year: "numeric", month: "short", day: "numeric",
                                                 })}
                                             </span>
-                                            <Badge variant="outline" className="text-[10px]">
-                                                {match.status}
-                                            </Badge>
-                                            {match.roundNumber && (
-                                                <span>Round {match.roundNumber}</span>
-                                            )}
+                                            <Badge variant="outline" className="text-[10px]">{match.status}</Badge>
+                                            {match.roundNumber && <span>Round {match.roundNumber}</span>}
                                         </div>
                                     </div>
-                                    <Button
-                                        size="sm"
-                                        disabled={isPending}
-                                        onClick={() => openDialog(match)}
-                                    >
+                                    <Button size="sm" disabled={isPending} onClick={() => openDialog(match)}>
                                         <Users className="mr-2 h-4 w-4" />
                                         Submit Lineup
                                     </Button>
@@ -311,38 +316,31 @@ export default function LineupsPage() {
                     <DialogHeader>
                         <DialogTitle>
                             Submit Lineup —{" "}
-                            {selectedMatch
-                                ? `${selectedMatch.homeClub.name} vs ${selectedMatch.awayClub.name}`
-                                : ""}
+                            {selectedMatch ? `${selectedMatch.homeClub.name} vs ${selectedMatch.awayClub.name}` : ""}
                         </DialogTitle>
                     </DialogHeader>
 
                     {playersLoading ? (
                         <div className="flex flex-col gap-2 py-4">
-                            {Array.from({ length: 5 }).map((_, i) => (
-                                <Skeleton key={i} className="h-8 w-full" />
-                            ))}
+                            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+                        </div>
+                    ) : clubPlayers.length === 0 ? (
+                        <div className="py-6 text-center text-sm text-muted-foreground">
+                            No approved players found for your club in this season.
+                            Make sure players have been approved via the squad request flow.
                         </div>
                     ) : (
                         <ScrollArea className="max-h-[60vh] pr-2">
                             <div className="flex flex-col gap-6 py-2">
                                 {/* Starters */}
                                 <div>
-                                    <p className="mb-2 text-sm font-semibold">
-                                        Starters ({starters.size}/11)
-                                    </p>
+                                    <p className="mb-2 text-sm font-semibold">Starters ({starters.size}/11)</p>
                                     <div className="flex flex-col gap-2">
                                         {clubPlayers.map((scp) => {
                                             const isStarter = starters.has(scp.id);
                                             const isSub = substitutes.has(scp.id);
                                             return (
-                                                <div
-                                                    key={scp.id}
-                                                    className={`flex items-center gap-3 rounded-md border px-3 py-2 text-sm transition-colors ${isStarter
-                                                        ? "border-primary/40 bg-primary/5"
-                                                        : "border-border"
-                                                        }`}
-                                                >
+                                                <div key={scp.id} className={`flex items-center gap-3 rounded-md border px-3 py-2 text-sm transition-colors ${isStarter ? "border-primary/40 bg-primary/5" : "border-border"}`}>
                                                     <input
                                                         type="checkbox"
                                                         id={`starter-${scp.id}`}
@@ -351,41 +349,24 @@ export default function LineupsPage() {
                                                         onChange={() => toggleStarter(scp.id)}
                                                         className="h-4 w-4 accent-primary"
                                                     />
-                                                    <label
-                                                        htmlFor={`starter-${scp.id}`}
-                                                        className="flex-1 cursor-pointer"
-                                                    >
+                                                    <label htmlFor={`starter-${scp.id}`} className="flex-1 cursor-pointer">
                                                         {scp.player.firstName} {scp.player.lastName}
-                                                        {scp.jerseyNumber && (
-                                                            <span className="ml-2 text-xs text-muted-foreground">
-                                                                #{scp.jerseyNumber}
-                                                            </span>
-                                                        )}
+                                                        {scp.jerseyNumber && <span className="ml-2 text-xs text-muted-foreground">#{scp.jerseyNumber}</span>}
                                                     </label>
                                                     {isStarter && (
                                                         <Select
                                                             value={positions[scp.id]?.toString() ?? ""}
-                                                            onValueChange={(val) =>
-                                                                setPositions((p) => ({ ...p, [scp.id]: parseInt(val) }))
-                                                            }
+                                                            onValueChange={(val) => setPositions((p) => ({ ...p, [scp.id]: parseInt(val) }))}
                                                         >
-                                                            <SelectTrigger className="h-7 w-24 text-xs">
-                                                                <SelectValue placeholder="Position" />
-                                                            </SelectTrigger>
+                                                            <SelectTrigger className="h-7 w-24 text-xs"><SelectValue placeholder="Position" /></SelectTrigger>
                                                             <SelectContent>
                                                                 {POSITIONS.map((pos) => (
-                                                                    <SelectItem key={pos.id} value={pos.id.toString()}>
-                                                                        {pos.name}
-                                                                    </SelectItem>
+                                                                    <SelectItem key={pos.id} value={pos.id.toString()}>{pos.name}</SelectItem>
                                                                 ))}
                                                             </SelectContent>
                                                         </Select>
                                                     )}
-                                                    {isSub && (
-                                                        <Badge variant="secondary" className="text-[10px]">
-                                                            Sub
-                                                        </Badge>
-                                                    )}
+                                                    {isSub && <Badge variant="secondary" className="text-[10px]">Sub</Badge>}
                                                 </div>
                                             );
                                         })}
@@ -394,59 +375,35 @@ export default function LineupsPage() {
 
                                 {/* Substitutes */}
                                 <div>
-                                    <p className="mb-2 text-sm font-semibold">
-                                        Substitutes ({substitutes.size})
-                                    </p>
+                                    <p className="mb-2 text-sm font-semibold">Substitutes ({substitutes.size})</p>
                                     <div className="flex flex-col gap-2">
-                                        {clubPlayers
-                                            .filter((p) => !starters.has(p.id))
-                                            .map((scp) => {
-                                                const isSub = substitutes.has(scp.id);
-                                                return (
-                                                    <div
-                                                        key={scp.id}
-                                                        className={`flex items-center gap-3 rounded-md border px-3 py-2 text-sm transition-colors ${isSub
-                                                            ? "border-blue-500/40 bg-blue-500/5"
-                                                            : "border-border"
-                                                            }`}
-                                                    >
-                                                        <input
-                                                            type="checkbox"
-                                                            id={`sub-${scp.id}`}
-                                                            checked={isSub}
-                                                            onChange={() => toggleSubstitute(scp.id)}
-                                                            className="h-4 w-4 accent-primary"
-                                                        />
-                                                        <label
-                                                            htmlFor={`sub-${scp.id}`}
-                                                            className="flex-1 cursor-pointer"
-                                                        >
-                                                            {scp.player.firstName} {scp.player.lastName}
-                                                            {scp.jerseyNumber && (
-                                                                <span className="ml-2 text-xs text-muted-foreground">
-                                                                    #{scp.jerseyNumber}
-                                                                </span>
-                                                            )}
-                                                        </label>
-                                                    </div>
-                                                );
-                                            })}
-                                        {clubPlayers.filter((p) => !starters.has(p.id)).length === 0 && (
-                                            <p className="text-xs text-muted-foreground">
-                                                All players are selected as starters.
-                                            </p>
-                                        )}
+                                        {clubPlayers.filter((p) => !starters.has(p.id)).map((scp) => {
+                                            const isSub = substitutes.has(scp.id);
+                                            return (
+                                                <div key={scp.id} className={`flex items-center gap-3 rounded-md border px-3 py-2 text-sm transition-colors ${isSub ? "border-blue-500/40 bg-blue-500/5" : "border-border"}`}>
+                                                    <input
+                                                        type="checkbox"
+                                                        id={`sub-${scp.id}`}
+                                                        checked={isSub}
+                                                        onChange={() => toggleSubstitute(scp.id)}
+                                                        className="h-4 w-4 accent-primary"
+                                                    />
+                                                    <label htmlFor={`sub-${scp.id}`} className="flex-1 cursor-pointer">
+                                                        {scp.player.firstName} {scp.player.lastName}
+                                                        {scp.jerseyNumber && <span className="ml-2 text-xs text-muted-foreground">#{scp.jerseyNumber}</span>}
+                                                    </label>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
 
-                                {/* Captain selector */}
+                                {/* Captain */}
                                 {starters.size > 0 && (
                                     <div>
                                         <p className="mb-2 text-sm font-semibold">Captain</p>
                                         <Select value={captainId} onValueChange={setCaptainId}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select captain from starters" />
-                                            </SelectTrigger>
+                                            <SelectTrigger><SelectValue placeholder="Select captain from starters" /></SelectTrigger>
                                             <SelectContent>
                                                 {startersList.map((scp) => (
                                                     <SelectItem key={scp.id} value={scp.id}>
@@ -458,14 +415,12 @@ export default function LineupsPage() {
                                     </div>
                                 )}
 
-                                {/* API errors */}
+                                {/* Errors */}
                                 {apiErrors.length > 0 && (
                                     <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                                         <p className="mb-1 font-medium">Validation errors:</p>
                                         <ul className="list-inside list-disc space-y-1">
-                                            {apiErrors.map((err, i) => (
-                                                <li key={i}>{err}</li>
-                                            ))}
+                                            {apiErrors.map((err, i) => <li key={i}>{err}</li>)}
                                         </ul>
                                     </div>
                                 )}
@@ -474,10 +429,8 @@ export default function LineupsPage() {
                     )}
 
                     <DialogFooter>
-                        <Button variant="outline" onClick={closeDialog} disabled={submitting}>
-                            Cancel
-                        </Button>
-                        <Button onClick={handleSubmit} disabled={submitting || playersLoading}>
+                        <Button variant="outline" onClick={closeDialog} disabled={submitting}>Cancel</Button>
+                        <Button onClick={handleSubmit} disabled={submitting || playersLoading || clubPlayers.length === 0}>
                             {submitting ? "Submitting..." : "Submit Lineup"}
                         </Button>
                     </DialogFooter>
