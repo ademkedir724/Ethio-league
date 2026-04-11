@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { success, created, badRequest, notFound, forbidden, serverError, parseUUID } from "@/lib/api-helpers";
+import { success, created, badRequest, notFound, forbidden, serverError, parseUUID, unprocessableEntity } from "@/lib/api-helpers";
 import { assertOrgScope } from "@/lib/scope-guard";
 
 // GET /api/seasons/[id]/assignments — get assigned referees and MEAs
@@ -68,8 +68,56 @@ export async function POST(
 
     if (!assertOrgScope(auth, season.league.organizationId)) return forbidden();
 
+    // 1. Season must be active
+    if (season.status !== "active") {
+      return unprocessableEntity({
+        error: "Assignments can only be made to active seasons",
+        code: "SEASON_NOT_ACTIVE",
+      });
+    }
+
     const body = await req.json();
     const { refereeIds, matchEventAdminIds } = body;
+
+    // 2. Quota enforcement (only when requiredClubs is set)
+    if (season.requiredClubs !== null) {
+      if (refereeIds && Array.isArray(refereeIds) && refereeIds.length > 4 * season.requiredClubs) {
+        return unprocessableEntity({
+          error: `Referee quota exceeded. Max ${4 * season.requiredClubs} allowed, you selected ${refereeIds.length}`,
+          code: "QUOTA_EXCEEDED_REFEREES",
+          limit: 4 * season.requiredClubs,
+          requested: refereeIds.length,
+        });
+      }
+      if (matchEventAdminIds && Array.isArray(matchEventAdminIds) && matchEventAdminIds.length > season.requiredClubs) {
+        return unprocessableEntity({
+          error: `MEA quota exceeded. Max ${season.requiredClubs} allowed, you selected ${matchEventAdminIds.length}`,
+          code: "QUOTA_EXCEEDED_MEAS",
+          limit: season.requiredClubs,
+          requested: matchEventAdminIds.length,
+        });
+      }
+    }
+    // 3. Verify all MEA IDs belong to this org
+    if (matchEventAdminIds && Array.isArray(matchEventAdminIds) && matchEventAdminIds.length > 0) {
+      const meaRoleCheck = await prisma.role.findUnique({ where: { name: "match_event_admin" } });
+      if (meaRoleCheck) {
+        const validMEAs = await prisma.userRoleScope.findMany({
+          where: {
+            userId: { in: matchEventAdminIds },
+            roleId: meaRoleCheck.id,
+            organizationId: season.league.organizationId,
+          },
+        });
+        if (validMEAs.length !== matchEventAdminIds.length) {
+          return unprocessableEntity({
+            error: "One or more MEAs do not belong to this organization",
+            code: "OUT_OF_SCOPE_MEA",
+          });
+        }
+      }
+    }
+
     const results = { refereesAssigned: 0, matchEventAdminsAssigned: 0 };
 
     if (refereeIds && Array.isArray(refereeIds)) {

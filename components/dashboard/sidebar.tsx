@@ -110,7 +110,7 @@ export function DashboardSidebar({
 }: DashboardSidebarProps) {
   const pathname = usePathname();
   const { canViewNavItem } = usePermissions();
-  const { isSuperAdmin, isLeagueAdmin, isClubAdmin, user, getLeagueId, getClubId } = useAuth();
+  const { isSuperAdmin, isLeagueAdmin, isClubAdmin, isOrgAdmin, user, getLeagueId, getClubId } = useAuth();
 
   const leagueId = isLeagueAdmin() ? getLeagueId() : null;
   const clubId = isClubAdmin() ? getClubId() : null;
@@ -125,6 +125,11 @@ export function DashboardSidebar({
 
   // Role-specific nav items
   const roleNavItems = [
+    ...(isOrgAdmin()
+      ? [
+        { title: "Assignments", href: "/dashboard/seasons/assignments", icon: ClipboardCheck },
+      ]
+      : []),
     ...(isLeagueAdmin()
       ? [
         { title: "Standings", href: "/dashboard/standings", icon: BarChart3 },
