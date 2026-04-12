@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, badRequest, notFound, serverError, parseUUID } from "@/lib/api-helpers";
+import { isValidCloudinaryUrl, destroyAsset, extractPublicId } from "@/lib/cloudinary";
 
 // GET /api/players/:id
 export async function GET(
@@ -75,6 +76,10 @@ export async function PATCH(
       }
     }
 
+    if (updateData.photoUrl !== undefined && !isValidCloudinaryUrl(updateData.photoUrl as string)) {
+      return badRequest("Invalid media URL: must be a Cloudinary URL");
+    }
+
     const player = await prisma.player.update({
       where: { id },
       data: updateData,
@@ -99,6 +104,9 @@ export async function DELETE(
     const { id: idStr } = await params;
     const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid player ID");
+
+    const images = await prisma.playerImage.findMany({ where: { playerId: id }, select: { imageUrl: true } });
+    await Promise.all(images.map((img) => destroyAsset(extractPublicId(img.imageUrl))));
 
     await prisma.player.delete({ where: { id } });
     return success({ message: "Player deleted" });

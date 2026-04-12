@@ -8,6 +8,7 @@ import {
   serverError,
   parseUUID,
 } from "@/lib/api-helpers";
+import { isValidCloudinaryUrl } from "@/lib/cloudinary";
 import { NextResponse } from "next/server";
 
 // GET /api/organizations/:id
@@ -75,6 +76,10 @@ export async function PATCH(
     // Only super_admin can change status
     if (updateData.status && !isSuperAdmin) {
       delete updateData.status;
+    }
+
+    if (updateData.logoUrl !== undefined && !isValidCloudinaryUrl(updateData.logoUrl as string)) {
+      return badRequest("Invalid media URL: must be a Cloudinary URL");
     }
 
     const org = await prisma.organization.update({
