@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, badRequest, notFound, forbidden, serverError, parseUUID } from "@/lib/api-helpers";
+import { isValidCloudinaryUrl } from "@/lib/cloudinary";
 import { assertOrgScope, assertLeagueScope } from "@/lib/scope-guard";
 import { logAudit } from "@/lib/audit";
 
@@ -58,6 +59,10 @@ export async function PATCH(
 
     const body = await req.json();
     const { name, leagueTypeId, genderCategory, ageCategory, divisionLevel, logoUrl, description, status } = body;
+
+    if (logoUrl !== undefined && !isValidCloudinaryUrl(logoUrl)) {
+      return badRequest("Invalid media URL: must be a Cloudinary URL");
+    }
 
     const updated = await prisma.league.update({
       where: { id: leagueId },

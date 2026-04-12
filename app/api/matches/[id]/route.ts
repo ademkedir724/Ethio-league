@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, badRequest, notFound, serverError, parseUUID } from "@/lib/api-helpers";
+import { destroyAsset, extractPublicId } from "@/lib/cloudinary";
 
 // GET /api/matches/:id
 export async function GET(
@@ -137,6 +138,9 @@ export async function DELETE(
     const { id: idStr } = await params;
     const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid match ID");
+
+    const media = await prisma.matchMedia.findMany({ where: { matchId: id }, select: { mediaUrl: true } });
+    await Promise.all(media.map((m) => destroyAsset(extractPublicId(m.mediaUrl))));
 
     await prisma.match.delete({ where: { id } });
     return success({ message: "Match deleted" });
