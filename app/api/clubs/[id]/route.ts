@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError, hasRole, hasClubRole } from "@/lib/auth";
 import { success, badRequest, notFound, serverError, parseUUID } from "@/lib/api-helpers";
+import { isValidCloudinaryUrl, destroyAsset, extractPublicId } from "@/lib/cloudinary";
 import { NextResponse } from "next/server";
 
 // GET /api/clubs/:id
@@ -83,6 +84,10 @@ export async function PATCH(
       if (data[field] !== undefined) updateData[field] = data[field];
     }
 
+    if (updateData.logoUrl !== undefined && !isValidCloudinaryUrl(updateData.logoUrl as string)) {
+      return badRequest("Invalid media URL: must be a Cloudinary URL");
+    }
+
     const club = await prisma.club.update({
       where: { id },
       data: updateData,
@@ -106,6 +111,9 @@ export async function DELETE(
     const { id: idStr } = await params;
     const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid club ID");
+
+    const images = await prisma.clubImage.findMany({ where: { clubId: id }, select: { imageUrl: true } });
+    await Promise.all(images.map((img) => destroyAsset(extractPublicId(img.imageUrl))));
 
     await prisma.club.delete({ where: { id } });
     return success({ message: "Club deleted" });

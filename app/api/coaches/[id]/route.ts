@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, badRequest, notFound, forbidden, serverError, parseUUID } from "@/lib/api-helpers";
+import { isValidCloudinaryUrl, destroyAsset, extractPublicId } from "@/lib/cloudinary";
 
 // GET /api/coaches/:id
 export async function GET(
@@ -72,6 +73,10 @@ export async function PATCH(
       }
     }
 
+    if (updateData.photoUrl !== undefined && !isValidCloudinaryUrl(updateData.photoUrl as string)) {
+      return badRequest("Invalid media URL: must be a Cloudinary URL");
+    }
+
     const coach = await prisma.coach.update({
       where: { id },
       data: updateData,
@@ -107,6 +112,9 @@ export async function DELETE(
         return forbidden("You can only delete coaches from your own club");
       }
     }
+
+    const images = await prisma.coachImage.findMany({ where: { coachId: id }, select: { imageUrl: true } });
+    await Promise.all(images.map((img) => destroyAsset(extractPublicId(img.imageUrl))));
 
     await prisma.coach.delete({ where: { id } });
     return success({ message: "Coach deleted" });
