@@ -64,6 +64,7 @@ model User {
   email                String    @unique
   passwordHash         String
   phone                String?
+  photoUrl             String?
   status               String    @default("active")
   passwordResetToken   String?
   passwordResetExpires DateTime?
@@ -150,6 +151,7 @@ model Club {
   players        Player[]  @relation("PlayerOriginClub")
   /// Coaches first introduced to the system by this club (origin marker)
   coaches        Coach[]   @relation("CoachOriginClub")
+  images         ClubImage[]
 
   @@map("clubs")
 }
@@ -170,6 +172,7 @@ model Stadium {
   ownerClub       Club?  @relation("StadiumOwner", fields: [ownerClubId], references: [id])
   primaryForClubs Club[] @relation("PrimaryStadium")
   matches         Match[]
+  images          StadiumImage[]
 
   @@map("stadiums")
 }
@@ -196,6 +199,7 @@ model Player {
   seasonClubPlayers  SeasonClubPlayer[]
   matchEvents        MatchEvent[]       @relation("EventPlayer")
   relatedMatchEvents MatchEvent[]       @relation("RelatedPlayer")
+  images             PlayerImage[]
 
   @@map("players")
 }
@@ -217,6 +221,7 @@ model Coach {
 
   originClub        Club?             @relation("CoachOriginClub", fields: [clubId], references: [id])
   seasonClubCoaches SeasonClubCoach[]
+  images            CoachImage[]
 
   @@map("coaches")
 }
@@ -295,6 +300,7 @@ model Match {
   matchReferees MatchReferee[]
   matchLineups  MatchLineup[]
   matchMEAs     MatchMEA[]
+  media         MatchMedia[]
 
   @@map("matches")
 }
@@ -498,4 +504,74 @@ model AuditLog {
   user User @relation(fields: [userId], references: [id])
 
   @@map("audit_logs")
+}
+
+///////////////////////////////////////////////////////////////
+// MEDIA GALLERY TABLES
+///////////////////////////////////////////////////////////////
+
+model ClubImage {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clubId    String   @db.Uuid
+  imageUrl  String
+  caption   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@map("club_images")
+}
+
+model StadiumImage {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stadiumId String   @db.Uuid
+  imageUrl  String
+  caption   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  stadium Stadium @relation(fields: [stadiumId], references: [id], onDelete: Cascade)
+
+  @@map("stadium_images")
+}
+
+model PlayerImage {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  playerId  String   @db.Uuid
+  imageUrl  String
+  caption   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@map("player_images")
+}
+
+model CoachImage {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  coachId   String   @db.Uuid
+  imageUrl  String
+  caption   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  coach Coach @relation(fields: [coachId], references: [id], onDelete: Cascade)
+
+  @@map("coach_images")
+}
+
+model MatchMedia {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matchId   String   @db.Uuid
+  mediaUrl  String
+  mediaType String
+  caption   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@map("match_media")
 }
