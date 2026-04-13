@@ -4,10 +4,13 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
+import Image from "next/image";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
+import { MediaUploadWidget } from "@/components/dashboard/media-upload-widget";
+import { ImageGallery } from "@/components/dashboard/image-gallery";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +37,13 @@ import { AlertTriangle, Globe, MapPin, Pencil, Plus, Shield, Building2 } from "l
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface StadiumImage {
+    id: string;
+    imageUrl: string;
+    caption?: string | null;
+    sortOrder: number;
+}
+
 interface Stadium {
     id: string;
     name: string;
@@ -43,6 +53,14 @@ interface Stadium {
     surfaceType?: string | null;
     builtYear?: number | null;
     description?: string | null;
+    images?: StadiumImage[];
+}
+
+interface ClubImage {
+    id: string;
+    imageUrl: string;
+    caption?: string | null;
+    sortOrder: number;
 }
 
 interface Club {
@@ -59,6 +77,7 @@ interface Club {
     primaryStadiumId?: string | null;
     primaryStadium?: Stadium | null;
     ownedStadiums?: Stadium[];
+    images?: ClubImage[];
 }
 
 const SURFACE_TYPES = ["natural_grass", "artificial_turf", "hybrid", "indoor"];
@@ -85,6 +104,16 @@ export default function ClubProfilePage() {
 
     const { data: club, isLoading, error } = useSWR<Club>(
         `/api/clubs/${clubId}`,
+        authFetcher
+    );
+
+    const { data: clubImages, mutate: mutateClubImages } = useSWR<ClubImage[]>(
+        `/api/clubs/${clubId}/images`,
+        authFetcher
+    );
+
+    const { data: stadiumImages, mutate: mutateStadiumImages } = useSWR<StadiumImage[]>(
+        club?.primaryStadium?.id ? `/api/stadiums/${club.primaryStadium.id}/images` : null,
         authFetcher
     );
 
@@ -231,8 +260,12 @@ export default function ClubProfilePage() {
                     {/* Club Info */}
                     <Card>
                         <CardHeader className="flex flex-row items-center gap-3 pb-3">
-                            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-                                <Shield className="h-7 w-7 text-primary" />
+                            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 overflow-hidden shrink-0">
+                                {club.logoUrl ? (
+                                    <Image src={club.logoUrl} alt={club.name} width={56} height={56} className="rounded-full object-cover" />
+                                ) : (
+                                    <Shield className="h-7 w-7 text-primary" />
+                                )}
                             </div>
                             <div>
                                 <CardTitle className="text-xl">{club.name}</CardTitle>
@@ -261,6 +294,53 @@ export default function ClubProfilePage() {
                         </CardContent>
                     </Card>
 
+                    {/* Club Photos */}
+                    {(canEdit || (clubImages && clubImages.length > 0)) && (
+                        <Card>
+                            <CardHeader className="flex flex-row items-center justify-between pb-3">
+                                <CardTitle className="text-base">Club Photos</CardTitle>
+                                {canEdit && (!clubImages || clubImages.length < 5) && (
+                                    <MediaUploadWidget
+                                        uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET_CLUB_GALLERY ?? "club_gallery"}
+                                        onSuccess={async (url) => {
+                                            const res = await fetchWithAuth(`/api/clubs/${clubId}/images`, {
+                                                method: "POST",
+                                                body: JSON.stringify({ url }),
+                                            });
+                                            if (res.ok) {
+                                                toast.success("Photo added");
+                                                mutateClubImages();
+                                            } else {
+                                                toast.error("Failed to add photo");
+                                            }
+                                        }}
+                                    >
+                                        <Button type="button" variant="outline" size="sm">
+                                            <Plus className="h-4 w-4" />
+                                            Add Photo
+                                        </Button>
+                                    </MediaUploadWidget>
+                                )}
+                            </CardHeader>
+                            <CardContent>
+                                <ImageGallery
+                                    images={clubImages ?? []}
+                                    canDelete={canEdit}
+                                    maxImages={5}
+                                    onDelete={async (imageId) => {
+                                        const res = await fetchWithAuth(`/api/clubs/${clubId}/images/${imageId}`, { method: "DELETE" });
+                                        if (res.ok) {
+                                            toast.success("Photo deleted");
+                                            mutateClubImages();
+                                        } else {
+                                            toast.error("Failed to delete photo");
+                                        }
+                                    }}
+                                />
+                            </CardContent>
+                        </Card>
+                    )}
+
                     {/* Stadium Section */}
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-3">
@@ -277,30 +357,73 @@ export default function ClubProfilePage() {
                         </CardHeader>
                         <CardContent>
                             {club.primaryStadium ? (
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                    <InfoRow icon={<Building2 className="h-4 w-4" />} label="Name" value={club.primaryStadium.name} />
-                                    {(club.primaryStadium.city || club.primaryStadium.country) && (
-                                        <InfoRow icon={<MapPin className="h-4 w-4" />} label="Location"
-                                            value={[club.primaryStadium.city, club.primaryStadium.country].filter(Boolean).join(", ")} />
-                                    )}
-                                    {club.primaryStadium.capacity && (
-                                        <InfoRow icon={<Building2 className="h-4 w-4" />} label="Capacity"
-                                            value={club.primaryStadium.capacity.toLocaleString()} />
-                                    )}
-                                    {club.primaryStadium.surfaceType && (
-                                        <InfoRow icon={<Building2 className="h-4 w-4" />} label="Surface"
-                                            value={club.primaryStadium.surfaceType.replace(/_/g, " ")} />
-                                    )}
-                                    {club.primaryStadium.builtYear && (
-                                        <InfoRow icon={<Building2 className="h-4 w-4" />} label="Built"
-                                            value={club.primaryStadium.builtYear.toString()} />
-                                    )}
-                                    {club.primaryStadium.description && (
-                                        <div className="flex flex-col gap-1 sm:col-span-2">
-                                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Description</span>
-                                            <p className="text-sm text-foreground">{club.primaryStadium.description}</p>
+                                <div className="flex flex-col gap-4">
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <InfoRow icon={<Building2 className="h-4 w-4" />} label="Name" value={club.primaryStadium.name} />
+                                        {(club.primaryStadium.city || club.primaryStadium.country) && (
+                                            <InfoRow icon={<MapPin className="h-4 w-4" />} label="Location"
+                                                value={[club.primaryStadium.city, club.primaryStadium.country].filter(Boolean).join(", ")} />
+                                        )}
+                                        {club.primaryStadium.capacity && (
+                                            <InfoRow icon={<Building2 className="h-4 w-4" />} label="Capacity"
+                                                value={club.primaryStadium.capacity.toLocaleString()} />
+                                        )}
+                                        {club.primaryStadium.surfaceType && (
+                                            <InfoRow icon={<Building2 className="h-4 w-4" />} label="Surface"
+                                                value={club.primaryStadium.surfaceType.replace(/_/g, " ")} />
+                                        )}
+                                        {club.primaryStadium.builtYear && (
+                                            <InfoRow icon={<Building2 className="h-4 w-4" />} label="Built"
+                                                value={club.primaryStadium.builtYear.toString()} />
+                                        )}
+                                        {club.primaryStadium.description && (
+                                            <div className="flex flex-col gap-1 sm:col-span-2">
+                                                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Description</span>
+                                                <p className="text-sm text-foreground">{club.primaryStadium.description}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Stadium Photos</span>
+                                            {canEdit && (!stadiumImages || stadiumImages.length < 20) && (
+                                                <MediaUploadWidget
+                                                    uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET_STADIUM_GALLERY ?? "stadium_gallery"}
+                                                    onSuccess={async (url) => {
+                                                        const res = await fetchWithAuth(`/api/stadiums/${club.primaryStadium!.id}/images`, {
+                                                            method: "POST",
+                                                            body: JSON.stringify({ url }),
+                                                        });
+                                                        if (res.ok) {
+                                                            toast.success("Stadium photo added");
+                                                            mutateStadiumImages();
+                                                        } else {
+                                                            toast.error("Failed to add stadium photo");
+                                                        }
+                                                    }}
+                                                >
+                                                    <Button type="button" variant="outline" size="sm">
+                                                        <Plus className="h-4 w-4" />
+                                                        Add Stadium Photo
+                                                    </Button>
+                                                </MediaUploadWidget>
+                                            )}
                                         </div>
-                                    )}
+                                        <ImageGallery
+                                            images={stadiumImages ?? []}
+                                            canDelete={canEdit}
+                                            maxImages={20}
+                                            onDelete={async (imageId) => {
+                                                const res = await fetchWithAuth(`/api/stadiums/${club.primaryStadium!.id}/images/${imageId}`, { method: "DELETE" });
+                                                if (res.ok) {
+                                                    toast.success("Photo deleted");
+                                                    mutateStadiumImages();
+                                                } else {
+                                                    toast.error("Failed to delete photo");
+                                                }
+                                            }}
+                                        />
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -327,6 +450,35 @@ export default function ClubProfilePage() {
                         <DialogDescription>Update your club's permanent information.</DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 sm:grid-cols-2">
+                        {canEdit && (
+                            <div className="flex flex-col gap-2 sm:col-span-2">
+                                <Label>Club Logo</Label>
+                                <div className="flex items-center gap-3">
+                                    {club?.logoUrl && (
+                                        <Image src={club.logoUrl} alt={club?.name ?? ""} width={40} height={40} className="rounded-full object-cover" />
+                                    )}
+                                    <MediaUploadWidget
+                                        uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET_CLUB_LOGO ?? "club_logo"}
+                                        onSuccess={async (url) => {
+                                            const res = await fetchWithAuth(`/api/clubs/${clubId}`, {
+                                                method: "PATCH",
+                                                body: JSON.stringify({ logoUrl: url }),
+                                            });
+                                            if (res.ok) {
+                                                toast.success("Logo updated");
+                                                mutate(`/api/clubs/${clubId}`);
+                                            } else {
+                                                toast.error("Failed to update logo");
+                                            }
+                                        }}
+                                    >
+                                        <Button type="button" variant="outline" size="sm">
+                                            {club?.logoUrl ? "Change Logo" : "Upload Logo"}
+                                        </Button>
+                                    </MediaUploadWidget>
+                                </div>
+                            </div>
+                        )}
                         <div className="flex flex-col gap-2 sm:col-span-2">
                             <Label htmlFor="c-name">Club Name *</Label>
                             <Input id="c-name" value={clubForm.name} onChange={(e) => setClubForm({ ...clubForm, name: e.target.value })} placeholder="St. George FC" />

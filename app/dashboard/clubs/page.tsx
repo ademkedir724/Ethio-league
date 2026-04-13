@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import Image from "next/image";
 import {
   Shield, Plus, MoreHorizontal, Check, X, Eye,
   MapPin, ShieldCheck, Link as LinkIcon, Copy,
@@ -57,6 +58,7 @@ interface Club {
   id: string;
   name: string;
   shortName?: string | null;
+  logoUrl?: string | null;
   city?: string | null;
   country?: string | null;
   foundedYear?: number | null;
@@ -169,9 +171,13 @@ function LeagueAdminClubsView() {
       render: (c) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
-            <AvatarFallback className="bg-primary/10 text-xs text-primary">
-              {getInitials(c.name)}
-            </AvatarFallback>
+            {c.logoUrl ? (
+              <Image src={c.logoUrl} alt={c.name} width={36} height={36} className="rounded-full object-cover" />
+            ) : (
+              <AvatarFallback className="bg-primary/10 text-xs text-primary">
+                {getInitials(c.name)}
+              </AvatarFallback>
+            )}
           </Avatar>
           <div className="flex flex-col">
             <span className="text-sm font-medium text-foreground">{c.name}</span>
@@ -443,7 +449,11 @@ function OrgAdminClubsView() {
       render: (c) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
-            <AvatarFallback className="bg-primary/10 text-xs text-primary">{getInitials(c.name)}</AvatarFallback>
+            {c.logoUrl ? (
+              <Image src={c.logoUrl} alt={c.name} width={36} height={36} className="rounded-full object-cover" />
+            ) : (
+              <AvatarFallback className="bg-primary/10 text-xs text-primary">{getInitials(c.name)}</AvatarFallback>
+            )}
           </Avatar>
           <div className="flex flex-col">
             <span className="text-sm font-medium text-foreground">{c.name}</span>
@@ -587,9 +597,13 @@ function ClubAdminReadOnlyView() {
       render: (c) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
-            <AvatarFallback className={`text-xs ${c.id === clubId ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"}`}>
-              {getInitials(c.name)}
-            </AvatarFallback>
+            {c.logoUrl ? (
+              <Image src={c.logoUrl} alt={c.name} width={36} height={36} className="rounded-full object-cover" />
+            ) : (
+              <AvatarFallback className={`text-xs ${c.id === clubId ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"}`}>
+                {getInitials(c.name)}
+              </AvatarFallback>
+            )}
           </Avatar>
           <div className="flex flex-col">
             <span className="text-sm font-medium text-foreground">{c.name}</span>
