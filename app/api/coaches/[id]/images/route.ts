@@ -1,9 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError, hasRole } from "@/lib/auth";
-import { created, badRequest, serverError, parseUUID, unprocessableEntity } from "@/lib/api-helpers";
+import { success, created, badRequest, serverError, parseUUID, unprocessableEntity } from "@/lib/api-helpers";
 import { isValidCloudinaryUrl } from "@/lib/cloudinary";
 import { MEDIA_LIMITS } from "@/lib/media-limits";
+
+// GET /api/coaches/:id/images
+export async function GET(
+    req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    try {
+        const auth = await requireAuth(req);
+        if (isAuthError(auth)) return auth;
+
+        const { id: idStr } = await params;
+        const id = parseUUID(idStr);
+        if (!id) return badRequest("Invalid coach ID");
+
+        const images = await prisma.coachImage.findMany({
+            where: { coachId: id },
+            orderBy: { sortOrder: "asc" },
+        });
+
+        return success(images);
+    } catch (error) {
+        return serverError(error);
+    }
+}
 
 // POST /api/coaches/:id/images
 export async function POST(
