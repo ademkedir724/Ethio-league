@@ -148,6 +148,13 @@ export default function SeasonDetailPage() {
                 Back
             </button>
 
+            {isLeagueAdmin() && (
+                <LeagueAdminSeasonSelector
+                    currentSeasonId={seasonId}
+                    leagueId={season.league.id}
+                />
+            )}
+
             <PageHeader
                 title={season.name}
                 description={`${season.league.organization.name} · ${season.league.name}`}
@@ -516,7 +523,52 @@ function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
     );
 }
 
-// ─── League Admin Tabs ────────────────────────────────────────────────────────
+// ─── Season Selector (League Admin) ──────────────────────────────────────────
+
+interface SeasonOption {
+    id: string;
+    name: string;
+    status: string;
+}
+
+function LeagueAdminSeasonSelector({ currentSeasonId, leagueId }: { currentSeasonId: string; leagueId: string }) {
+    const router = useRouter();
+    const { data: seasons } = useSWR<SeasonOption[]>(
+        leagueId ? `/api/seasons?leagueId=${leagueId}` : null,
+        authFetcher
+    );
+
+    if (!seasons || seasons.length <= 1) return null;
+
+    return (
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Season:</span>
+            <Select
+                value={currentSeasonId}
+                onValueChange={(id) => router.push(`/dashboard/seasons/${id}`)}
+            >
+                <SelectTrigger className="h-7 border-0 bg-transparent p-0 text-sm font-medium shadow-none focus:ring-0 w-auto gap-1">
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                    {seasons.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                            <span className="flex items-center gap-2">
+                                {s.name}
+                                <span className={`text-[10px] rounded-full px-1.5 py-0.5 font-medium ${s.status === "active" ? "bg-emerald-500/15 text-emerald-400" :
+                                    s.status === "upcoming" ? "bg-amber-500/15 text-amber-400" :
+                                        "bg-muted text-muted-foreground"
+                                    }`}>{s.status}</span>
+                            </span>
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+        </div>
+    );
+}
+
+
 
 function LeagueAdminSeasonTabs({ seasonId, season }: { seasonId: string; season: Season }) {
     return (

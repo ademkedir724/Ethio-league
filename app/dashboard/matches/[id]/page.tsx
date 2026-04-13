@@ -28,7 +28,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, CheckCircle, Pencil, Play, Square, Goal, ArrowLeftRight, CircleAlert, Video, X } from "lucide-react";
+import { ArrowLeft, CheckCircle, Pencil, Play, Square, Goal, ArrowLeftRight, CircleAlert, Video, X, Trash2 } from "lucide-react";
 import { ImageGallery } from "@/components/dashboard/image-gallery";
 import { MediaUploadWidget } from "@/components/dashboard/media-upload-widget";
 
@@ -163,6 +163,10 @@ export default function MatchDetailPage() {
     const [editingEvent, setEditingEvent] = useState<MatchEvent | null>(null);
     const [editForm, setEditForm] = useState<Partial<typeof emptyEventForm>>({});
     const [savingEdit, setSavingEdit] = useState(false);
+    const [deletingEvent, setDeletingEvent] = useState(false);
+    const [editingScore, setEditingScore] = useState(false);
+    const [scoreForm, setScoreForm] = useState({ homeScore: "", awayScore: "" });
+    const [savingScore, setSavingScore] = useState(false);
     const [startingGame, setStartingGame] = useState(false);
     const [elapsedMinutes, setElapsedMinutes] = useState(0);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -365,6 +369,27 @@ export default function MatchDetailPage() {
         }
     };
 
+    const handleDeleteEvent = async () => {
+        if (!editingEvent) return;
+        setDeletingEvent(true);
+        try {
+            const res = await fetchWithAuth(`/api/match-events/${editingEvent.id}`, { method: "DELETE" });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                toast.error(data.error || "Failed to delete event");
+                return;
+            }
+            toast.success("Event deleted");
+            setEditingEvent(null);
+            mutateEvents();
+            mutateMatch();
+        } catch {
+            toast.error("Failed to delete event");
+        } finally {
+            setDeletingEvent(false);
+        }
+    };
+
     const canEditEvent = (event: MatchEvent) => {
         if (isLeagueAdmin() || isSuperAdmin()) return true;
         if (isMEA()) {
@@ -377,6 +402,31 @@ export default function MatchDetailPage() {
     const handleDeleteMedia = async (mediaId: string) => {
         await fetchWithAuth(`/api/matches/${matchId}/media/${mediaId}`, { method: "DELETE" });
         mutateMedia();
+    };
+
+    const handleSaveScore = async () => {
+        setSavingScore(true);
+        try {
+            const res = await fetchWithAuth(`/api/matches/${matchId}`, {
+                method: "PATCH",
+                body: JSON.stringify({
+                    homeScore: Number(scoreForm.homeScore),
+                    awayScore: Number(scoreForm.awayScore),
+                }),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                toast.error(data.error || "Failed to update score");
+                return;
+            }
+            toast.success("Score updated");
+            setEditingScore(false);
+            mutateMatch();
+        } catch {
+            toast.error("Failed to update score");
+        } finally {
+            setSavingScore(false);
+        }
     };
 
     // ── Loading / Error ────────────────────────────────────────────────────────
@@ -452,7 +502,7 @@ export default function MatchDetailPage() {
                                     : "– vs –"}
                             </span>
                             <StatusBadge status={match.status} />
-                            {/* Feature 5: live timer */}
+                            {/* Live timer */}
                             {match.status === "live" && match.liveStartedAt && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-3 py-1 text-sm font-semibold text-emerald-400 border border-emerald-500/30">
                                     <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -463,7 +513,50 @@ export default function MatchDetailPage() {
                             {match.stadium && (
                                 <span className="text-xs text-muted-foreground">{match.stadium?.name}</span>
                             )}
-                            {/* Feature 4: Start/End game buttons for MEA */}
+                            {/* League admin: edit score */}
+                            {(isLeagueAdmin() || isSuperAdmin()) && !editingScore && (
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="mt-1 h-7 text-xs text-muted-foreground"
+                                    onClick={() => {
+                                        setScoreForm({
+                                            homeScore: String(match.homeScore ?? 0),
+                                            awayScore: String(match.awayScore ?? 0),
+                                        });
+                                        setEditingScore(true);
+                                    }}
+                                >
+                                    <Pencil className="h-3 w-3 mr-1" />
+                                    Edit Score
+                                </Button>
+                            )}
+                            {editingScore && (
+                                <div className="flex items-center gap-2 mt-1">
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        className="h-8 w-14 text-center font-mono text-sm"
+                                        value={scoreForm.homeScore}
+                                        onChange={(e) => setScoreForm({ ...scoreForm, homeScore: e.target.value })}
+                                    />
+                                    <span className="text-muted-foreground font-bold">–</span>
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        className="h-8 w-14 text-center font-mono text-sm"
+                                        value={scoreForm.awayScore}
+                                        onChange={(e) => setScoreForm({ ...scoreForm, awayScore: e.target.value })}
+                                    />
+                                    <Button size="sm" className="h-8" onClick={handleSaveScore} disabled={savingScore}>
+                                        {savingScore ? "..." : "Save"}
+                                    </Button>
+                                    <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingScore(false)}>
+                                        <X className="h-3.5 w-3.5" />
+                                    </Button>
+                                </div>
+                            )}
+                            {/* Start/End game buttons for MEA */}
                             {canStart && (
                                 <Button size="sm" onClick={handleStartGame} disabled={startingGame} className="mt-1">
                                     <Play className="h-3.5 w-3.5 mr-1" />
@@ -558,11 +651,13 @@ export default function MatchDetailPage() {
                     <LineupPanel
                         title={`${match.homeClub?.name} Lineup`}
                         entries={homeLineup}
+                        events={events}
                         isLoading={lineupsLoading}
                     />
                     <LineupPanel
                         title={`${match.awayClub?.name} Lineup`}
                         entries={awayLineup}
+                        events={events}
                         isLoading={lineupsLoading}
                     />
                 </div>
@@ -975,7 +1070,17 @@ export default function MatchDetailPage() {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setEditingEvent(null)}>Cancel</Button>
-                        <Button onClick={handleSaveEdit} disabled={savingEdit}>
+                        {(isLeagueAdmin() || isSuperAdmin()) && (
+                            <Button
+                                variant="destructive"
+                                onClick={handleDeleteEvent}
+                                disabled={deletingEvent || savingEdit}
+                            >
+                                <Trash2 className="h-4 w-4 mr-1" />
+                                {deletingEvent ? "Deleting..." : "Delete"}
+                            </Button>
+                        )}
+                        <Button onClick={handleSaveEdit} disabled={savingEdit || deletingEvent}>
                             {savingEdit ? "Saving..." : "Save Changes"}
                         </Button>
                     </DialogFooter>
@@ -1161,10 +1266,12 @@ function EventRow({
 function LineupPanel({
     title,
     entries,
+    events,
     isLoading,
 }: {
     title: string;
     entries: LineupEntry[];
+    events: MatchEvent[];
     isLoading: boolean;
 }) {
     const starters = entries.filter((e) => e.lineupType === "starting");
@@ -1193,7 +1300,7 @@ function LineupPanel({
                                 </p>
                                 <div className="flex flex-col gap-1">
                                     {starters.map((e) => (
-                                        <PlayerRow key={e.id} entry={e} />
+                                        <PlayerRow key={e.id} entry={e} events={events} />
                                     ))}
                                 </div>
                             </div>
@@ -1205,7 +1312,7 @@ function LineupPanel({
                                 </p>
                                 <div className="flex flex-col gap-1">
                                     {subs.map((e) => (
-                                        <PlayerRow key={e.id} entry={e} />
+                                        <PlayerRow key={e.id} entry={e} events={events} />
                                     ))}
                                 </div>
                             </div>
@@ -1217,8 +1324,17 @@ function LineupPanel({
     );
 }
 
-function PlayerRow({ entry }: { entry: LineupEntry }) {
+function PlayerRow({ entry, events }: { entry: LineupEntry; events: MatchEvent[] }) {
     const { player } = entry.seasonClubPlayer;
+
+    // Derive card status for this player from events
+    const playerEvents = events.filter((e) => e.player?.id === player.id);
+    const yellowCards = playerEvents.filter((e) => e.eventType.name.toLowerCase() === "yellow_card").length;
+    const hasRed = playerEvents.some((e) => e.eventType.name.toLowerCase() === "red_card");
+    // Two yellows = red
+    const isRedCarded = hasRed || yellowCards >= 2;
+    const isYellowCarded = !isRedCarded && yellowCards === 1;
+
     return (
         <div className="flex items-center gap-2 text-sm">
             {entry.shirtNumber && (
@@ -1226,12 +1342,19 @@ function PlayerRow({ entry }: { entry: LineupEntry }) {
                     {entry.shirtNumber}
                 </span>
             )}
-            <span className="text-foreground">
+            <span className={`text-foreground ${isRedCarded ? "line-through text-muted-foreground" : ""}`}>
                 {player.firstName} {player.lastName}
                 {entry.isCaptain && (
                     <span className="ml-1 text-xs text-amber-400">(C)</span>
                 )}
             </span>
+            {/* Card indicators */}
+            {isYellowCarded && (
+                <span className="ml-1 inline-block h-3 w-2 rounded-[2px] bg-yellow-400 shrink-0" title="Yellow card" />
+            )}
+            {isRedCarded && (
+                <span className="ml-1 inline-block h-3 w-2 rounded-[2px] bg-red-500 shrink-0" title="Red card" />
+            )}
             {entry.position && (
                 <span className="ml-auto text-xs text-muted-foreground">{entry.position.name}</span>
             )}
