@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Image from "next/image";
 import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
@@ -11,6 +12,7 @@ import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { MediaUploadWidget } from "@/components/dashboard/media-upload-widget";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -66,6 +68,7 @@ interface Organization {
   city: string | null;
   description: string | null;
   status: string;
+  logoUrl?: string | null;
   createdAt: string;
   updatedAt: string;
   // Joined data from UserRoleScope
@@ -184,9 +187,24 @@ function OrgAdminOrganizationsView() {
       {/* Organization Details Card */}
       <Card className="border-border bg-card">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-xl font-semibold">
-            {organization.name}
-          </CardTitle>
+          <div className="flex items-center gap-3">
+            {organization.logoUrl ? (
+              <Image
+                src={organization.logoUrl}
+                alt={`${organization.name} logo`}
+                width={48}
+                height={48}
+                className="rounded-lg object-cover"
+              />
+            ) : (
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted">
+                <Building2 className="h-6 w-6 text-muted-foreground" />
+              </div>
+            )}
+            <CardTitle className="text-xl font-semibold">
+              {organization.name}
+            </CardTitle>
+          </div>
           <div className="flex items-center gap-2">
             <StatusBadge status={organization.status} />
             <Button
@@ -277,6 +295,45 @@ function OrgAdminOrganizationsView() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {/* Logo Upload */}
+            <div className="space-y-2">
+              <Label>Organization Logo</Label>
+              <div className="flex items-center gap-3">
+                {organization.logoUrl && (
+                  <Image
+                    src={organization.logoUrl}
+                    alt="Current logo"
+                    width={40}
+                    height={40}
+                    className="rounded-md object-cover"
+                  />
+                )}
+                <MediaUploadWidget
+                  uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET_ORG_LOGO ?? "org_logo"}
+                  onSuccess={async (url) => {
+                    try {
+                      const res = await fetchWithAuth(`/api/organizations/${organization.id}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ logoUrl: url }),
+                      });
+                      if (!res.ok) {
+                        const d = await res.json();
+                        throw new Error(d.error || "Failed to update logo");
+                      }
+                      toast.success("Logo updated");
+                      refetch();
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "Failed to update logo");
+                    }
+                  }}
+                >
+                  <Button type="button" variant="outline" size="sm">
+                    Upload Logo
+                  </Button>
+                </MediaUploadWidget>
+              </div>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="name">Organization Name</Label>
               <Input

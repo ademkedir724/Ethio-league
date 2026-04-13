@@ -28,7 +28,9 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, CheckCircle, Pencil, Play, Square, Goal, ArrowLeftRight, CircleAlert } from "lucide-react";
+import { ArrowLeft, CheckCircle, Pencil, Play, Square, Goal, ArrowLeftRight, CircleAlert, Video, X } from "lucide-react";
+import { ImageGallery } from "@/components/dashboard/image-gallery";
+import { MediaUploadWidget } from "@/components/dashboard/media-upload-widget";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,6 +57,14 @@ interface Match {
         id: string;
         user: { id: string; fullName: string; email: string };
     }>;
+}
+
+interface MatchMedia {
+    id: string;
+    mediaUrl: string;
+    mediaType: "image" | "video";
+    caption?: string | null;
+    sortOrder: number;
 }
 
 // Determine what fields an event type needs
@@ -140,6 +150,11 @@ export default function MatchDetailPage() {
         "/api/match-events/event-types",
         authFetcher
     );
+
+    const {
+        data: matchMedia = [],
+        mutate: mutateMedia,
+    } = useSWR<MatchMedia[]>(`/api/matches/${matchId}/media`, authFetcher);
 
     // ── State ──────────────────────────────────────────────────────────────────
     const [approving, setApproving] = useState(false);
@@ -357,6 +372,11 @@ export default function MatchDetailPage() {
             return elapsed <= 10 * 60 * 1000;
         }
         return false;
+    };
+
+    const handleDeleteMedia = async (mediaId: string) => {
+        await fetchWithAuth(`/api/matches/${matchId}/media/${mediaId}`, { method: "DELETE" });
+        mutateMedia();
     };
 
     // ── Loading / Error ────────────────────────────────────────────────────────
@@ -736,6 +756,97 @@ export default function MatchDetailPage() {
                     </CardContent>
                 </Card>
             )}
+
+            {/* Match Media */}
+            {(() => {
+                const canDelete = isMEA() || isLeagueAdmin() || isSuperAdmin();
+                const canUpload = isMEA() || isLeagueAdmin() || isSuperAdmin();
+                const images = matchMedia.filter((m) => m.mediaType === "image");
+                const videos = matchMedia.filter((m) => m.mediaType === "video");
+                return (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-base">Match Media</CardTitle>
+                        </CardHeader>
+                        <CardContent className="flex flex-col gap-6">
+                            {/* Images */}
+                            <div>
+                                <div className="flex items-center justify-between mb-3">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Photos</p>
+                                    {canUpload && (
+                                        <MediaUploadWidget
+                                            uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET_MATCH_MEDIA ?? "match_media"}
+                                            accept="image"
+                                            onSuccess={async (url) => {
+                                                await fetchWithAuth(`/api/matches/${matchId}/media`, {
+                                                    method: "POST",
+                                                    body: JSON.stringify({ url, mediaType: "image" }),
+                                                });
+                                                mutateMedia();
+                                            }}
+                                        >
+                                            <Button size="sm" variant="outline" type="button">Add Photo</Button>
+                                        </MediaUploadWidget>
+                                    )}
+                                </div>
+                                <ImageGallery
+                                    images={images.map((m) => ({ id: m.id, imageUrl: m.mediaUrl, caption: m.caption, sortOrder: m.sortOrder }))}
+                                    onDelete={canDelete ? handleDeleteMedia : undefined}
+                                    canDelete={canDelete}
+                                    emptyMessage="No photos yet."
+                                    maxImages={20}
+                                />
+                            </div>
+
+                            {/* Videos */}
+                            <div>
+                                <div className="flex items-center justify-between mb-3">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Video Highlights</p>
+                                    {canUpload && (
+                                        <MediaUploadWidget
+                                            uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET_MATCH_MEDIA ?? "match_media"}
+                                            accept="image+video"
+                                            onSuccess={async (url) => {
+                                                await fetchWithAuth(`/api/matches/${matchId}/media`, {
+                                                    method: "POST",
+                                                    body: JSON.stringify({ url, mediaType: "video" }),
+                                                });
+                                                mutateMedia();
+                                            }}
+                                        >
+                                            <Button size="sm" variant="outline" type="button">
+                                                <Video className="h-3.5 w-3.5 mr-1" />
+                                                Add Video
+                                            </Button>
+                                        </MediaUploadWidget>
+                                    )}
+                                </div>
+                                {videos.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground py-4 text-center">No videos yet.</p>
+                                ) : (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {videos.map((media) => (
+                                            <div key={media.id} className="relative group">
+                                                <video src={media.mediaUrl} controls className="w-full rounded-lg" />
+                                                {canDelete && (
+                                                    <Button
+                                                        variant="destructive"
+                                                        size="icon"
+                                                        className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        onClick={() => handleDeleteMedia(media.id)}
+                                                    >
+                                                        <X className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                );
+            })()}
 
             {/* Edit Event Dialog */}
             <Dialog open={!!editingEvent} onOpenChange={(open) => !open && setEditingEvent(null)}>
