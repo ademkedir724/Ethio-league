@@ -32,11 +32,12 @@ import {
 import { Swords, Plus, MoreHorizontal, Pencil, Trash2, Play, CheckCircle, Eye, Shuffle, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface Match {
   id: string;
-  homeClub: { id: string; name: string; shortName?: string | null };
-  awayClub: { id: string; name: string; shortName?: string | null };
+  homeClub: { id: string; name: string; shortName?: string | null; logoUrl?: string | null };
+  awayClub: { id: string; name: string; shortName?: string | null; logoUrl?: string | null };
   homeScore: number | null;
   awayScore: number | null;
   matchDate: string;
@@ -256,11 +257,27 @@ export default function MatchesPage() {
       header: "Match",
       render: (m) => (
         <div
-          className="flex flex-col cursor-pointer hover:opacity-80"
+          className="flex flex-col gap-1 cursor-pointer hover:opacity-80"
           onClick={() => router.push(`/dashboard/matches/${m.id}`)}
         >
-          <span className="text-sm font-medium text-foreground">{m.homeClub?.name}</span>
-          <span className="text-xs text-muted-foreground">vs {m.awayClub?.name}</span>
+          <div className="flex items-center gap-2">
+            <Avatar className="h-5 w-5">
+              {m.homeClub?.logoUrl && <AvatarImage src={m.homeClub.logoUrl} alt={m.homeClub.name} />}
+              <AvatarFallback className="text-[9px] bg-primary/10 text-primary">
+                {m.homeClub?.name?.[0] ?? "H"}
+              </AvatarFallback>
+            </Avatar>
+            <span className="text-sm font-medium text-foreground">{m.homeClub?.name}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Avatar className="h-5 w-5">
+              {m.awayClub?.logoUrl && <AvatarImage src={m.awayClub.logoUrl} alt={m.awayClub.name} />}
+              <AvatarFallback className="text-[9px] bg-muted text-muted-foreground">
+                {m.awayClub?.name?.[0] ?? "A"}
+              </AvatarFallback>
+            </Avatar>
+            <span className="text-xs text-muted-foreground">{m.awayClub?.name}</span>
+          </div>
         </div>
       ),
     },

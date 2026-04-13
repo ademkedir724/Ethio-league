@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent } from "@/components/ui/card";
 import { Trophy, Goal, BarChart3 } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { StandingRow } from "@/lib/standings";
 
 interface League { id: string; name: string }
@@ -240,7 +241,17 @@ export default function StandingsPage() {
                                             standings.map((row, i) => (
                                                 <TableRow key={row.clubId}>
                                                     <TableCell className="text-muted-foreground">{i + 1}</TableCell>
-                                                    <TableCell className="font-medium">{row.clubName}</TableCell>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-2">
+                                                            <Avatar className="h-6 w-6">
+                                                                {row.logoUrl && <AvatarImage src={row.logoUrl} alt={row.clubName} />}
+                                                                <AvatarFallback className="text-[9px] bg-primary/10 text-primary">
+                                                                    {row.clubName?.[0] ?? "C"}
+                                                                </AvatarFallback>
+                                                            </Avatar>
+                                                            <span className="font-medium">{row.clubName}</span>
+                                                        </div>
+                                                    </TableCell>
                                                     <TableCell className="text-center">{row.played}</TableCell>
                                                     <TableCell className="text-center">{row.won}</TableCell>
                                                     <TableCell className="text-center">{row.drawn}</TableCell>
