@@ -153,3 +153,15 @@
     opacity: 1;
   }
 }
+
+/* ── Cloudinary Upload Widget — fix pointer-events blocked by Radix Dialog ── */
+/* When a Radix Dialog is open it sets pointer-events:none on <body>.          */
+/* The Cloudinary widget renders outside the Dialog in a fixed overlay,        */
+/* so we must restore pointer-events for it.                                   */
+.cloudinary-overlay,
+.cloudinary-widget,
+[class*="cloudinary-"],
+#cloudinary-overlay,
+#cloudinary-widget {
+  pointer-events: auto !important;
+}

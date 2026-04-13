@@ -49,7 +49,9 @@ export function MediaUploadWidget({
         >
             {({ open }) => (
                 <span
-                    onClick={() => {
+                    onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
                         if (!disabled) open();
                     }}
                     style={{ cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1, display: "inline-block" }}
