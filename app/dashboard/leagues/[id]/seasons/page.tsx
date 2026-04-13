@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
     Select,
@@ -270,9 +269,9 @@ export default function LeagueSeasonsPage() {
 
             {/* Season list */}
             {isLoading ? (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="flex flex-col gap-3">
                     {Array.from({ length: 4 }).map((_, i) => (
-                        <Skeleton key={i} className="h-40 rounded-xl" />
+                        <Skeleton key={i} className="h-16 rounded-xl" />
                     ))}
                 </div>
             ) : !seasons || seasons.length === 0 ? (
@@ -287,14 +286,15 @@ export default function LeagueSeasonsPage() {
                     )}
                 </div>
             ) : (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {seasons.map((season) => (
+                <div className="flex flex-col gap-0 relative">
+                    {seasons.map((season, index) => (
                         <SeasonCard
                             key={season.id}
                             season={season}
                             canEdit={canEdit}
                             onEdit={openEdit}
                             onDelete={setDeleteTarget}
+                            isLast={index === seasons.length - 1}
                         />
                     ))}
                 </div>
@@ -528,65 +528,101 @@ interface SeasonCardProps {
     canEdit: boolean;
     onEdit: (season: Season) => void;
     onDelete: (season: Season) => void;
+    isLast?: boolean;
 }
 
-function SeasonCard({ season, canEdit, onEdit, onDelete }: SeasonCardProps) {
-    const router = useRouter();
-    return (
-        <Card className="flex flex-col cursor-pointer hover:border-primary/40 transition-colors" onClick={() => router.push(`/dashboard/seasons/${season.id}`)}>
-            <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
-                <CardTitle className="text-base leading-tight truncate">{season.name}</CardTitle>
-                {canEdit && (
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground" onClick={(e) => e.stopPropagation()}>
-                                <MoreHorizontal className="h-4 w-4" />
-                                <span className="sr-only">Actions</span>
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(season); }}>
-                                <Pencil className="mr-2 h-4 w-4" />
-                                Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                                onClick={(e) => { e.stopPropagation(); onDelete(season); }}
-                                className="text-destructive focus:text-destructive"
-                            >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Delete
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                )}
-            </CardHeader>
+function seasonDotColor(status: string): string {
+    switch (status) {
+        case "active": return "border-emerald-500 text-emerald-500";
+        case "upcoming": return "border-blue-500 text-blue-500";
+        case "completed": return "border-muted-foreground text-muted-foreground";
+        case "cancelled": return "border-red-500 text-red-500";
+        default: return "border-muted-foreground text-muted-foreground";
+    }
+}
 
-            <CardContent className="flex flex-col gap-3 flex-1">
-                <div className="flex items-center justify-between">
+function SeasonCard({ season, canEdit, onEdit, onDelete, isLast }: SeasonCardProps) {
+    const router = useRouter();
+    const dotColor = seasonDotColor(season.status);
+
+    return (
+        <div className="relative flex items-start gap-3 pb-3">
+            {/* Vertical timeline line */}
+            {!isLast && (
+                <div className="absolute left-[11px] top-6 bottom-0 w-px bg-border" />
+            )}
+
+            {/* Status dot */}
+            <div
+                className={`mt-1 h-5 w-5 rounded-full border-2 shrink-0 flex items-center justify-center ${dotColor}`}
+            >
+                <div className="h-2 w-2 rounded-full bg-current" />
+            </div>
+
+            {/* Card content */}
+            <div
+                className="flex-1 flex items-center gap-4 px-4 py-4 rounded-xl border border-border hover:bg-muted/20 transition-colors cursor-pointer"
+                onClick={() => router.push(`/dashboard/seasons/${season.id}`)}
+            >
+                {/* Season name + date */}
+                <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                    <span className="text-sm font-semibold truncate">{season.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                        {formatDate(season.startDate)} — {formatDate(season.endDate)}
+                    </span>
+                </div>
+
+                {/* Stats + status + menu */}
+                <div className="flex items-center gap-2 shrink-0">
+                    {season._count && (
+                        <>
+                            <span className="hidden sm:inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                                {season._count.seasonClubs} club{season._count.seasonClubs !== 1 ? "s" : ""}
+                            </span>
+                            <span className="hidden sm:inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                                {season._count.matches} match{season._count.matches !== 1 ? "es" : ""}
+                            </span>
+                        </>
+                    )}
+
                     <Badge
                         className={`text-[10px] border capitalize ${statusBadgeClass(season.status)}`}
                         variant="outline"
                     >
                         {season.status}
                     </Badge>
-                    {season._count && (
-                        <span className="text-xs text-muted-foreground">
-                            {season._count.seasonClubs} club{season._count.seasonClubs !== 1 ? "s" : ""}
-                        </span>
-                    )}
-                </div>
 
-                <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-                    <span>{formatDate(season.startDate)} — {formatDate(season.endDate)}</span>
-                    {season._count && (
-                        <span>{season._count.matches} match{season._count.matches !== 1 ? "es" : ""}</span>
-                    )}
-                    {season.requiredClubs && (
-                        <span>{season.requiredClubs} clubs required · {season.roundRobinType ?? "double"} round-robin</span>
+                    {canEdit && (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0 text-muted-foreground"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    <MoreHorizontal className="h-4 w-4" />
+                                    <span className="sr-only">Actions</span>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(season); }}>
+                                    <Pencil className="mr-2 h-4 w-4" />
+                                    Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                    onClick={(e) => { e.stopPropagation(); onDelete(season); }}
+                                    className="text-destructive focus:text-destructive"
+                                >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     )}
                 </div>
-            </CardContent>
-        </Card>
+            </div>
+        </div>
     );
 }

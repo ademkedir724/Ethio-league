@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -37,7 +37,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
-import { Layers, Plus, MoreHorizontal, Pencil, Trash2, Calendar, Link as LinkIcon, Copy, ShieldCheck } from "lucide-react";
+import { Layers, Plus, MoreHorizontal, Pencil, Trash2, Calendar, Link as LinkIcon, Copy, ShieldCheck, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { MediaUploadWidget } from "@/components/dashboard/media-upload-widget";
@@ -273,9 +273,9 @@ export default function LeaguesPage() {
 
       {/* League Cards */}
       {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-48 rounded-xl" />
+        <div className="flex flex-col gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 rounded-xl" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
@@ -290,18 +290,25 @@ export default function LeaguesPage() {
           )}
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((league) => (
-            <LeagueCard
-              key={league.id}
-              league={league}
-              canEdit={canEdit}
-              onEdit={openEdit}
-              onDelete={setDeleteTarget}
-              onViewSeasons={() => router.push(`/dashboard/leagues/${league.id}/seasons`)}
-            />
-          ))}
-        </div>
+        <>
+          <p className="text-xs text-muted-foreground -mt-2">
+            {filtered.length} league{filtered.length !== 1 ? "s" : ""}
+            {" · "}
+            {filtered.filter((l) => l.status === "active").length} active
+          </p>
+          <div className="flex flex-col gap-3">
+            {filtered.map((league) => (
+              <LeagueCard
+                key={league.id}
+                league={league}
+                canEdit={canEdit}
+                onEdit={openEdit}
+                onDelete={setDeleteTarget}
+                onViewSeasons={() => router.push(`/dashboard/leagues/${league.id}/seasons`)}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       {/* Create / Edit Dialog */}
@@ -712,31 +719,78 @@ interface LeagueCardProps {
 }
 
 function LeagueCard({ league, canEdit, onEdit, onDelete, onViewSeasons }: LeagueCardProps) {
-  const statusColor =
-    league.status === "active"
-      ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-      : "bg-muted text-muted-foreground border-border";
+  const isActive = league.status === "active";
+  const borderAccent = isActive ? "border-l-emerald-500" : "border-l-border";
+  const statusColor = isActive
+    ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+    : "bg-muted text-muted-foreground border-border";
 
   return (
-    <Card className="flex flex-col">
-      <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
-        <div className="flex items-start gap-3 min-w-0">
-          {league.logoUrl ? (
-            <Image src={league.logoUrl} alt={`${league.name} logo`} width={40} height={40} className="rounded object-cover shrink-0" />
-          ) : (
-            <div className="flex h-10 w-10 items-center justify-center rounded bg-muted shrink-0">
-              <Layers className="h-5 w-5 text-muted-foreground" />
-            </div>
+    <div
+      className={`flex items-center gap-4 p-4 rounded-xl border border-border border-l-4 ${borderAccent} bg-card hover:bg-muted/30 transition-colors`}
+    >
+      {/* Logo */}
+      {league.logoUrl ? (
+        <Image
+          src={league.logoUrl}
+          alt={`${league.name} logo`}
+          width={48}
+          height={48}
+          className="h-12 w-12 rounded-lg object-cover shrink-0"
+        />
+      ) : (
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-muted to-muted/60">
+          <Layers className="h-5 w-5 text-muted-foreground" />
+        </div>
+      )}
+
+      {/* Center info */}
+      <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-lg font-semibold leading-tight truncate">{league.name}</span>
+          {league.leagueType && (
+            <Badge variant="outline" className="text-[10px] capitalize shrink-0">
+              {league.leagueType.name}
+            </Badge>
           )}
-          <div className="flex flex-col gap-1 min-w-0">
-            <CardTitle className="text-base leading-tight truncate">{league.name}</CardTitle>
-            {league.leagueType && (
-              <Badge variant="outline" className="w-fit text-[10px] capitalize">
-                {league.leagueType.name}
-              </Badge>
+        </div>
+        {(league.genderCategory || league.ageCategory || league.divisionLevel != null) && (
+          <div className="flex flex-wrap gap-1.5">
+            {league.genderCategory && (
+              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground capitalize">
+                {league.genderCategory}
+              </span>
+            )}
+            {league.ageCategory && (
+              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                {league.ageCategory}
+              </span>
+            )}
+            {league.divisionLevel != null && (
+              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                Div {league.divisionLevel}
+              </span>
             )}
           </div>
+        )}
+      </div>
+
+      {/* Right side */}
+      <div className="flex items-center gap-3 shrink-0">
+        <div className="hidden sm:flex flex-col items-end gap-0.5">
+          <span className="text-sm font-semibold tabular-nums">{league._count.seasons}</span>
+          <span className="text-[10px] text-muted-foreground">season{league._count.seasons !== 1 ? "s" : ""}</span>
         </div>
+
+        <Badge className={`text-[10px] border capitalize hidden sm:inline-flex ${statusColor}`} variant="outline">
+          {league.status}
+        </Badge>
+
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={onViewSeasons}>
+          View Seasons
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Button>
+
         {canEdit && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -761,27 +815,7 @@ function LeagueCard({ league, canEdit, onEdit, onDelete, onViewSeasons }: League
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-      </CardHeader>
-
-      <CardContent className="flex flex-col gap-3 flex-1">
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          {league.genderCategory && <span className="capitalize">{league.genderCategory}</span>}
-          {league.ageCategory && <span>{league.ageCategory}</span>}
-          {league.divisionLevel != null && <span>Division {league.divisionLevel}</span>}
-        </div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Calendar className="h-3.5 w-3.5" />
-            <span>{league._count.seasons} season{league._count.seasons !== 1 ? "s" : ""}</span>
-          </div>
-          <Badge className={`text-[10px] border ${statusColor}`} variant="outline">
-            {league.status}
-          </Badge>
-        </div>
-        <Button variant="outline" size="sm" className="mt-auto w-full" onClick={onViewSeasons}>
-          View Seasons
-        </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
