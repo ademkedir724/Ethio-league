@@ -88,6 +88,7 @@ export async function GET(req: NextRequest) {
         email: true,
         fullName: true,
         phone: true,
+        photoUrl: true,
         status: true,
         createdAt: true,
         userRoleScopes: {

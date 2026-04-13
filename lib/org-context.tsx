@@ -16,7 +16,7 @@ interface Organization {
   country: string | null;
   city: string | null;
   description: string | null;
-  logo: string | null;
+  logoUrl: string | null;
   status: string;
   createdAt: string;
   updatedAt: string;
@@ -41,7 +41,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
 
   const fetchOrganization = async () => {
     const orgId = getOrganizationId();
-    
+
     // Only fetch if user is org admin and has an organization ID
     if (!isOrgAdmin() || !orgId) {
       setOrganization(null);
