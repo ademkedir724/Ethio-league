@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import useSWR, { mutate } from "swr";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
@@ -41,6 +41,7 @@ interface Match {
   homeScore: number | null;
   awayScore: number | null;
   matchDate: string;
+  liveStartedAt?: string | null;
   stadium: { id: string; name: string } | null;
   season: { id: string; name: string; leagueId: string };
   roundNumber: number | null;
@@ -55,6 +56,24 @@ const emptyForm = {
   season: "",
   roundNumber: "",
 };
+
+function LiveTimer({ startedAt }: { startedAt: string }) {
+  const [minutes, setMinutes] = useState(() =>
+    Math.floor((Date.now() - new Date(startedAt).getTime()) / 60000)
+  );
+  useEffect(() => {
+    const id = setInterval(() => {
+      setMinutes(Math.floor((Date.now() - new Date(startedAt).getTime()) / 60000));
+    }, 30000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/30">
+      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+      {minutes}&apos;
+    </span>
+  );
+}
 
 export default function MatchesPage() {
   const router = useRouter();
@@ -327,7 +346,14 @@ export default function MatchesPage() {
     {
       key: "status",
       header: "Status",
-      render: (m) => <StatusBadge status={m.status} />,
+      render: (m) => (
+        <div className="flex items-center gap-1.5">
+          <StatusBadge status={m.status} />
+          {m.status === "live" && m.liveStartedAt && (
+            <LiveTimer startedAt={m.liveStartedAt} />
+          )}
+        </div>
+      ),
     },
     // Actions column
     ...(canEdit
