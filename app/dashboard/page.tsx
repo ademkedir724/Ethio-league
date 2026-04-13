@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import Image from "next/image";
 import {
   Table,
   TableBody,
@@ -109,9 +110,20 @@ function SuperAdminOverview() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(leagues || []).slice(0, 6).map((l: { id: string; name: string; status: string; _count: { seasons: number } }) => (
+                  {(leagues || []).slice(0, 6).map((l: { id: string; name: string; status: string; logoUrl?: string | null; _count: { seasons: number } }) => (
                     <TableRow key={l.id}>
-                      <TableCell className="text-sm font-medium">{l.name}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {l.logoUrl ? (
+                            <Image src={l.logoUrl} alt={l.name} width={20} height={20} className="h-5 w-5 rounded object-cover shrink-0" />
+                          ) : (
+                            <div className="h-5 w-5 rounded bg-muted flex items-center justify-center shrink-0">
+                              <Layers className="h-3 w-3 text-muted-foreground" />
+                            </div>
+                          )}
+                          <span className="text-sm font-medium">{l.name}</span>
+                        </div>
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{l._count?.seasons ?? 0}</TableCell>
                       <TableCell><StatusBadge status={l.status} /></TableCell>
                     </TableRow>
@@ -139,12 +151,26 @@ function SuperAdminOverview() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {matches.map((m: { id: string; homeClub: { name: string }; awayClub: { name: string }; homeScore: number | null; awayScore: number | null; status: string }) => (
+                  {matches.map((m: { id: string; homeClub: { name: string; logoUrl?: string | null }; awayClub: { name: string; logoUrl?: string | null }; homeScore: number | null; awayScore: number | null; status: string }) => (
                     <TableRow key={m.id}>
                       <TableCell>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium">{m.homeClub?.name}</span>
-                          <span className="text-xs text-muted-foreground">vs {m.awayClub?.name}</span>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5">
+                            {m.homeClub?.logoUrl ? (
+                              <Image src={m.homeClub.logoUrl} alt={m.homeClub.name} width={16} height={16} className="h-4 w-4 rounded object-cover shrink-0" />
+                            ) : (
+                              <div className="h-4 w-4 rounded bg-muted shrink-0" />
+                            )}
+                            <span className="text-sm font-medium">{m.homeClub?.name}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {m.awayClub?.logoUrl ? (
+                              <Image src={m.awayClub.logoUrl} alt={m.awayClub.name} width={16} height={16} className="h-4 w-4 rounded object-cover shrink-0" />
+                            ) : (
+                              <div className="h-4 w-4 rounded bg-muted shrink-0" />
+                            )}
+                            <span className="text-xs text-muted-foreground">{m.awayClub?.name}</span>
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-sm">

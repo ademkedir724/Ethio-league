@@ -31,7 +31,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -53,6 +53,7 @@ interface Referee {
   matchesOfficiated: number;
   region: string;
   status: string;
+  photoUrl?: string | null;
 }
 
 const licenseLevelColors: Record<string, string> = {
@@ -310,6 +311,7 @@ export default function RefereesPage() {
       render: (r) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
+            {r.photoUrl && <AvatarImage src={r.photoUrl} alt={`${r.firstName} ${r.lastName}`} />}
             <AvatarFallback className="bg-primary/10 text-xs text-primary">
               {getInitials(r.firstName, r.lastName)}
             </AvatarFallback>

@@ -287,7 +287,18 @@ function OrgAdminOrganizationsView() {
 
       {/* Edit Organization Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent
+          className="max-w-md"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onFocusOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => {
+            // Allow Cloudinary widget interactions outside the dialog
+            const target = e.target as HTMLElement;
+            if (target?.closest?.('[class*="cloudinary"]') || target?.closest?.('#cloudinary-overlay')) {
+              e.preventDefault();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Edit Organization</DialogTitle>
             <DialogDescription>
@@ -533,15 +544,24 @@ function SuperAdminOrganizationsView() {
       key: "name",
       header: "Organization",
       render: (org) => (
-        <div className="flex flex-col">
-          <span className="text-sm font-medium text-foreground">
-            {org.name}
-          </span>
-          {org.city && org.country && (
-            <span className="text-xs text-muted-foreground">
-              {org.city}, {org.country}
-            </span>
+        <div className="flex items-center gap-3">
+          {org.logoUrl ? (
+            <Image src={org.logoUrl} alt={org.name} width={32} height={32} className="h-8 w-8 rounded-md object-cover shrink-0" />
+          ) : (
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+            </div>
           )}
+          <div className="flex flex-col">
+            <span className="text-sm font-medium text-foreground">
+              {org.name}
+            </span>
+            {org.city && org.country && (
+              <span className="text-xs text-muted-foreground">
+                {org.city}, {org.country}
+              </span>
+            )}
+          </div>
         </div>
       ),
     },
