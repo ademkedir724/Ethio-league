@@ -1,12 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { created, badRequest, notFound, forbidden, serverError, parseUUID, unprocessableEntity } from "@/lib/api-helpers";
+import { success, created, badRequest, notFound, forbidden, serverError, parseUUID, unprocessableEntity } from "@/lib/api-helpers";
 import { isValidCloudinaryUrl } from "@/lib/cloudinary";
 import { MEDIA_LIMITS } from "@/lib/media-limits";
 import { assertMEASeasonScope } from "@/lib/scope-guard";
 
 const VALID_MEDIA_TYPES = ["image", "video"] as const;
+
+// GET /api/matches/:id/media
+export async function GET(
+    req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    try {
+        const auth = await requireAuth(req);
+        if (isAuthError(auth)) return auth;
+
+        const { id: idStr } = await params;
+        const id = parseUUID(idStr);
+        if (!id) return badRequest("Invalid match ID");
+
+        const media = await prisma.matchMedia.findMany({
+            where: { matchId: id },
+            orderBy: { sortOrder: "asc" },
+        });
+
+        return success(media);
+    } catch (error) {
+        return serverError(error);
+    }
+}
 
 // POST /api/matches/:id/media
 export async function POST(
