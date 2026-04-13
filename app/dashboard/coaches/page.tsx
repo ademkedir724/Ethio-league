@@ -199,6 +199,7 @@ export default function CoachesPage() {
   const [editingCoach, setEditingCoach] = useState<Coach | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Coach | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [formPhotoUrl, setFormPhotoUrl] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const [detailCoachId, setDetailCoachId] = useState<string | null>(null);
 
@@ -236,6 +237,7 @@ export default function CoachesPage() {
   const openCreate = () => {
     setEditingCoach(null);
     setForm(emptyForm);
+    setFormPhotoUrl("");
     setFormOpen(true);
   };
 
@@ -244,19 +246,25 @@ export default function CoachesPage() {
     setForm({
       firstName: coach.firstName,
       lastName: coach.lastName,
-      dateOfBirth: coach.dateOfBirth,
+      dateOfBirth: coach.dateOfBirth ? coach.dateOfBirth.slice(0, 10) : "",
       nationality: coach.nationality,
       licenseLevel: coach.licenseLevel,
-      experienceYears: coach.experienceYears.toString(),
+      experienceYears: coach.experienceYears?.toString() ?? "",
       role: coach.coachingRole ?? "",
     });
+    setFormPhotoUrl(coach.photoUrl ?? "");
     setFormOpen(true);
   };
 
   const handleSubmit = async () => {
     const body = JSON.stringify({
-      ...form,
+      firstName: form.firstName,
+      lastName: form.lastName,
+      dateOfBirth: form.dateOfBirth || null,
+      nationality: form.nationality || null,
+      licenseLevel: form.licenseLevel || null,
       experienceYears: parseInt(form.experienceYears) || 0,
+      ...(formPhotoUrl && { photoUrl: formPhotoUrl }),
     });
 
     let res: Response;
@@ -576,41 +584,28 @@ export default function CoachesPage() {
                   </SelectContent>
                 </Select>
               </div>
-              {editingCoach && (
-                <div className="flex flex-col gap-2 sm:col-span-2">
-                  <Label>Coach Photo</Label>
-                  <div className="flex items-center gap-3">
-                    {editingCoach.photoUrl && (
-                      <Image
-                        src={editingCoach.photoUrl}
-                        alt={`${editingCoach.firstName} ${editingCoach.lastName}`}
-                        width={40}
-                        height={40}
-                        className="rounded-full object-cover"
-                      />
-                    )}
-                    <MediaUploadWidget
-                      uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET_COACH_PHOTO ?? "coach_photo"}
-                      onSuccess={async (url) => {
-                        const res = await fetchWithAuth(`/api/coaches/${editingCoach.id}`, {
-                          method: "PATCH",
-                          body: JSON.stringify({ photoUrl: url }),
-                        });
-                        if (res.ok) {
-                          mutate(apiUrl);
-                          toast.success("Photo updated");
-                        } else {
-                          toast.error("Failed to update photo");
-                        }
-                      }}
-                    >
-                      <Button type="button" variant="outline" size="sm">
-                        {editingCoach.photoUrl ? "Change Photo" : "Upload Photo"}
-                      </Button>
-                    </MediaUploadWidget>
-                  </div>
+              <div className="flex flex-col gap-2 sm:col-span-2">
+                <Label>Coach Photo</Label>
+                <div className="flex items-center gap-3">
+                  {formPhotoUrl && (
+                    <Image
+                      src={formPhotoUrl}
+                      alt="Coach photo"
+                      width={40}
+                      height={40}
+                      className="rounded-full object-cover"
+                    />
+                  )}
+                  <MediaUploadWidget
+                    uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET_COACH_PHOTO ?? "coach_photo"}
+                    onSuccess={(url) => setFormPhotoUrl(url)}
+                  >
+                    <Button type="button" variant="outline" size="sm">
+                      {formPhotoUrl ? "Change Photo" : "Upload Photo"}
+                    </Button>
+                  </MediaUploadWidget>
                 </div>
-              )}
+              </div>
             </div>
           </FormDialog>
 

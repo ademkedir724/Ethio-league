@@ -443,8 +443,12 @@ export default function ClubProfilePage() {
             )}
 
             {/* Edit Club Dialog */}
-            <Dialog open={editOpen} onOpenChange={setEditOpen}>
-                <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+            <Dialog open={editOpen} onOpenChange={setEditOpen} modal={false}>
+                <DialogContent
+                    className="max-w-lg max-h-[90vh] overflow-y-auto"
+                    onInteractOutside={(e) => e.preventDefault()}
+                    onFocusOutside={(e) => e.preventDefault()}
+                >
                     <DialogHeader>
                         <DialogTitle>Edit Club Profile</DialogTitle>
                         <DialogDescription>Update your club's permanent information.</DialogDescription>
