@@ -40,7 +40,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Users, Plus, MoreHorizontal, Pencil, Trash2, ShieldCheck, UserX, Link as LinkIcon, Copy } from "lucide-react";
 
 interface UserRoleScope {
@@ -56,6 +56,7 @@ interface ApiUser {
   fullName: string;
   email: string;
   phone: string | null;
+  photoUrl: string | null;
   status: string;
   createdAt: string;
   userRoleScopes: UserRoleScope[];
@@ -66,6 +67,7 @@ interface User {
   fullName: string;
   email: string;
   phone: string;
+  photoUrl: string | null;
   roles: string[];
   status: string;
   createdAt: string;
@@ -254,6 +256,7 @@ function OrgAdminUsersView() {
       render: (u) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
+            {u.photoUrl && <AvatarImage src={u.photoUrl} alt={u.fullName} />}
             <AvatarFallback className="bg-primary/10 text-xs text-primary">
               {getInitials(u.fullName)}
             </AvatarFallback>
@@ -653,6 +656,7 @@ function SuperAdminUsersView() {
       render: (u) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
+            {u.photoUrl && <AvatarImage src={u.photoUrl} alt={u.fullName} />}
             <AvatarFallback className="bg-primary/10 text-xs text-primary">
               {getInitials(u.fullName)}
             </AvatarFallback>
@@ -894,6 +898,7 @@ function LeagueAdminUsersView() {
       render: (u) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
+            {u.photoUrl && <AvatarImage src={u.photoUrl} alt={u.fullName} />}
             <AvatarFallback className="bg-primary/10 text-xs text-primary">
               {getInitials(u.fullName)}
             </AvatarFallback>
