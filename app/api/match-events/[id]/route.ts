@@ -96,7 +96,53 @@ export async function DELETE(
     const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid match event ID");
 
+    // Fetch the event before deleting so we know its type and club
+    const event = await prisma.matchEvent.findUnique({
+      where: { id },
+      include: { eventType: true },
+    });
+    if (!event) return notFound("Match event not found");
+
     await prisma.matchEvent.delete({ where: { id } });
+
+    // Recalculate score if the deleted event was a goal type
+    const typeName = event.eventType.name.toLowerCase();
+    const isGoal = typeName === "goal" || typeName === "penalty_goal";
+    const isOwnGoal = typeName === "own_goal";
+
+    if (isGoal || isOwnGoal) {
+      const match = await prisma.match.findUnique({
+        where: { id: event.matchId },
+        select: { id: true, homeClubId: true, awayClubId: true },
+      });
+      if (match) {
+        // Recount all remaining goal events for this match
+        const remainingGoals = await prisma.matchEvent.findMany({
+          where: {
+            matchId: event.matchId,
+            eventType: { name: { in: ["goal", "penalty_goal", "own_goal"] } },
+          },
+          include: { eventType: true },
+        });
+
+        let homeScore = 0;
+        let awayScore = 0;
+        for (const g of remainingGoals) {
+          const gType = g.eventType.name.toLowerCase();
+          const scoringClubId = gType === "own_goal"
+            ? (g.clubId === match.homeClubId ? match.awayClubId : match.homeClubId)
+            : g.clubId;
+          if (scoringClubId === match.homeClubId) homeScore++;
+          else if (scoringClubId === match.awayClubId) awayScore++;
+        }
+
+        await prisma.match.update({
+          where: { id: event.matchId },
+          data: { homeScore, awayScore },
+        });
+      }
+    }
+
     return success({ message: "Match event deleted" });
   } catch (error) {
     return serverError(error);
