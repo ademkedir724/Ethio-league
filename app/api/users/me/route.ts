@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
             fullName: rest.fullName,
             email: rest.email,
             phone: rest.phone,
+            photoUrl: rest.photoUrl,
             status: rest.status,
             roles: rest.userRoleScopes,
         });
@@ -64,6 +65,7 @@ export async function PATCH(req: NextRequest) {
             fullName: rest.fullName,
             email: rest.email,
             phone: rest.phone,
+            photoUrl: rest.photoUrl,
             status: rest.status,
             roles: rest.userRoleScopes,
         });

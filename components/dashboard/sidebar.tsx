@@ -121,7 +121,14 @@ export function DashboardSidebar({
   const leagueName: string | undefined = leagueData?.name;
 
   // Filter nav items based on user permissions
-  const navItems = allNavItems.filter((item) => canViewNavItem(item.href));
+  // Super admin doesn't need Clubs/Players/Coaches/Referees/Matches in the sidebar
+  // — those are summarised on the dashboard overview instead
+  const superAdminHidden = new Set(["clubs", "players", "coaches", "referees", "matches"]);
+  const navItems = allNavItems.filter((item) => {
+    if (!canViewNavItem(item.href)) return false;
+    if (isSuperAdmin() && superAdminHidden.has(item.key)) return false;
+    return true;
+  });
 
   // Role-specific nav items
   const roleNavItems = [
