@@ -16,15 +16,53 @@ export async function GET(req: NextRequest) {
         const isMEA = auth.roles.some((r) => r.roleName === "match_event_admin");
 
         if (isSuperAdmin) {
-            const [organizations, clubs, players, users, seasons, matches] = await Promise.all([
+            const [
+                organizations,
+                clubs,
+                activeClubs,
+                players,
+                coaches,
+                referees,
+                users,
+                seasons,
+                activeSeasons,
+                totalMatches,
+                liveMatches,
+                completedMatches,
+                scheduledMatches,
+                leagues,
+            ] = await Promise.all([
                 prisma.organization.count(),
                 prisma.club.count(),
+                prisma.club.count({ where: { status: "active" } }),
                 prisma.player.count(),
+                prisma.coach.count(),
+                prisma.referee.count(),
                 prisma.user.count(),
                 prisma.season.count(),
+                prisma.season.count({ where: { status: "active" } }),
                 prisma.match.count(),
+                prisma.match.count({ where: { status: "live" } }),
+                prisma.match.count({ where: { status: "completed" } }),
+                prisma.match.count({ where: { status: "scheduled" } }),
+                prisma.league.count(),
             ]);
-            return success({ organizations, clubs, players, users, seasons, matches });
+            return success({
+                organizations,
+                clubs,
+                activeClubs,
+                players,
+                coaches,
+                referees,
+                users,
+                seasons,
+                activeSeasons,
+                matches: totalMatches,
+                liveMatches,
+                completedMatches,
+                scheduledMatches,
+                leagues,
+            });
         }
 
         if (isOrgAdmin) {

@@ -140,11 +140,28 @@ export async function POST(
     if (matchEventAdminIds && Array.isArray(matchEventAdminIds)) {
       const meaRole = await prisma.role.findUnique({ where: { name: "match_event_admin" } });
       if (meaRole) {
-        await prisma.userRoleScope.deleteMany({ where: { roleId: meaRole.id, seasonId } });
+        // Reset any previously season-assigned MEAs back to org-only scope
+        await prisma.userRoleScope.updateMany({
+          where: { roleId: meaRole.id, seasonId },
+          data: { seasonId: null },
+        });
         for (const userId of matchEventAdminIds) {
-          await prisma.userRoleScope.create({
-            data: { userId, roleId: meaRole.id, seasonId },
+          // Find the user's existing org-scoped MEA role (created at user creation time)
+          const existing = await prisma.userRoleScope.findFirst({
+            where: { userId, roleId: meaRole.id, seasonId: null },
           });
+          if (existing) {
+            // Update the existing scope to include this season
+            await prisma.userRoleScope.update({
+              where: { id: existing.id },
+              data: { seasonId },
+            });
+          } else {
+            // Fallback: create a new scoped entry if no base scope exists
+            await prisma.userRoleScope.create({
+              data: { userId, roleId: meaRole.id, seasonId },
+            });
+          }
           results.matchEventAdminsAssigned++;
         }
       }
