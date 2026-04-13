@@ -33,50 +33,83 @@ import {
 function SuperAdminOverview() {
   const { data: stats, isLoading } = useSWR("/api/dashboard/stats", authFetcher, { fallbackData: undefined });
   const { data: recentMatches, isLoading: matchesLoading } = useSWR("/api/matches?limit=5", authFetcher);
-  const { data: recentUsers, isLoading: usersLoading } = useSWR("/api/users?limit=5", authFetcher);
   const { data: leagues, isLoading: leaguesLoading } = useSWR("/api/leagues", authFetcher);
+  const { data: recentUsers, isLoading: usersLoading } = useSWR("/api/users?limit=5", authFetcher);
 
-  const displayStats = stats || {};
+  const s = stats || {};
   const matches = (recentMatches || []).slice(0, 5);
   const users = (recentUsers || []).slice(0, 5);
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Dashboard Overview" description="Welcome to the Ethio-League management dashboard." />
+      <PageHeader title="System Overview" description="Global summary of the Ethio-League platform." />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Row 1 — Entities */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         {isLoading ? (
           Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i} className="border-border bg-card"><CardContent className="p-6"><Skeleton className="h-16 w-full" /></CardContent></Card>
+            <Card key={i}><CardContent className="p-4"><Skeleton className="h-12 w-full" /></CardContent></Card>
           ))
         ) : (
           <>
-            <StatCard title="Organizations" value={displayStats.organizations} icon={Building2} description="Registered organizations" />
-            <StatCard title="Clubs" value={displayStats.clubs} icon={Shield} description="Active clubs" />
-            <StatCard title="Players" value={displayStats.players} icon={UserCircle} description="Registered players" />
-            <StatCard title="Users" value={displayStats.users} icon={Users} description="System users" />
-            <StatCard title="Seasons" value={displayStats.seasons} icon={Calendar} description="Total seasons" />
-            <StatCard title="Matches" value={displayStats.matches} icon={Swords} description="Total matches" />
+            <StatCard title="Organizations" value={s.organizations ?? 0} icon={Building2} />
+            <StatCard title="Leagues" value={s.leagues ?? 0} icon={Layers} />
+            <StatCard title="Clubs" value={s.clubs ?? 0} icon={Shield} description={`${s.activeClubs ?? 0} active`} />
+            <StatCard title="Players" value={s.players ?? 0} icon={UserCircle} />
+            <StatCard title="Coaches" value={s.coaches ?? 0} icon={Users} />
+            <StatCard title="Referees" value={s.referees ?? 0} icon={Megaphone} />
           </>
         )}
       </div>
 
+      {/* Row 2 — Matches breakdown */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}><CardContent className="p-4"><Skeleton className="h-12 w-full" /></CardContent></Card>
+          ))
+        ) : (
+          <>
+            <StatCard title="Total Matches" value={s.matches ?? 0} icon={Swords} />
+            <StatCard title="Live" value={s.liveMatches ?? 0} icon={Swords} description="In progress" />
+            <StatCard title="Scheduled" value={s.scheduledMatches ?? 0} icon={Clock} description="Upcoming" />
+            <StatCard title="Completed" value={s.completedMatches ?? 0} icon={Calendar} description="Finished" />
+          </>
+        )}
+      </div>
+
+      {/* Row 3 — Seasons + Users */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}><CardContent className="p-4"><Skeleton className="h-12 w-full" /></CardContent></Card>
+          ))
+        ) : (
+          <>
+            <StatCard title="Total Seasons" value={s.seasons ?? 0} icon={Calendar} />
+            <StatCard title="Active Seasons" value={s.activeSeasons ?? 0} icon={Calendar} description="Running now" />
+            <StatCard title="System Users" value={s.users ?? 0} icon={Users} />
+          </>
+        )}
+      </div>
+
+      {/* Detail tables */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Leagues */}
-        <Card className="border-border bg-card">
-          <CardHeader><CardTitle className="text-base font-semibold">Leagues</CardTitle></CardHeader>
+        <Card>
+          <CardHeader><CardTitle className="text-base">Leagues</CardTitle></CardHeader>
           <CardContent>
             {leaguesLoading ? <Skeleton className="h-32 w-full" /> : (
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead>League</TableHead>
+                    <TableHead>Name</TableHead>
                     <TableHead>Seasons</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(leagues || []).slice(0, 5).map((l: { id: string; name: string; status: string; _count: { seasons: number } }) => (
+                  {(leagues || []).slice(0, 6).map((l: { id: string; name: string; status: string; _count: { seasons: number } }) => (
                     <TableRow key={l.id}>
                       <TableCell className="text-sm font-medium">{l.name}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{l._count?.seasons ?? 0}</TableCell>
@@ -93,8 +126,8 @@ function SuperAdminOverview() {
         </Card>
 
         {/* Recent Matches */}
-        <Card className="border-border bg-card">
-          <CardHeader><CardTitle className="text-base font-semibold">Recent Matches</CardTitle></CardHeader>
+        <Card>
+          <CardHeader><CardTitle className="text-base">Recent Matches</CardTitle></CardHeader>
           <CardContent>
             {matchesLoading ? <Skeleton className="h-32 w-full" /> : (
               <Table>
@@ -115,7 +148,7 @@ function SuperAdminOverview() {
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-sm">
-                        {m.homeScore != null && m.awayScore != null ? `${m.homeScore} - ${m.awayScore}` : "- vs -"}
+                        {m.homeScore != null && m.awayScore != null ? `${m.homeScore} - ${m.awayScore}` : "—"}
                       </TableCell>
                       <TableCell><StatusBadge status={m.status} /></TableCell>
                     </TableRow>
@@ -130,8 +163,8 @@ function SuperAdminOverview() {
         </Card>
 
         {/* Recent Users */}
-        <Card className="border-border bg-card">
-          <CardHeader><CardTitle className="text-base font-semibold">Recent Users</CardTitle></CardHeader>
+        <Card>
+          <CardHeader><CardTitle className="text-base">Recent Users</CardTitle></CardHeader>
           <CardContent>
             {usersLoading ? <Skeleton className="h-32 w-full" /> : (
               <Table>

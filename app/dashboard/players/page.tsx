@@ -30,7 +30,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -41,6 +41,9 @@ import {
 } from "@/components/ui/dialog";
 import { UserCircle, Plus, MoreHorizontal, Pencil, Trash2, Eye } from "lucide-react";
 import { toast } from "sonner";
+import Image from "next/image";
+import { ImageGallery } from "@/components/dashboard/image-gallery";
+import { MediaUploadWidget } from "@/components/dashboard/media-upload-widget";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,6 +58,7 @@ interface Player {
   heightCm?: number | null;
   weightKg?: number | null;
   status: string;
+  photoUrl?: string | null;
 }
 
 interface SeasonClubPlayer {
@@ -265,6 +269,7 @@ function ClubAdminPlayersView() {
       render: (p) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
+            {p.photoUrl && <AvatarImage src={p.photoUrl} alt={`${p.firstName} ${p.lastName}`} />}
             <AvatarFallback className="bg-primary/10 text-xs text-primary">
               {getInitials(p.firstName, p.lastName)}
             </AvatarFallback>
@@ -437,6 +442,42 @@ function ClubAdminPlayersView() {
             <Input id="p-weight" type="number" value={form.weightKg} onChange={(e) => setForm({ ...form, weightKg: e.target.value })} placeholder="72" />
           </div>
         </div>
+        {editingPlayer && (
+          <div className="flex flex-col gap-2 mt-4">
+            <Label>Player Photo</Label>
+            <div className="flex items-center gap-3">
+              {editingPlayer.photoUrl && (
+                <Image
+                  src={editingPlayer.photoUrl}
+                  alt={`${editingPlayer.firstName} ${editingPlayer.lastName}`}
+                  width={40}
+                  height={40}
+                  className="rounded-full object-cover"
+                />
+              )}
+              <MediaUploadWidget
+                uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET_PLAYER_PHOTO ?? "player_photo"}
+                onSuccess={async (url) => {
+                  try {
+                    const res = await fetchWithAuth(`/api/players/${editingPlayer.id}`, {
+                      method: "PATCH",
+                      body: JSON.stringify({ photoUrl: url }),
+                    });
+                    if (!res.ok) throw new Error("Failed to update photo");
+                    mutate("/api/players");
+                    toast.success("Photo updated");
+                  } catch {
+                    toast.error("Failed to save photo");
+                  }
+                }}
+              >
+                <Button type="button" variant="outline" size="sm">
+                  {editingPlayer.photoUrl ? "Change Photo" : "Upload Photo"}
+                </Button>
+              </MediaUploadWidget>
+            </div>
+          </div>
+        )}
       </FormDialog>
 
       <ConfirmDialog
@@ -467,11 +508,16 @@ interface PlayerWithHistory extends Player {
       club: { id: string; name: string };
     };
   }>;
+  images?: Array<{ id: string; imageUrl: string; caption?: string | null; sortOrder: number }>;
 }
 
 function PlayerDetailDialog({ player, open, onClose }: { player: PlayerWithHistory | null; open: boolean; onClose: () => void }) {
   const { data: detail, isLoading } = useSWR<PlayerWithHistory>(
     open && player ? `/api/players/${player.id}` : null,
+    authFetcher
+  );
+  const { data: playerImages } = useSWR<Array<{ id: string; imageUrl: string; caption?: string | null; sortOrder: number }>>(
+    open && player ? `/api/players/${player.id}/images` : null,
     authFetcher
   );
   const p = detail ?? player;
@@ -489,6 +535,18 @@ function PlayerDetailDialog({ player, open, onClose }: { player: PlayerWithHisto
             {p.primaryPosition?.name ?? "No position"} · {p.nationality ?? "Unknown nationality"}
           </DialogDescription>
         </DialogHeader>
+
+        {p.photoUrl && (
+          <div className="flex justify-center">
+            <Image
+              src={p.photoUrl}
+              alt={`${p.firstName} ${p.lastName}`}
+              width={64}
+              height={64}
+              className="rounded-full object-cover"
+            />
+          </div>
+        )}
 
         {isLoading ? <Skeleton className="h-32 w-full" /> : (
           <div className="flex flex-col gap-4">
@@ -531,6 +589,17 @@ function PlayerDetailDialog({ player, open, onClose }: { player: PlayerWithHisto
                 </div>
               </div>
             )}
+
+            {/* Photos */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Photos</p>
+              <ImageGallery
+                images={playerImages ?? []}
+                canDelete={false}
+                maxImages={3}
+                emptyMessage="No photos yet."
+              />
+            </div>
           </div>
         )}
       </DialogContent>
@@ -564,6 +633,7 @@ function ReadOnlyPlayersView() {
       render: (p) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
+            {p.photoUrl && <AvatarImage src={p.photoUrl} alt={`${p.firstName} ${p.lastName}`} />}
             <AvatarFallback className="bg-primary/10 text-xs text-primary">
               {getInitials(p.firstName, p.lastName)}
             </AvatarFallback>
@@ -702,6 +772,7 @@ function LeagueAdminPlayersView() {
       render: (p) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
+            {p.photoUrl && <AvatarImage src={p.photoUrl} alt={`${p.firstName} ${p.lastName}`} />}
             <AvatarFallback className="bg-primary/10 text-xs text-primary">
               {getInitials(p.firstName, p.lastName)}
             </AvatarFallback>

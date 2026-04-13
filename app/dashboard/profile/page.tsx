@@ -17,7 +17,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Camera } from "lucide-react";
+import { MediaUploadWidget } from "@/components/dashboard/media-upload-widget";
 import {
     Dialog,
     DialogContent,
@@ -42,6 +44,7 @@ interface UserProfile {
     fullName: string;
     email: string;
     phone?: string | null;
+    photoUrl?: string | null;
     status: string;
     roles: RoleScope[];
 }
@@ -218,11 +221,40 @@ export default function ProfilePage() {
                         </CardHeader>
                         <CardContent className="flex flex-col gap-4">
                             <div className="flex items-center gap-4">
-                                <Avatar className="h-16 w-16">
-                                    <AvatarFallback className="text-lg">
-                                        {getInitials(profile.fullName)}
-                                    </AvatarFallback>
-                                </Avatar>
+                                <div className="flex flex-col items-center gap-2">
+                                    <Avatar className="h-16 w-16">
+                                        {profile.photoUrl && (
+                                            <AvatarImage src={profile.photoUrl} alt={profile.fullName} />
+                                        )}
+                                        <AvatarFallback className="text-lg">
+                                            {getInitials(profile.fullName)}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <MediaUploadWidget
+                                        uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET_USER_PROFILE ?? "user_profile"}
+                                        onSuccess={async (url) => {
+                                            try {
+                                                const res = await fetchWithAuth("/api/users/me", {
+                                                    method: "PATCH",
+                                                    body: JSON.stringify({ photoUrl: url }),
+                                                });
+                                                if (res.ok) {
+                                                    mutate("/api/users/me");
+                                                    toast.success("Photo updated");
+                                                } else {
+                                                    toast.error("Failed to update photo");
+                                                }
+                                            } catch {
+                                                toast.error("Failed to update photo");
+                                            }
+                                        }}
+                                    >
+                                        <Button variant="outline" size="sm" type="button">
+                                            <Camera className="h-4 w-4 mr-1" />
+                                            Change Photo
+                                        </Button>
+                                    </MediaUploadWidget>
+                                </div>
                                 <div className="flex flex-col gap-1">
                                     <p className="text-lg font-semibold">{profile.fullName}</p>
                                     <p className="text-sm text-muted-foreground">{profile.email}</p>
