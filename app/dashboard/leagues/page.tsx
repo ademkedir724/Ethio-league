@@ -39,6 +39,8 @@ import {
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { Layers, Plus, MoreHorizontal, Pencil, Trash2, Calendar, Link as LinkIcon, Copy, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { MediaUploadWidget } from "@/components/dashboard/media-upload-widget";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -112,6 +114,7 @@ export default function LeaguesPage() {
   const [deleteTarget, setDeleteTarget] = useState<League | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
+  const [logoUrl, setLogoUrl] = useState("");
   const [setupLink, setSetupLink] = useState<string | null>(null);
   const [setupLinkEmail, setSetupLinkEmail] = useState<string>("");
 
@@ -126,6 +129,7 @@ export default function LeaguesPage() {
   const openCreate = () => {
     setEditingLeague(null);
     setForm(emptyForm);
+    setLogoUrl("");
     setFormOpen(true);
   };
 
@@ -142,6 +146,7 @@ export default function LeaguesPage() {
       adminEmail: "",
       adminPhone: "",
     });
+    setLogoUrl(league.logoUrl ?? "");
     setFormOpen(true);
   };
 
@@ -163,7 +168,7 @@ export default function LeaguesPage() {
         ageCategory: form.ageCategory || null,
         divisionLevel: form.divisionLevel ? parseInt(form.divisionLevel) : null,
         description: form.description || null,
-        logoUrl: null,
+        logoUrl: logoUrl || null,
       };
 
       let res: Response;
@@ -411,10 +416,20 @@ export default function LeaguesPage() {
               </div>
             </div>
 
-            {/* Logo — disabled */}
+            {/* Logo */}
             <div className="flex flex-col gap-2">
-              <Label className="text-muted-foreground">Logo</Label>
-              <Input disabled placeholder="Logo upload coming soon..." className="opacity-50 cursor-not-allowed" />
+              <Label>Logo</Label>
+              <div className="flex items-center gap-3">
+                <MediaUploadWidget
+                  uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET_LEAGUE_LOGO ?? "league_logo"}
+                  onSuccess={(url) => setLogoUrl(url)}
+                >
+                  <Button variant="outline" size="sm" type="button">Upload Logo</Button>
+                </MediaUploadWidget>
+                {logoUrl && (
+                  <Image src={logoUrl} alt="League logo preview" width={32} height={32} className="rounded object-cover" />
+                )}
+              </div>
             </div>
 
             {/* Description */}
@@ -705,13 +720,22 @@ function LeagueCard({ league, canEdit, onEdit, onDelete, onViewSeasons }: League
   return (
     <Card className="flex flex-col">
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
-        <div className="flex flex-col gap-1 min-w-0">
-          <CardTitle className="text-base leading-tight truncate">{league.name}</CardTitle>
-          {league.leagueType && (
-            <Badge variant="outline" className="w-fit text-[10px] capitalize">
-              {league.leagueType.name}
-            </Badge>
+        <div className="flex items-start gap-3 min-w-0">
+          {league.logoUrl ? (
+            <Image src={league.logoUrl} alt={`${league.name} logo`} width={40} height={40} className="rounded object-cover shrink-0" />
+          ) : (
+            <div className="flex h-10 w-10 items-center justify-center rounded bg-muted shrink-0">
+              <Layers className="h-5 w-5 text-muted-foreground" />
+            </div>
           )}
+          <div className="flex flex-col gap-1 min-w-0">
+            <CardTitle className="text-base leading-tight truncate">{league.name}</CardTitle>
+            {league.leagueType && (
+              <Badge variant="outline" className="w-fit text-[10px] capitalize">
+                {league.leagueType.name}
+              </Badge>
+            )}
+          </div>
         </div>
         {canEdit && (
           <DropdownMenu>

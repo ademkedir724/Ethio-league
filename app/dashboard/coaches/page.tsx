@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Image from "next/image";
 import useSWR, { mutate } from "swr";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
@@ -11,6 +12,8 @@ import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { FormDialog } from "@/components/dashboard/form-dialog";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { ImageGallery } from "@/components/dashboard/image-gallery";
+import { MediaUploadWidget } from "@/components/dashboard/media-upload-widget";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,7 +32,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -41,6 +44,13 @@ import {
 import { Trophy, Plus, MoreHorizontal, Pencil, Trash2, Eye, UserX } from "lucide-react";
 import { toast } from "sonner";
 
+interface CoachImage {
+  id: string;
+  imageUrl: string;
+  caption?: string | null;
+  sortOrder: number;
+}
+
 interface Coach {
   id: string;
   firstName: string;
@@ -50,6 +60,7 @@ interface Coach {
   licenseLevel: string;
   experienceYears: number;
   status: string;
+  photoUrl?: string | null;
   clubId?: string | null;
   currentClub?: string | null;
   currentClubId?: string | null;
@@ -72,6 +83,10 @@ function CoachDetailDialog({ coachId, open, onClose }: { coachId: string | null;
     open && coachId ? `/api/coaches/${coachId}` : null,
     authFetcher
   );
+  const { data: coachImages } = useSWR<CoachImage[]>(
+    open && coachId ? `/api/coaches/${coachId}/images` : null,
+    authFetcher
+  );
 
   const currentSeason = coach?.seasonClubCoaches?.find((scc) => scc.seasonClub.season.status === "active");
   const pastSeasons = coach?.seasonClubCoaches?.filter((scc) => scc.seasonClub.season.status !== "active") ?? [];
@@ -85,6 +100,17 @@ function CoachDetailDialog({ coachId, open, onClose }: { coachId: string | null;
         </DialogHeader>
         {isLoading ? <Skeleton className="h-32 w-full" /> : coach ? (
           <div className="flex flex-col gap-4">
+            {coach.photoUrl && (
+              <div className="flex justify-center">
+                <Image
+                  src={coach.photoUrl}
+                  alt={`${coach.firstName} ${coach.lastName}`}
+                  width={64}
+                  height={64}
+                  className="rounded-full object-cover"
+                />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div><span className="text-muted-foreground">Date of Birth</span><p className="font-medium">{coach.dateOfBirth ? new Date(coach.dateOfBirth).toLocaleDateString() : "—"}</p></div>
               <div><span className="text-muted-foreground">Experience</span><p className="font-medium">{coach.experienceYears ? `${coach.experienceYears} years` : "—"}</p></div>
@@ -113,6 +139,14 @@ function CoachDetailDialog({ coachId, open, onClose }: { coachId: string | null;
                 </div>
               </div>
             )}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Photos</p>
+              <ImageGallery
+                images={coachImages ?? []}
+                canDelete={false}
+                maxImages={3}
+              />
+            </div>
           </div>
         ) : null}
       </DialogContent>
@@ -298,6 +332,9 @@ export default function CoachesPage() {
       render: (c) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
+            {c.photoUrl && (
+              <AvatarImage src={c.photoUrl} alt={`${c.firstName} ${c.lastName}`} />
+            )}
             <AvatarFallback className="bg-primary/10 text-xs text-primary">
               {getInitials(c.firstName, c.lastName)}
             </AvatarFallback>
@@ -539,6 +576,41 @@ export default function CoachesPage() {
                   </SelectContent>
                 </Select>
               </div>
+              {editingCoach && (
+                <div className="flex flex-col gap-2 sm:col-span-2">
+                  <Label>Coach Photo</Label>
+                  <div className="flex items-center gap-3">
+                    {editingCoach.photoUrl && (
+                      <Image
+                        src={editingCoach.photoUrl}
+                        alt={`${editingCoach.firstName} ${editingCoach.lastName}`}
+                        width={40}
+                        height={40}
+                        className="rounded-full object-cover"
+                      />
+                    )}
+                    <MediaUploadWidget
+                      uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET_COACH_PHOTO ?? "coach_photo"}
+                      onSuccess={async (url) => {
+                        const res = await fetchWithAuth(`/api/coaches/${editingCoach.id}`, {
+                          method: "PATCH",
+                          body: JSON.stringify({ photoUrl: url }),
+                        });
+                        if (res.ok) {
+                          mutate(apiUrl);
+                          toast.success("Photo updated");
+                        } else {
+                          toast.error("Failed to update photo");
+                        }
+                      }}
+                    >
+                      <Button type="button" variant="outline" size="sm">
+                        {editingCoach.photoUrl ? "Change Photo" : "Upload Photo"}
+                      </Button>
+                    </MediaUploadWidget>
+                  </div>
+                </div>
+              )}
             </div>
           </FormDialog>
 
