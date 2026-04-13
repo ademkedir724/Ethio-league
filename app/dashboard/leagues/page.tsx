@@ -312,8 +312,12 @@ export default function LeaguesPage() {
       )}
 
       {/* Create / Edit Dialog */}
-      <Dialog open={formOpen} onOpenChange={(open) => { if (!open) setFormOpen(false); }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <Dialog open={formOpen} onOpenChange={(open) => { if (!open) setFormOpen(false); }} modal={false}>
+        <DialogContent
+          className="max-w-lg max-h-[90vh] overflow-y-auto"
+          onInteractOutside={(e) => e.preventDefault()}
+          onFocusOutside={(e) => e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>{editingLeague ? "Edit League" : "Create League"}</DialogTitle>
             <DialogDescription>

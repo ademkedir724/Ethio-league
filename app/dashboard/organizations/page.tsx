@@ -286,18 +286,12 @@ function OrgAdminOrganizationsView() {
       </Card>
 
       {/* Edit Organization Dialog */}
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen} modal={false}>
         <DialogContent
           className="max-w-md"
           onOpenAutoFocus={(e) => e.preventDefault()}
           onFocusOutside={(e) => e.preventDefault()}
-          onInteractOutside={(e) => {
-            // Allow Cloudinary widget interactions outside the dialog
-            const target = e.target as HTMLElement;
-            if (target?.closest?.('[class*="cloudinary"]') || target?.closest?.('#cloudinary-overlay')) {
-              e.preventDefault();
-            }
-          }}
+          onInteractOutside={(e) => e.preventDefault()}
         >
           <DialogHeader>
             <DialogTitle>Edit Organization</DialogTitle>
