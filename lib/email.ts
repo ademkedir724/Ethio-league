@@ -1,64 +1,98 @@
 /**
- * Transactional email utility.
+ * Transactional email utility — works with Resend (recommended) or any
+ * compatible HTTP email API.
  *
- * Uses a configurable HTTP email API (e.g. Resend, Mailgun, SendGrid, or any
- * compatible endpoint) via fetch.  Set the following environment variables:
+ * Environment variables:
+ *   RESEND_API_KEY          — Resend API key (get one free at resend.com)
+ *   SMTP_FROM               — sender address, e.g. "Ethio League <noreply@yourdomain.com>"
+ *   NEXT_PUBLIC_APP_URL     — base URL of the app (used to build links)
  *
- *   EMAIL_API_URL   — full URL of the email send endpoint
- *   EMAIL_API_KEY   — bearer token / API key for that endpoint
- *   SMTP_FROM       — sender address shown in the "From" field
- *   NEXT_PUBLIC_APP_URL — base URL of the app (used to build the setup link)
- *
- * If any of these are missing or the request fails, the function throws so
- * callers can catch and log the failure.
+ * For local dev without email config, all functions log the link to the
+ * console and return silently — the API response includes the link as a
+ * fallback so the dev dropbox still works.
  */
 
-export async function sendPasswordSetupEmail(
-    to: string,
-    token: string
-): Promise<void> {
-    const apiUrl = process.env.EMAIL_API_URL;
-    const apiKey = process.env.EMAIL_API_KEY;
-    const from = process.env.SMTP_FROM;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+const RESEND_API = "https://api.resend.com/emails";
 
-    // In development, skip actual sending if email config is not set up.
-    // The setup link is returned in the API response instead.
-    if (!apiUrl || !apiKey || !from) {
-        const setupUrl = `${appUrl}/set-password?token=${token}`;
-        console.log(`[DEV] Password setup email skipped (no email config).`);
-        console.log(`[DEV] Setup link for ${to}: ${setupUrl}`);
-        return; // silently succeed — caller returns the link in the response body
+function getConfig() {
+    return {
+        apiKey: process.env.RESEND_API_KEY,
+        from: process.env.SMTP_FROM || "Ethio League <noreply@ethioleague.com>",
+        appUrl: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+    };
+}
+
+async function sendEmail(to: string, subject: string, html: string, text: string): Promise<void> {
+    const { apiKey, from } = getConfig();
+
+    if (!apiKey) {
+        console.log(`[DEV] Email skipped (no RESEND_API_KEY). Subject: "${subject}" → ${to}`);
+        return;
     }
 
-    const setupUrl = `${appUrl}/set-password?token=${token}`;
-
-    const body = JSON.stringify({
-        from,
-        to,
-        subject: "Set up your Ethio League password",
-        html: `
-      <p>Welcome to Ethio League.</p>
-      <p>Click the link below to set your password. This link expires in 1 hour.</p>
-      <p><a href="${setupUrl}">${setupUrl}</a></p>
-      <p>If you did not expect this email, you can safely ignore it.</p>
-    `,
-        text: `Welcome to Ethio League.\n\nSet your password here: ${setupUrl}\n\nThis link expires in 1 hour.`,
-    });
-
-    const response = await fetch(apiUrl, {
+    const response = await fetch(RESEND_API, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${apiKey}`,
         },
-        body,
+        body: JSON.stringify({ from, to, subject, html, text }),
     });
 
     if (!response.ok) {
         const detail = await response.text().catch(() => response.statusText);
-        throw new Error(
-            `Email delivery failed (HTTP ${response.status}): ${detail}`
-        );
+        throw new Error(`Email delivery failed (HTTP ${response.status}): ${detail}`);
     }
+}
+
+export async function sendPasswordSetupEmail(to: string, token: string): Promise<void> {
+    const { appUrl } = getConfig();
+    const setupUrl = `${appUrl}/set-password?token=${token}`;
+
+    console.log(`[email] Password setup link for ${to}: ${setupUrl}`);
+
+    await sendEmail(
+        to,
+        "Set up your Ethio League password",
+        `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+          <h2 style="color:#111">Welcome to Ethio League</h2>
+          <p>Click the button below to set your password. This link expires in <strong>1 hour</strong>.</p>
+          <p style="margin:24px 0">
+            <a href="${setupUrl}" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">
+              Set Password
+            </a>
+          </p>
+          <p style="color:#666;font-size:13px">Or copy this link: ${setupUrl}</p>
+          <p style="color:#999;font-size:12px">If you did not expect this email, you can safely ignore it.</p>
+        </div>
+        `,
+        `Welcome to Ethio League.\n\nSet your password here: ${setupUrl}\n\nThis link expires in 1 hour.`
+    );
+}
+
+export async function sendPasswordResetEmail(to: string, token: string): Promise<void> {
+    const { appUrl } = getConfig();
+    const resetUrl = `${appUrl}/reset-password?token=${token}`;
+
+    console.log(`[email] Password reset link for ${to}: ${resetUrl}`);
+
+    await sendEmail(
+        to,
+        "Reset your Ethio League password",
+        `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+          <h2 style="color:#111">Password Reset</h2>
+          <p>We received a request to reset your password. Click the button below. This link expires in <strong>1 hour</strong>.</p>
+          <p style="margin:24px 0">
+            <a href="${resetUrl}" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">
+              Reset Password
+            </a>
+          </p>
+          <p style="color:#666;font-size:13px">Or copy this link: ${resetUrl}</p>
+          <p style="color:#999;font-size:12px">If you did not request a password reset, you can safely ignore this email.</p>
+        </div>
+        `,
+        `Reset your Ethio League password here: ${resetUrl}\n\nThis link expires in 1 hour.\n\nIf you did not request this, ignore this email.`
+    );
 }
