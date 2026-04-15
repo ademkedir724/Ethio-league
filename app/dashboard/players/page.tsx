@@ -44,6 +44,7 @@ import { toast } from "sonner";
 import Image from "next/image";
 import { ImageGallery } from "@/components/dashboard/image-gallery";
 import { MediaUploadWidget } from "@/components/dashboard/media-upload-widget";
+import { RatingBadge } from "@/components/dashboard/rating-badge";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -558,6 +559,12 @@ function PlayerDetailDialog({ player, open, onClose }: { player: PlayerWithHisto
               <div><span className="text-muted-foreground">Weight</span><p className="font-medium">{p.weightKg ? `${p.weightKg} kg` : "—"}</p></div>
               <div><span className="text-muted-foreground">Origin Club</span><p className="font-medium">{p.originClub?.name ?? "—"}</p></div>
               <div><span className="text-muted-foreground">Status</span><p className="font-medium capitalize">{p.status}</p></div>
+              <div className="sm:col-span-2">
+                <span className="text-muted-foreground">Rating</span>
+                <div className="mt-1">
+                  <RatingBadge entityType="player" entityId={p.id} />
+                </div>
+              </div>
             </div>
 
             {/* Current season */}
@@ -665,6 +672,12 @@ function ReadOnlyPlayersView() {
       key: "status",
       header: "Status",
       render: (p) => <StatusBadge status={p.status} />,
+    },
+    {
+      key: "rating",
+      header: "Rating",
+      className: "hidden sm:table-cell",
+      render: (p) => <RatingBadge entityType="player" entityId={p.id} compact />,
     },
     {
       key: "view",
@@ -804,6 +817,12 @@ function LeagueAdminPlayersView() {
       key: "status",
       header: "Status",
       render: (p) => <StatusBadge status={p.status} />,
+    },
+    {
+      key: "rating",
+      header: "Rating",
+      className: "hidden sm:table-cell",
+      render: (p) => <RatingBadge entityType="player" entityId={p.id} compact />,
     },
     {
       key: "view",

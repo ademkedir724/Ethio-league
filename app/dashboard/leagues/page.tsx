@@ -41,6 +41,7 @@ import { Layers, Plus, MoreHorizontal, Pencil, Trash2, Calendar, Link as LinkIco
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { MediaUploadWidget } from "@/components/dashboard/media-upload-widget";
+import { RatingBadge } from "@/components/dashboard/rating-badge";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -777,6 +778,7 @@ function LeagueCard({ league, canEdit, onEdit, onDelete, onViewSeasons }: League
             )}
           </div>
         )}
+        <RatingBadge entityType="league" entityId={league.id} compact />
       </div>
 
       {/* Right side */}
