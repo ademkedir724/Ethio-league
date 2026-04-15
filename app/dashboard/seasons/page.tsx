@@ -59,6 +59,10 @@ const emptyForm = {
   pointsWin: "3",
   pointsDraw: "1",
   pointsLoss: "0",
+  minSquadSize: "14",
+  minStartingPlayers: "11",
+  maxBenchPlayers: "7",
+  rules: "",
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -125,6 +129,10 @@ export default function SeasonsPage() {
       pointsWin: "3",
       pointsDraw: "1",
       pointsLoss: "0",
+      minSquadSize: String((season as any).minSquadSize ?? 14),
+      minStartingPlayers: String((season as any).minStartingPlayers ?? 11),
+      maxBenchPlayers: String((season as any).maxBenchPlayers ?? 7),
+      rules: (season as any).rules ?? "",
     });
     setFormOpen(true);
   };
@@ -149,6 +157,10 @@ export default function SeasonsPage() {
           pointsWin: parseInt(form.pointsWin),
           pointsDraw: parseInt(form.pointsDraw),
           pointsLoss: parseInt(form.pointsLoss),
+          minSquadSize: parseInt(form.minSquadSize),
+          minStartingPlayers: parseInt(form.minStartingPlayers),
+          maxBenchPlayers: parseInt(form.maxBenchPlayers),
+          rules: form.rules || null,
         }),
       });
       if (!res.ok) {
@@ -172,6 +184,10 @@ export default function SeasonsPage() {
           pointsWin: parseInt(form.pointsWin),
           pointsDraw: parseInt(form.pointsDraw),
           pointsLoss: parseInt(form.pointsLoss),
+          minSquadSize: parseInt(form.minSquadSize),
+          minStartingPlayers: parseInt(form.minStartingPlayers),
+          maxBenchPlayers: parseInt(form.maxBenchPlayers),
+          rules: form.rules || null,
         }),
       });
       if (!res.ok) {
@@ -462,7 +478,47 @@ export default function SeasonsPage() {
               onChange={(e) => setForm({ ...form, pointsDraw: e.target.value })}
             />
           </div>
-        </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="season-squad">Min Squad Size</Label>
+            <Input
+              id="season-squad"
+              type="number"
+              min={1}
+              value={form.minSquadSize}
+              onChange={(e) => setForm({ ...form, minSquadSize: e.target.value })}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="season-starters">Starting Players</Label>
+            <Input
+              id="season-starters"
+              type="number"
+              min={1}
+              value={form.minStartingPlayers}
+              onChange={(e) => setForm({ ...form, minStartingPlayers: e.target.value })}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="season-bench">Max Bench Players</Label>
+            <Input
+              id="season-bench"
+              type="number"
+              min={0}
+              value={form.maxBenchPlayers}
+              onChange={(e) => setForm({ ...form, maxBenchPlayers: e.target.value })}
+            />
+          </div>
+          <div className="flex flex-col gap-2 sm:col-span-2">
+            <Label htmlFor="season-rules">League Rules</Label>
+            <textarea
+              id="season-rules"
+              rows={3}
+              className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              placeholder="e.g. Max 3 foreign players per lineup. Yellow card accumulation: 3 cards = 1 match ban."
+              value={form.rules}
+              onChange={(e) => setForm({ ...form, rules: e.target.value })}
+            />
+          </div>
       </FormDialog>
 
       {/* Delete Confirmation */}

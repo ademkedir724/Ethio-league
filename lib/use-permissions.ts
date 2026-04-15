@@ -13,7 +13,7 @@ const ROLE_PERMISSIONS = {
     "notifications",
     "users", // Can create Match Event Admins only
   ],
-  league_admin: ["matches", "notifications"],
+  league_admin: ["matches", "notifications", "seasons"],
   club_admin: ["players", "coaches"],
   match_event_admin: ["matches"],
 } as const;
