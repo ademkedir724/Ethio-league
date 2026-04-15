@@ -25,6 +25,7 @@ import {
   FileText,
   Settings,
   ClipboardCheck,
+  Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -161,6 +162,7 @@ export function DashboardSidebar({
       ? [
         { title: "Standings", href: "/dashboard/standings", icon: BarChart3 },
         { title: "Audit Log", href: "/dashboard/audit-log", icon: FileText },
+        { title: "Rating System", href: "/dashboard/ratings", icon: Star },
         { title: "System Config", href: "/dashboard/system-config", icon: Settings },
       ]
       : []),
