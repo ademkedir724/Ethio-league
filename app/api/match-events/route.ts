@@ -4,6 +4,7 @@ import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, created, badRequest, notFound, forbidden, serverError } from "@/lib/api-helpers";
 import { assertMEASeasonScope } from "@/lib/scope-guard";
 import { logAudit } from "@/lib/audit";
+import { recomputeEventRatings } from "@/lib/ratings";
 
 // GET /api/match-events?matchId=X — list events for a match
 export async function GET(req: NextRequest) {
@@ -159,6 +160,11 @@ export async function POST(req: NextRequest) {
       targetType: "match_event",
       description: "Match event logged",
     });
+
+    // Fire-and-forget rating recompute
+    recomputeEventRatings(event.id).catch((err) =>
+      console.error("[ratings] event recompute failed", err)
+    );
 
     return created(event);
   } catch (error) {

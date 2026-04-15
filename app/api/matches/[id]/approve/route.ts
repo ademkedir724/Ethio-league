@@ -11,6 +11,7 @@ import {
 } from "@/lib/api-helpers";
 import { assertMEASeasonScope } from "@/lib/scope-guard";
 import { logAudit } from "@/lib/audit";
+import { recomputeMatchRatings } from "@/lib/ratings";
 
 // POST /api/matches/[id]/approve — MEA match approval
 export async function POST(
@@ -67,6 +68,11 @@ export async function POST(
             targetType: "match",
             description: "Match approved by MEA",
         });
+
+        // Fire-and-forget rating recompute (non-blocking)
+        recomputeMatchRatings(matchId).catch((err) =>
+            console.error("[ratings] match recompute failed", err)
+        );
 
         return success(updatedMatch);
     } catch (error) {

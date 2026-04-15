@@ -5,6 +5,7 @@ import { success, badRequest, notFound, serverError, parseUUID } from "@/lib/api
 import { NextResponse } from "next/server";
 import { assertMEASeasonScope } from "@/lib/scope-guard";
 import { logAudit } from "@/lib/audit";
+import { computeAndPersistPlayerRating, computeAndPersistClubRating } from "@/lib/ratings";
 
 const TEN_MINUTES_MS = 10 * 60 * 1000;
 
@@ -141,6 +142,16 @@ export async function DELETE(
           data: { homeScore, awayScore },
         });
       }
+    }
+
+    // Fire-and-forget rating recompute for affected player and club
+    computeAndPersistPlayerRating(event.playerId, prisma).catch((err) =>
+      console.error("[ratings] player recompute failed", err)
+    );
+    if (event.clubId) {
+      computeAndPersistClubRating(event.clubId, prisma).catch((err) =>
+        console.error("[ratings] club recompute failed", err)
+      );
     }
 
     return success({ message: "Match event deleted" });
