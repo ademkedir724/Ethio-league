@@ -51,6 +51,10 @@ interface Season {
     requiredClubs?: number | null;
     roundRobinType?: string | null;
     daysBetweenRounds?: number | null;
+    minSquadSize?: number | null;
+    minStartingPlayers?: number | null;
+    maxBenchPlayers?: number | null;
+    rules?: string | null;
     league: { id: string; name: string; organization: { name: string } };
     _count: { seasonClubs: number; matches: number };
 }
@@ -81,15 +85,15 @@ interface SeasonClubPlayer {
 
 // ─── Readiness Helpers ────────────────────────────────────────────────────────
 
-function computeReadiness(playerCount: number, coachCount: number): { isReady: boolean; reasons: string[] } {
+function computeReadiness(playerCount: number, coachCount: number, minSquad = 14): { isReady: boolean; reasons: string[] } {
     const reasons: string[] = [];
-    if (playerCount < 3) reasons.push(`${playerCount}/3 players`);
+    if (playerCount < minSquad) reasons.push(`${playerCount}/${minSquad} players`);
     if (coachCount < 1) reasons.push("no coach");
     return { isReady: reasons.length === 0, reasons };
 }
 
-function ReadinessBadge({ playerCount, coachCount }: { playerCount: number; coachCount: number }) {
-    const { isReady, reasons } = computeReadiness(playerCount, coachCount);
+function ReadinessBadge({ playerCount, coachCount, minSquad = 14 }: { playerCount: number; coachCount: number; minSquad?: number }) {
+    const { isReady, reasons } = computeReadiness(playerCount, coachCount, minSquad);
     if (isReady) {
         return (
             <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
@@ -184,7 +188,25 @@ export default function SeasonDetailPage() {
                     <p className="text-xs text-muted-foreground mb-1">Round Gap</p>
                     <p className="text-sm font-medium">{season.daysBetweenRounds ? `${season.daysBetweenRounds} days` : "—"}</p>
                 </CardContent></Card>
+                <Card><CardContent className="p-4">
+                    <p className="text-xs text-muted-foreground mb-1">Min Squad</p>
+                    <p className="text-sm font-medium">{season.minSquadSize ?? 14} players</p>
+                </CardContent></Card>
+                <Card><CardContent className="p-4">
+                    <p className="text-xs text-muted-foreground mb-1">Lineup</p>
+                    <p className="text-sm font-medium">{season.minStartingPlayers ?? 11} starters + {season.maxBenchPlayers ?? 7} bench</p>
+                </CardContent></Card>
             </div>
+
+            {/* League rules */}
+            {season.rules && (
+                <Card>
+                    <CardContent className="p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">League Rules</p>
+                        <p className="text-sm text-foreground whitespace-pre-wrap">{season.rules}</p>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Role-specific tabs */}
             {isLeagueAdmin() && <LeagueAdminSeasonTabs seasonId={seasonId} season={season} />}
@@ -816,7 +838,7 @@ function SeasonClubsTab({ seasonId, season }: { seasonId: string; season: Season
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
-                                <ReadinessBadge playerCount={sc._count.players} coachCount={sc._count.coaches} />
+                                <ReadinessBadge playerCount={sc._count.players} coachCount={sc._count.coaches} minSquad={season.minSquadSize ?? 14} />
                                 <Button
                                     variant="ghost" size="icon"
                                     className="h-7 w-7 text-destructive hover:bg-destructive/10"

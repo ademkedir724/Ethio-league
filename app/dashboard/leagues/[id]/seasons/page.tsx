@@ -55,6 +55,10 @@ interface Season {
     requiredClubs?: number | null;
     roundRobinType?: string | null;
     daysBetweenRounds?: number | null;
+    minSquadSize?: number | null;
+    minStartingPlayers?: number | null;
+    maxBenchPlayers?: number | null;
+    rules?: string | null;
     _count?: { seasonClubs: number; matches: number };
 }
 
@@ -72,6 +76,10 @@ const emptyForm = {
     requiredClubs: "",
     roundRobinType: "double",
     daysBetweenRounds: "",
+    minSquadSize: "14",
+    minStartingPlayers: "11",
+    maxBenchPlayers: "7",
+    rules: "",
 };
 
 const STATUS_OPTIONS = ["upcoming", "active", "completed", "cancelled"] as const;
@@ -153,6 +161,10 @@ export default function LeagueSeasonsPage() {
             requiredClubs: season.requiredClubs?.toString() ?? "",
             roundRobinType: season.roundRobinType ?? "double",
             daysBetweenRounds: season.daysBetweenRounds?.toString() ?? "",
+            minSquadSize: (season.minSquadSize ?? 14).toString(),
+            minStartingPlayers: (season.minStartingPlayers ?? 11).toString(),
+            maxBenchPlayers: (season.maxBenchPlayers ?? 7).toString(),
+            rules: season.rules ?? "",
         });
         setFormOpen(true);
     };
@@ -181,6 +193,10 @@ export default function LeagueSeasonsPage() {
                         requiredClubs: form.requiredClubs ? parseInt(form.requiredClubs) : null,
                         roundRobinType: form.roundRobinType || "double",
                         daysBetweenRounds: form.daysBetweenRounds ? parseInt(form.daysBetweenRounds) : null,
+                        minSquadSize: parseInt(form.minSquadSize) || 14,
+                        minStartingPlayers: parseInt(form.minStartingPlayers) || 11,
+                        maxBenchPlayers: parseInt(form.maxBenchPlayers) || 7,
+                        rules: form.rules || null,
                     }),
                 });
             } else {
@@ -194,6 +210,10 @@ export default function LeagueSeasonsPage() {
                         requiredClubs: form.requiredClubs ? parseInt(form.requiredClubs) : null,
                         roundRobinType: form.roundRobinType || "double",
                         daysBetweenRounds: form.daysBetweenRounds ? parseInt(form.daysBetweenRounds) : null,
+                        minSquadSize: parseInt(form.minSquadSize) || 14,
+                        minStartingPlayers: parseInt(form.minStartingPlayers) || 11,
+                        maxBenchPlayers: parseInt(form.maxBenchPlayers) || 7,
+                        rules: form.rules || null,
                     }),
                 });
             }
@@ -372,6 +392,10 @@ interface SeasonFormType {
     requiredClubs: string;
     roundRobinType: string;
     daysBetweenRounds: string;
+    minSquadSize: string;
+    minStartingPlayers: string;
+    maxBenchPlayers: string;
+    rules: string;
 }
 
 function SeasonFormFields({
@@ -517,6 +541,62 @@ function SeasonFormFields({
                     </Select>
                 </div>
             )}
+
+            {/* ── League Rules ─────────────────────────────────────────── */}
+            <div className="border-t border-border pt-4 flex flex-col gap-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">League Rules</p>
+
+                <div className="grid grid-cols-3 gap-3">
+                    <div className="flex flex-col gap-2">
+                        <Label htmlFor="min-squad">Min Squad</Label>
+                        <Input
+                            id="min-squad"
+                            type="number"
+                            min={1}
+                            value={form.minSquadSize}
+                            onChange={(e) => setForm({ ...form, minSquadSize: e.target.value })}
+                            placeholder="14"
+                        />
+                        <p className="text-[10px] text-muted-foreground">Players per club</p>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <Label htmlFor="min-starters">Starters</Label>
+                        <Input
+                            id="min-starters"
+                            type="number"
+                            min={1}
+                            value={form.minStartingPlayers}
+                            onChange={(e) => setForm({ ...form, minStartingPlayers: e.target.value })}
+                            placeholder="11"
+                        />
+                        <p className="text-[10px] text-muted-foreground">In lineup</p>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <Label htmlFor="max-bench">Max Bench</Label>
+                        <Input
+                            id="max-bench"
+                            type="number"
+                            min={0}
+                            value={form.maxBenchPlayers}
+                            onChange={(e) => setForm({ ...form, maxBenchPlayers: e.target.value })}
+                            placeholder="7"
+                        />
+                        <p className="text-[10px] text-muted-foreground">Substitutes</p>
+                    </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                    <Label htmlFor="rules">Additional Rules</Label>
+                    <textarea
+                        id="rules"
+                        rows={3}
+                        className="flex min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        placeholder="e.g. Max 3 foreign players per lineup. 3 yellow cards = 1 match ban."
+                        value={form.rules}
+                        onChange={(e) => setForm({ ...form, rules: e.target.value })}
+                    />
+                </div>
+            </div>
         </div>
     );
 }
