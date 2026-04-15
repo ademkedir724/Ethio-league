@@ -264,6 +264,10 @@ model Season {
   requiredClubs     Int?
   roundRobinType    String?  @default("double")
   daysBetweenRounds Int?
+  minSquadSize      Int      @default(14)
+  minStartingPlayers Int     @default(11)
+  maxBenchPlayers   Int      @default(7)
+  rules             String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
