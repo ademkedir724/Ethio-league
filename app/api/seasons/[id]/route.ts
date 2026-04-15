@@ -4,6 +4,7 @@ import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, badRequest, notFound, forbidden, serverError, parseUUID, unprocessableEntity } from "@/lib/api-helpers";
 import { assertLeagueScope, assertOrgScope } from "@/lib/scope-guard";
 import { logAudit } from "@/lib/audit";
+import { recomputeSeasonRatings } from "@/lib/ratings";
 
 export interface ValidationDetail {
   criterion: "required_clubs" | "min_players" | "min_coaches";
@@ -169,6 +170,13 @@ export async function PATCH(
       targetType: "season",
       description: `Season "${updated.name}" updated`,
     });
+
+    // Fire-and-forget rating recompute when season is completed
+    if (data.status === "completed") {
+      recomputeSeasonRatings(id).catch((err) =>
+        console.error("[ratings] season recompute failed", err)
+      );
+    }
 
     return success(updated);
   } catch (error) {

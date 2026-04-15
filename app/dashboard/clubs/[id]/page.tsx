@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { MediaUploadWidget } from "@/components/dashboard/media-upload-widget";
 import { ImageGallery } from "@/components/dashboard/image-gallery";
+import { RatingBadge } from "@/components/dashboard/rating-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -271,6 +272,7 @@ export default function ClubProfilePage() {
                                 <CardTitle className="text-xl">{club.name}</CardTitle>
                                 {club.shortName && <p className="text-sm text-muted-foreground">{club.shortName}</p>}
                                 <StatusBadge status={club.status} className="mt-1" />
+                                <RatingBadge entityType="club" entityId={club.id} className="mt-1" />
                             </div>
                         </CardHeader>
                         <CardContent className="grid gap-4 sm:grid-cols-2">

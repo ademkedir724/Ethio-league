@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/dialog";
 import { Trophy, Plus, MoreHorizontal, Pencil, Trash2, Eye, UserX } from "lucide-react";
 import { toast } from "sonner";
+import { RatingBadge } from "@/components/dashboard/rating-badge";
 
 interface CoachImage {
   id: string;
@@ -116,6 +117,12 @@ function CoachDetailDialog({ coachId, open, onClose }: { coachId: string | null;
               <div><span className="text-muted-foreground">Experience</span><p className="font-medium">{coach.experienceYears ? `${coach.experienceYears} years` : "—"}</p></div>
               <div><span className="text-muted-foreground">License</span><p className="font-medium">{coach.licenseLevel ?? "—"}</p></div>
               <div><span className="text-muted-foreground">Origin Club</span><p className="font-medium">{coach.originClub?.name ?? "—"}</p></div>
+              <div className="sm:col-span-2">
+                <span className="text-muted-foreground">Rating</span>
+                <div className="mt-1">
+                  {coach && <RatingBadge entityType="coach" entityId={coach.id} />}
+                </div>
+              </div>
             </div>
             {currentSeason && (
               <div>
@@ -393,6 +400,12 @@ export default function CoachesPage() {
           {c.experienceYears ? `${c.experienceYears} yrs` : "—"}
         </span>
       ),
+    },
+    {
+      key: "rating",
+      header: "Rating",
+      className: "hidden sm:table-cell",
+      render: (c: Coach) => <RatingBadge entityType="coach" entityId={c.id} compact />,
     },
     // Actions column
     {
