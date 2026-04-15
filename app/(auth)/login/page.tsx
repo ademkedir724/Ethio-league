@@ -107,6 +107,9 @@ export default function LoginPage() {
             {isLoading ? "Signing in..." : "Sign In"}
           </Button>
           <div className="flex flex-col items-center gap-2 pt-2">
+            <Link href="/forgot-password" className="text-sm text-muted-foreground hover:text-foreground">
+              Forgot your password?
+            </Link>
             <p className="text-sm text-muted-foreground">
               Need an account?{" "}
               <Link href="/request-organization" className="text-primary hover:underline">

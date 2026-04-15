@@ -16,11 +16,11 @@ export function makeOrgAdmin(organizationId: string): AuthUser {
     };
 }
 
-export function makeLeagueAdmin(seasonId: string): AuthUser {
+export function makeLeagueAdmin(leagueId: string): AuthUser {
     return {
         userId: "league-admin-id",
         email: "leagueadmin@test.com",
-        roles: [{ roleName: "league_admin", seasonId }],
+        roles: [{ roleName: "league_admin", leagueId }],
     };
 }
 
