@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/lib/auth-context";
 import { authFetcher } from "@/lib/fetch-client";
+import { getRoleLabel } from "@/lib/role-labels";
 import { Bell, LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,7 +35,9 @@ export function Topbar() {
       .slice(0, 2)
     : "AD";
 
-  const primaryRole = user?.roles?.[0]?.roleName?.replace(/_/g, " ") || "Admin";
+  const primaryRole = user?.roles?.[0]?.roleName
+    ? getRoleLabel(user.roles[0].roleName)
+    : "Admin";
 
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border bg-background/80 px-6 backdrop-blur-sm">
@@ -80,7 +83,7 @@ export function Topbar() {
                 </span>
                 <Badge
                   variant="secondary"
-                  className="h-4 px-1.5 text-[10px] capitalize"
+                  className="h-4 px-1.5 text-[10px]"
                 >
                   {primaryRole}
                 </Badge>
