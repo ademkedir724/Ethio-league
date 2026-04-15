@@ -57,6 +57,14 @@ export async function POST(
     const match = await prisma.match.findUnique({ where: { id: matchId } });
     if (!match) return notFound("Match not found");
 
+    // Fetch season rules
+    const season = await prisma.season.findUnique({
+      where: { id: match.seasonId },
+      select: { leagueId: true, minStartingPlayers: true, maxBenchPlayers: true },
+    });
+    const minStarters = season?.minStartingPlayers ?? 11;
+    const maxBench = season?.maxBenchPlayers ?? 7;
+
     const body = await req.json();
     const { lineups } = body;
 
@@ -91,10 +99,10 @@ export async function POST(
 
     const errors: string[] = [];
 
-    // Count starters — must be exactly 11
+    // Count starters — must match season rule (default 11)
     const starters = lineups.filter((l) => l.lineupType === "starting");
-    if (starters.length !== 11) {
-      errors.push(`Lineup must have exactly 11 starters, got ${starters.length}`);
+    if (starters.length !== minStarters) {
+      errors.push(`Lineup must have exactly ${minStarters} starters, got ${starters.length}`);
     }
 
     // Count captains — must be exactly 1
@@ -103,9 +111,14 @@ export async function POST(
       errors.push(`Lineup must have exactly 1 captain, got ${captains.length}`);
     }
 
+    // Count bench — must not exceed season rule (default 7)
+    const substitutes = lineups.filter((l) => l.lineupType === "substitute");
+    if (substitutes.length > maxBench) {
+      errors.push(`Bench cannot exceed ${maxBench} players, got ${substitutes.length}`);
+    }
+
     // Check no player appears in both starters and substitutes
     const starterIds = new Set(starters.map((l) => l.seasonClubPlayerId));
-    const substitutes = lineups.filter((l) => l.lineupType === "substitute");
     const subIds = substitutes.map((l) => l.seasonClubPlayerId);
     const overlap = subIds.filter((id) => starterIds.has(id));
     if (overlap.length > 0) {
@@ -179,11 +192,6 @@ export async function POST(
     }
 
     // Notify league admin for this season — find via season → league → league_admin scope
-    const season = await prisma.season.findUnique({
-      where: { id: match.seasonId },
-      select: { leagueId: true },
-    });
-
     if (season) {
       const leagueAdminScope = await prisma.userRoleScope.findFirst({
         where: {

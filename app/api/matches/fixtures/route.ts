@@ -101,11 +101,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const clubsLowPlayers = seasonClubs.filter((sc) => sc._count.players < 3);
+    const clubsLowPlayers = seasonClubs.filter((sc) => sc._count.players < (season.minSquadSize ?? 14));
     if (clubsLowPlayers.length > 0) {
       details.push({
         criterion: "min_players",
-        message: `${clubsLowPlayers.length} club(s) have fewer than 3 active players`,
+        message: `${clubsLowPlayers.length} club(s) have fewer than ${season.minSquadSize ?? 14} active players`,
         clubs: clubsLowPlayers.map((sc) => sc.club.name),
       });
     }
