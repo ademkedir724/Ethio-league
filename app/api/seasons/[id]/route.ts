@@ -117,7 +117,8 @@ export async function PATCH(
 
     const data = await req.json();
     const allowedFields = ["name", "startDate", "endDate", "pointsWin", "pointsDraw", "pointsLoss", "status",
-      "requiredClubs", "roundRobinType", "daysBetweenRounds"];
+      "requiredClubs", "roundRobinType", "daysBetweenRounds",
+      "minSquadSize", "minStartingPlayers", "maxBenchPlayers", "rules"];
     const updateData: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (data[field] !== undefined) {

@@ -71,7 +71,8 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { leagueId, name, startDate, endDate, pointsWin, pointsDraw, pointsLoss,
-      requiredClubs, roundRobinType, daysBetweenRounds } = body;
+      requiredClubs, roundRobinType, daysBetweenRounds,
+      minSquadSize, minStartingPlayers, maxBenchPlayers, rules } = body;
 
     if (!leagueId) return badRequest("leagueId is required");
     if (!name) return badRequest("name is required");
@@ -97,6 +98,10 @@ export async function POST(req: NextRequest) {
         requiredClubs: requiredClubs ? parseInt(requiredClubs) : null,
         roundRobinType: roundRobinType || "double",
         daysBetweenRounds: daysBetweenRounds ? parseInt(daysBetweenRounds) : null,
+        minSquadSize: minSquadSize ?? 14,
+        minStartingPlayers: minStartingPlayers ?? 11,
+        maxBenchPlayers: maxBenchPlayers ?? 7,
+        rules: rules || null,
       },
       include: {
         league: { select: { id: true, name: true } },
