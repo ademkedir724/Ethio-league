@@ -579,3 +579,52 @@ model MatchMedia {
 
   @@map("match_media")
 }
+
+///////////////////////////////////////////////////////////////
+// RATING SYSTEM TABLES
+///////////////////////////////////////////////////////////////
+
+model EntityRating {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entityType String
+  entityId   String   @db.Uuid
+  score      Float
+  computedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([entityType, entityId])
+  @@map("entity_ratings")
+}
+
+model RatingSnapshot {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entityType String
+  entityId   String   @db.Uuid
+  score      Float
+  snapshotAt DateTime @default(now())
+
+  @@index([entityType, entityId, snapshotAt(sort: Desc)])
+  @@map("rating_snapshots")
+}
+
+model RatingConfig {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  isActive              Boolean  @default(true)
+  goalWeight            Float    @default(3.0)
+  assistWeight          Float    @default(2.0)
+  yellowCardPenalty     Float    @default(1.5)
+  redCardPenalty        Float    @default(4.0)
+  appearanceWeight      Float    @default(0.5)
+  cleanSheetWeight      Float    @default(2.0)
+  winRateWeight         Float    @default(40.0)
+  goalDiffNormMax       Float    @default(2.0)
+  pointsPerMatchNormMax Float    @default(3.0)
+  seasonDecayRate       Float    @default(0.15)
+  seasonMinWeight       Float    @default(0.1)
+  maxSeasonsNorm        Float    @default(10.0)
+  leagueGoalsNormMax    Float    @default(4.0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("rating_configs")
+}
