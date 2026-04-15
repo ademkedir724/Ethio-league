@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
 import { useOrganization } from "@/lib/org-context";
+import { getRoleLabel } from "@/lib/role-labels";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -276,7 +277,7 @@ function OrgAdminUsersView() {
         <div className="flex flex-wrap gap-1">
           {u.roles?.map((role) => (
             <Badge key={role} variant="outline" className={`text-[10px] capitalize ${roleColors[role] || ""}`}>
-              {role.replace(/_/g, " ").toLowerCase()}
+              {getRoleLabel(role)}
             </Badge>
           ))}
         </div>
@@ -357,18 +358,18 @@ function OrgAdminUsersView() {
         <StatCard title="Total Users" value={stats.total} icon={Users} />
         <StatCard title="Org Admins" value={stats.orgAdmins} icon={Users} />
         <StatCard title="League Admins" value={stats.leagueAdmins} icon={Users} />
-        <StatCard title="Club Admins" value={stats.clubAdmins} icon={Users} />
-        <StatCard title="Match Admins" value={stats.matchEventAdmins} icon={Users} />
+        <StatCard title="Club Managers" value={stats.clubAdmins} icon={Users} />
+        <StatCard title="Match Recorders" value={stats.matchEventAdmins} icon={Users} />
       </div>
 
       {/* Tabs by Role */}
       <Tabs defaultValue="all" className="w-full">
         <TabsList className="mb-4">
           <TabsTrigger value="all">All Users</TabsTrigger>
-          <TabsTrigger value="ORGANIZATION_ADMIN">Org Admins</TabsTrigger>
-          <TabsTrigger value="LEAGUE_ADMIN">League Admins</TabsTrigger>
-          <TabsTrigger value="CLUB_ADMIN">Club Admins</TabsTrigger>
-          <TabsTrigger value="MATCH_EVENT_ADMIN">Match Admins</TabsTrigger>
+          <TabsTrigger value="ORGANIZATION_ADMIN">Federation Admins</TabsTrigger>
+          <TabsTrigger value="LEAGUE_ADMIN">League Managers</TabsTrigger>
+          <TabsTrigger value="CLUB_ADMIN">Club Managers</TabsTrigger>
+          <TabsTrigger value="MATCH_EVENT_ADMIN">Match Recorders</TabsTrigger>
         </TabsList>
 
         <TabsContent value="all">
@@ -403,7 +404,7 @@ function OrgAdminUsersView() {
               data={orgUsers.filter((u) => u.roles?.includes(role))}
               isLoading={isLoading}
               searchPlaceholder="Search users..."
-              emptyMessage={`No ${role.replace(/_/g, " ").toLowerCase()}s found.`}
+              emptyMessage={`No ${getRoleLabel(role)}s found.`}
             />
           </TabsContent>
         ))}
@@ -413,11 +414,11 @@ function OrgAdminUsersView() {
       <FormDialog
         open={formOpen}
         onOpenChange={setFormOpen}
-        title={editingUser ? "Edit User" : "Add Match Event Admin"}
+        title={editingUser ? "Edit User" : "Add Match Recorder"}
         description={
           editingUser
             ? "Update user details."
-            : "Create a new Match Event Admin for your organization. They will receive an email to set their password."
+            : "Create a new Match Recorder for your organization. They will receive an email to set their password."
         }
         submitLabel={isSaving ? "Saving..." : editingUser ? "Update" : "Create"}
         onSubmit={handleSubmit}
@@ -676,7 +677,7 @@ function SuperAdminUsersView() {
         <div className="flex flex-wrap gap-1">
           {u.roles?.map((role) => (
             <Badge key={role} variant="outline" className={`text-[10px] capitalize ${roleColors[role] || ""}`}>
-              {role.replace(/_/g, " ").toLowerCase()}
+              {getRoleLabel(role)}
             </Badge>
           ))}
         </div>
@@ -779,11 +780,11 @@ function SuperAdminUsersView() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Roles</SelectItem>
-                <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
-                <SelectItem value="ORGANIZATION_ADMIN">Org Admin</SelectItem>
-                <SelectItem value="LEAGUE_ADMIN">League Admin</SelectItem>
-                <SelectItem value="CLUB_ADMIN">Club Admin</SelectItem>
-                <SelectItem value="MATCH_EVENT_ADMIN">Match Admin</SelectItem>
+                <SelectItem value="SUPER_ADMIN">Platform Admin</SelectItem>
+                <SelectItem value="ORGANIZATION_ADMIN">Federation Admin</SelectItem>
+                <SelectItem value="LEAGUE_ADMIN">League Manager</SelectItem>
+                <SelectItem value="CLUB_ADMIN">Club Manager</SelectItem>
+                <SelectItem value="MATCH_EVENT_ADMIN">Match Recorder</SelectItem>
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -836,11 +837,11 @@ function SuperAdminUsersView() {
                 <SelectValue placeholder="Select a role" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
-                <SelectItem value="ORGANIZATION_ADMIN">Organization Admin</SelectItem>
-                <SelectItem value="LEAGUE_ADMIN">League Admin</SelectItem>
-                <SelectItem value="CLUB_ADMIN">Club Admin</SelectItem>
-                <SelectItem value="MATCH_EVENT_ADMIN">Match Event Admin</SelectItem>
+                <SelectItem value="SUPER_ADMIN">Platform Admin</SelectItem>
+                <SelectItem value="ORGANIZATION_ADMIN">Federation Admin</SelectItem>
+                <SelectItem value="LEAGUE_ADMIN">League Manager</SelectItem>
+                <SelectItem value="CLUB_ADMIN">Club Manager</SelectItem>
+                <SelectItem value="MATCH_EVENT_ADMIN">Match Recorder</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -918,7 +919,7 @@ function LeagueAdminUsersView() {
         <div className="flex flex-wrap gap-1">
           {u.roles?.map((role) => (
             <Badge key={role} variant="outline" className={`text-[10px] capitalize ${roleColors[role] || ""}`}>
-              {role.replace(/_/g, " ").toLowerCase()}
+              {getRoleLabel(role)}
             </Badge>
           ))}
         </div>
@@ -969,9 +970,9 @@ function LeagueAdminUsersView() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Roles</SelectItem>
-              <SelectItem value="LEAGUE_ADMIN">League Admin</SelectItem>
-              <SelectItem value="CLUB_ADMIN">Club Admin</SelectItem>
-              <SelectItem value="MATCH_EVENT_ADMIN">Match Admin</SelectItem>
+              <SelectItem value="LEAGUE_ADMIN">League Manager</SelectItem>
+              <SelectItem value="CLUB_ADMIN">Club Manager</SelectItem>
+              <SelectItem value="MATCH_EVENT_ADMIN">Match Recorder</SelectItem>
             </SelectContent>
           </Select>
         }

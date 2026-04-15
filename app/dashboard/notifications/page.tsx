@@ -85,7 +85,7 @@ export default function NotificationsPage() {
 
   const { data, isLoading: notificationsLoading } = useSWR(apiUrl, authFetcher, {
     fallbackData: mockNotifications,
-    onError: () => {},
+    onError: () => { },
   });
 
   const notifications: Notification[] = data || mockNotifications;
@@ -390,9 +390,9 @@ export default function NotificationsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Users</SelectItem>
-                    <SelectItem value="clubs">Club Admins</SelectItem>
+                    <SelectItem value="clubs">Club Managers</SelectItem>
                     <SelectItem value="referees">Referees</SelectItem>
-                    <SelectItem value="league_admins">League Admins</SelectItem>
+                    <SelectItem value="league_admins">League Managers</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
