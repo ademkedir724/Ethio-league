@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
         fullName: user.fullName,
         phone: user.phone,
         status: user.status,
-        roles: user.userRoleScopes.map((s) => ({
+        roles: user.userRoleScopes.map((s: { role: { name: string }; organizationId: string | null; leagueId: string | null; seasonId: string | null; clubId: string | null }) => ({
           roleName: s.role.name,
           organizationId: s.organizationId,
           leagueId: s.leagueId,

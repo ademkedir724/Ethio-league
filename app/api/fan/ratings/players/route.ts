@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
             },
         });
 
-        const playerMap = new Map(players.map((p) => [p.id, p]));
+        const playerMap = new Map<string, typeof players[number]>(players.map((p) => [p.id, p]));
 
         const result = ratings
             .map((r, index) => {

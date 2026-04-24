@@ -56,7 +56,7 @@ export async function POST(
             return badRequest("All coach requests must belong to the same club");
         }
 
-        const clubId = clubIds[0];
+        const clubId = clubIds[0] as string;
         if (!assertClubScope(auth, clubId)) return forbidden();
 
         // Upsert all SeasonClubCoach records with requestStatus = 'pending'

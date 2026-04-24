@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
             },
         });
 
-        const clubMap = new Map(clubs.map((c) => [c.id, c]));
+        const clubMap = new Map<string, typeof clubs[number]>(clubs.map((c) => [c.id, c]));
 
         const result = ratings
             .map((r, index) => {

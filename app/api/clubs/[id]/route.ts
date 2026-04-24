@@ -113,7 +113,7 @@ export async function DELETE(
     if (!id) return badRequest("Invalid club ID");
 
     const images = await prisma.clubImage.findMany({ where: { clubId: id }, select: { imageUrl: true } });
-    await Promise.all(images.map((img) => destroyAsset(extractPublicId(img.imageUrl))));
+    await Promise.all(images.map((img: { imageUrl: string }) => destroyAsset(extractPublicId(img.imageUrl))));
 
     await prisma.club.delete({ where: { id } });
     return success({ message: "Club deleted" });

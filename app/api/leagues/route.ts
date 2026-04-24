@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      let adminUser = null;
+      let adminUser: { id: string } | null = null;
       if (token) {
         adminUser = await tx.user.create({
           data: {
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
 
         await tx.userRoleScope.create({
           data: {
-            userId: adminUser.id,
+            userId: adminUser!.id,
             roleId: leagueAdminRole.id,
             organizationId,
             leagueId: league.id,
