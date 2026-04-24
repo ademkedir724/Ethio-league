@@ -58,7 +58,7 @@ export async function POST(
             return badRequest("All player requests must belong to the same club");
         }
 
-        const clubId = clubIds[0];
+        const clubId = clubIds[0] as string;
         if (!assertClubScope(auth, clubId)) return forbidden();
 
         // Validate jersey number uniqueness within each seasonClub
