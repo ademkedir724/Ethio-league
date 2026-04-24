@@ -1,0 +1,123 @@
+import { NextRequest } from "next/server";
+import prisma from "@/lib/prisma";
+import { requireAuth, isAuthError, hasRole, hasClubRole } from "@/lib/auth";
+import { success, badRequest, notFound, serverError, parseUUID } from "@/lib/api-helpers";
+import { isValidCloudinaryUrl, destroyAsset, extractPublicId } from "@/lib/cloudinary";
+import { NextResponse } from "next/server";
+
+// GET /api/clubs/:id
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const auth = await requireAuth(req);
+    if (isAuthError(auth)) return auth;
+
+    const { id: idStr } = await params;
+    const id = parseUUID(idStr);
+    if (!id) return badRequest("Invalid club ID");
+
+    const club = await prisma.club.findUnique({
+      where: { id },
+      include: {
+        primaryStadium: true,
+        ownedStadiums: true,
+        seasonClubs: {
+          include: {
+            season: {
+              select: {
+                id: true,
+                name: true,
+                status: true,
+                leagueId: true,
+                league: {
+                  select: {
+                    id: true,
+                    name: true,
+                    organization: { select: { id: true, name: true } },
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { season: { startDate: "desc" } },
+        },
+      },
+    });
+
+    if (!club) return notFound("Club not found");
+    return success(club);
+  } catch (error) {
+    return serverError(error);
+  }
+}
+
+// PATCH /api/clubs/:id
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const auth = await requireAuth(req);
+    if (isAuthError(auth)) return auth;
+
+    const { id: idStr } = await params;
+    const id = parseUUID(idStr);
+    if (!id) return badRequest("Invalid club ID");
+
+    const isSuperAdmin = hasRole(auth, ["super_admin"]);
+    const isClubAdmin = hasClubRole(auth, "club_admin", id);
+    const isOrgAdmin = hasRole(auth, ["organization_admin"]);
+
+    if (!isSuperAdmin && !isClubAdmin && !isOrgAdmin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const data = await req.json();
+    const allowedFields = [
+      "name", "shortName", "country", "city", "foundedYear",
+      "logoUrl", "primaryStadiumId", "website", "description", "status",
+    ];
+    const updateData: Record<string, unknown> = {};
+    for (const field of allowedFields) {
+      if (data[field] !== undefined) updateData[field] = data[field];
+    }
+
+    if (updateData.logoUrl !== undefined && !isValidCloudinaryUrl(updateData.logoUrl as string)) {
+      return badRequest("Invalid media URL: must be a Cloudinary URL");
+    }
+
+    const club = await prisma.club.update({
+      where: { id },
+      data: updateData,
+    });
+
+    return success(club);
+  } catch (error) {
+    return serverError(error);
+  }
+}
+
+// DELETE /api/clubs/:id
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const auth = await requireAuth(req, ["super_admin"]);
+    if (isAuthError(auth)) return auth;
+
+    const { id: idStr } = await params;
+    const id = parseUUID(idStr);
+    if (!id) return badRequest("Invalid club ID");
+
+    const images = await prisma.clubImage.findMany({ where: { clubId: id }, select: { imageUrl: true } });
+    await Promise.all(images.map((img) => destroyAsset(extractPublicId(img.imageUrl))));
+
+    await prisma.club.delete({ where: { id } });
+    return success({ message: "Club deleted" });
+  } catch (error) {
+    return serverError(error);
+  }
+}

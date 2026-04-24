@@ -1,0 +1,630 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+///////////////////////////////////////////////////////////////
+// ENUM TABLES (remain Int PKs)
+///////////////////////////////////////////////////////////////
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  userRoleScopes UserRoleScope[]
+
+  @@map("roles")
+}
+
+model LeagueType {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  description String?
+
+  leagues League[]
+
+  @@map("league_types")
+}
+
+model EventType {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  description String?
+
+  matchEvents MatchEvent[]
+
+  @@map("event_types")
+}
+
+model Position {
+  id          Int     @id @default(autoincrement())
+  code        String  @unique
+  name        String
+  description String?
+
+  players           Player[]           @relation("PrimaryPosition")
+  seasonClubPlayers SeasonClubPlayer[]
+  matchLineups      MatchLineup[]
+
+  @@map("positions")
+}
+
+///////////////////////////////////////////////////////////////
+// BASIC TABLES
+///////////////////////////////////////////////////////////////
+
+model User {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fullName             String
+  email                String    @unique
+  passwordHash         String
+  phone                String?
+  photoUrl             String?
+  status               String    @default("active")
+  passwordResetToken   String?
+  passwordResetExpires DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  userRoleScopes UserRoleScope[]
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+  matchMEAs      MatchMEA[]
+
+  @@map("users")
+}
+
+model Organization {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @unique
+  country     String?
+  city        String?
+  foundedYear Int?
+  logoUrl     String?
+  description String?
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  leagues        League[]
+  userRoleScopes UserRoleScope[]
+
+  @@map("organizations")
+}
+
+/// League — permanent competition owned by an Organization.
+/// Replaces the leagueName text field that was on Season.
+model League {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  leagueTypeId   Int?
+  genderCategory String?
+  ageCategory    String?
+  divisionLevel  Int?
+  logoUrl        String?
+  description    String?
+  status         String   @default("active")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leagueType     LeagueType?     @relation(fields: [leagueTypeId], references: [id])
+  seasons        Season[]
+  clubs          Club[]
+  userRoleScopes UserRoleScope[]
+
+  @@unique([organizationId, name])
+  @@map("leagues")
+}
+
+model Club {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String
+  shortName        String?
+  country          String?
+  city             String?
+  foundedYear      Int?
+  logoUrl          String?
+  primaryStadiumId String?  @db.Uuid
+  website          String?
+  description      String?
+  status           String   @default("active")
+  leagueId         String?  @db.Uuid
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  primaryStadium Stadium?  @relation("PrimaryStadium", fields: [primaryStadiumId], references: [id])
+  ownedStadiums  Stadium[] @relation("StadiumOwner")
+  league         League?   @relation(fields: [leagueId], references: [id])
+  seasonClubs    SeasonClub[]
+  homeMatches    Match[]   @relation("HomeClub")
+  awayMatches    Match[]   @relation("AwayClub")
+  matchEvents    MatchEvent[]
+  userRoleScopes UserRoleScope[]
+  /// Players first introduced to the system by this club (origin marker)
+  players        Player[]  @relation("PlayerOriginClub")
+  /// Coaches first introduced to the system by this club (origin marker)
+  coaches        Coach[]   @relation("CoachOriginClub")
+  images         ClubImage[]
+
+  @@map("clubs")
+}
+
+model Stadium {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  city        String?
+  country     String?
+  capacity    Int?
+  surfaceType String?
+  builtYear   Int?
+  ownerClubId String?  @db.Uuid
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ownerClub       Club?  @relation("StadiumOwner", fields: [ownerClubId], references: [id])
+  primaryForClubs Club[] @relation("PrimaryStadium")
+  matches         Match[]
+  images          StadiumImage[]
+
+  @@map("stadiums")
+}
+
+model Player {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firstName         String
+  lastName          String
+  dateOfBirth       DateTime?
+  nationality       String?
+  heightCm          Int?
+  weightKg          Int?
+  preferredFoot     String?
+  primaryPositionId Int?
+  photoUrl          String?
+  status            String    @default("active")
+  /// Origin club — the club that first introduced this player into the system. Nullable for players created by Super/Org Admin.
+  clubId            String?   @db.Uuid
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  primaryPosition    Position?          @relation("PrimaryPosition", fields: [primaryPositionId], references: [id])
+  originClub         Club?              @relation("PlayerOriginClub", fields: [clubId], references: [id])
+  seasonClubPlayers  SeasonClubPlayer[]
+  matchEvents        MatchEvent[]       @relation("EventPlayer")
+  relatedMatchEvents MatchEvent[]       @relation("RelatedPlayer")
+  images             PlayerImage[]
+
+  @@map("players")
+}
+
+model Coach {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firstName       String
+  lastName        String
+  dateOfBirth     DateTime?
+  nationality     String?
+  licenseLevel    String?
+  experienceYears Int?
+  photoUrl        String?
+  status          String    @default("active")
+  /// Origin club — the club that first introduced this coach into the system. Nullable for coaches created by Super/Org Admin.
+  clubId          String?   @db.Uuid
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  originClub        Club?             @relation("CoachOriginClub", fields: [clubId], references: [id])
+  seasonClubCoaches SeasonClubCoach[]
+  images            CoachImage[]
+
+  @@map("coaches")
+}
+
+model Referee {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firstName       String
+  lastName        String
+  dateOfBirth     DateTime?
+  nationality     String?
+  licenseLevel    String?
+  experienceYears Int?
+  photoUrl        String?
+  status          String    @default("active")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  seasonReferees SeasonReferee[]
+  matchReferees  MatchReferee[]
+
+  @@map("referees")
+}
+
+///////////////////////////////////////////////////////////////
+// SEASON / MATCH
+///////////////////////////////////////////////////////////////
+
+/// Season — a time-bounded edition of a League.
+/// organizationId removed; org is derived via league.organizationId.
+model Season {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  leagueId          String   @db.Uuid
+  name              String
+  startDate         DateTime
+  endDate           DateTime
+  pointsWin         Int      @default(3)
+  pointsDraw        Int      @default(1)
+  pointsLoss        Int      @default(0)
+  status            String   @default("upcoming")
+  requiredClubs     Int?
+  roundRobinType    String?  @default("double")
+  daysBetweenRounds Int?
+  minSquadSize      Int      @default(14)
+  minStartingPlayers Int     @default(11)
+  maxBenchPlayers   Int      @default(7)
+  rules             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  league         League          @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  seasonClubs    SeasonClub[]
+  matches        Match[]
+  seasonReferees SeasonReferee[]
+  userRoleScopes UserRoleScope[]
+
+  @@map("seasons")
+}
+
+model Match {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seasonId    String   @db.Uuid
+  homeClubId  String   @db.Uuid
+  awayClubId  String   @db.Uuid
+  stadiumId   String?  @db.Uuid
+  matchDate   DateTime
+  roundNumber Int?
+  status      String   @default("scheduled")
+  homeScore   Int      @default(0)
+  awayScore   Int      @default(0)
+  attendance  Int?
+  liveStartedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  season        Season         @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  homeClub      Club           @relation("HomeClub", fields: [homeClubId], references: [id])
+  awayClub      Club           @relation("AwayClub", fields: [awayClubId], references: [id])
+  stadium       Stadium?       @relation(fields: [stadiumId], references: [id])
+  matchEvents   MatchEvent[]
+  matchReferees MatchReferee[]
+  matchLineups  MatchLineup[]
+  matchMEAs     MatchMEA[]
+  media         MatchMedia[]
+
+  @@map("matches")
+}
+
+///////////////////////////////////////////////////////////////
+// MATCH SYSTEM
+///////////////////////////////////////////////////////////////
+
+/// SeasonReferee — referee assigned to a season by Org Admin (renamed from RefereeLeague).
+model SeasonReferee {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  refereeId    String    @db.Uuid
+  seasonId     String    @db.Uuid
+  roleLevel    String?
+  approvedDate DateTime?
+  status       String    @default("active")
+
+  referee Referee @relation(fields: [refereeId], references: [id], onDelete: Cascade)
+  season  Season  @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([refereeId, seasonId])
+  @@map("season_referees")
+}
+
+model MatchEvent {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matchId         String   @db.Uuid
+  eventTypeId     Int
+  playerId        String   @db.Uuid
+  relatedPlayerId String?  @db.Uuid
+  clubId          String?  @db.Uuid
+  minute          Int
+  extraTime       Int?
+  description     String?
+  createdAt       DateTime @default(now())
+
+  match         Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  eventType     EventType @relation(fields: [eventTypeId], references: [id])
+  player        Player    @relation("EventPlayer", fields: [playerId], references: [id])
+  relatedPlayer Player?   @relation("RelatedPlayer", fields: [relatedPlayerId], references: [id])
+  club          Club?     @relation(fields: [clubId], references: [id])
+
+  @@map("match_events")
+}
+
+model MatchReferee {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matchId    String   @db.Uuid
+  refereeId  String   @db.Uuid
+  role       String
+  assignedAt DateTime @default(now())
+
+  match   Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  referee Referee @relation(fields: [refereeId], references: [id])
+
+  @@unique([matchId, refereeId])
+  @@map("match_referees")
+}
+
+/// MatchMEA — one Match Event Admin assigned per match during fixture generation.
+model MatchMEA {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matchId    String   @db.Uuid
+  userId     String   @db.Uuid
+  assignedAt DateTime @default(now())
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([matchId, userId])
+  @@map("match_meas")
+}
+
+///////////////////////////////////////////////////////////////
+// SEASON PARTICIPATION
+///////////////////////////////////////////////////////////////
+
+/// UserRoleScope — leagueId added for league_admin; seasonId kept for match_event_admin.
+model UserRoleScope {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @db.Uuid
+  roleId         Int
+  organizationId String?  @db.Uuid
+  leagueId       String?  @db.Uuid
+  seasonId       String?  @db.Uuid
+  clubId         String?  @db.Uuid
+  assignedAt     DateTime @default(now())
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         Role          @relation(fields: [roleId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  league       League?       @relation(fields: [leagueId], references: [id])
+  season       Season?       @relation(fields: [seasonId], references: [id])
+  club         Club?         @relation(fields: [clubId], references: [id])
+
+  @@map("user_role_scopes")
+}
+
+model SeasonClub {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seasonId         String   @db.Uuid
+  clubId           String   @db.Uuid
+  registrationDate DateTime @default(now())
+  status           String   @default("active")
+  createdAt        DateTime @default(now())
+
+  season  Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  club    Club               @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  players SeasonClubPlayer[]
+  coaches SeasonClubCoach[]
+
+  @@unique([seasonId, clubId])
+  @@map("season_clubs")
+}
+
+model SeasonClubPlayer {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seasonClubId  String    @db.Uuid
+  playerId      String    @db.Uuid
+  jerseyNumber  Int?
+  positionId    Int?
+  contractStart DateTime?
+  contractEnd   DateTime?
+  status        String    @default("active")
+  /// Squad request status. 'approved' by default (backward-compatible with direct League Admin assignment).
+  requestStatus String    @default("approved")
+  /// Season-level squad designation set by Club Admin at request time. Distinct from MatchLineup.lineupType (match-day role).
+  playerRole    String?
+  createdAt     DateTime  @default(now())
+
+  seasonClub   SeasonClub    @relation(fields: [seasonClubId], references: [id], onDelete: Cascade)
+  player       Player        @relation(fields: [playerId], references: [id])
+  position     Position?     @relation(fields: [positionId], references: [id])
+  matchLineups MatchLineup[]
+
+  @@unique([seasonClubId, playerId])
+  @@map("season_club_players")
+}
+
+model SeasonClubCoach {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seasonClubId String    @db.Uuid
+  coachId      String    @db.Uuid
+  role         String    @default("head_coach")
+  startDate    DateTime?
+  endDate      DateTime?
+  status       String    @default("active")
+  /// Squad request status. 'approved' by default (backward-compatible with direct League Admin assignment).
+  requestStatus String   @default("approved")
+  createdAt    DateTime  @default(now())
+
+  seasonClub SeasonClub @relation(fields: [seasonClubId], references: [id], onDelete: Cascade)
+  coach      Coach      @relation(fields: [coachId], references: [id])
+
+  @@unique([seasonClubId, coachId])
+  @@map("season_club_coaches")
+}
+
+model MatchLineup {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matchId            String   @db.Uuid
+  seasonClubPlayerId String   @db.Uuid
+  positionId         Int?
+  lineupType         String   @default("starting")
+  shirtNumber        Int?
+  isCaptain          Boolean  @default(false)
+  createdAt          DateTime @default(now())
+
+  match            Match            @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  seasonClubPlayer SeasonClubPlayer @relation(fields: [seasonClubPlayerId], references: [id])
+  position         Position?        @relation(fields: [positionId], references: [id])
+
+  @@unique([matchId, seasonClubPlayerId])
+  @@map("match_lineups")
+}
+
+///////////////////////////////////////////////////////////////
+// SYSTEM TABLES
+///////////////////////////////////////////////////////////////
+
+model Notification {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @db.Uuid
+  actionType String
+  timestamp  DateTime @default(now())
+  details    String
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+///////////////////////////////////////////////////////////////
+// MEDIA GALLERY TABLES
+///////////////////////////////////////////////////////////////
+
+model ClubImage {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clubId    String   @db.Uuid
+  imageUrl  String
+  caption   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@map("club_images")
+}
+
+model StadiumImage {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stadiumId String   @db.Uuid
+  imageUrl  String
+  caption   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  stadium Stadium @relation(fields: [stadiumId], references: [id], onDelete: Cascade)
+
+  @@map("stadium_images")
+}
+
+model PlayerImage {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  playerId  String   @db.Uuid
+  imageUrl  String
+  caption   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@map("player_images")
+}
+
+model CoachImage {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  coachId   String   @db.Uuid
+  imageUrl  String
+  caption   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  coach Coach @relation(fields: [coachId], references: [id], onDelete: Cascade)
+
+  @@map("coach_images")
+}
+
+model MatchMedia {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matchId   String   @db.Uuid
+  mediaUrl  String
+  mediaType String
+  caption   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@map("match_media")
+}
+
+///////////////////////////////////////////////////////////////
+// RATING SYSTEM TABLES
+///////////////////////////////////////////////////////////////
+
+model EntityRating {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entityType String
+  entityId   String   @db.Uuid
+  score      Float
+  computedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([entityType, entityId])
+  @@map("entity_ratings")
+}
+
+model RatingSnapshot {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entityType String
+  entityId   String   @db.Uuid
+  score      Float
+  snapshotAt DateTime @default(now())
+
+  @@index([entityType, entityId, snapshotAt(sort: Desc)])
+  @@map("rating_snapshots")
+}
+
+model RatingConfig {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  isActive              Boolean  @default(true)
+  goalWeight            Float    @default(3.0)
+  assistWeight          Float    @default(2.0)
+  yellowCardPenalty     Float    @default(1.5)
+  redCardPenalty        Float    @default(4.0)
+  appearanceWeight      Float    @default(0.5)
+  cleanSheetWeight      Float    @default(2.0)
+  winRateWeight         Float    @default(40.0)
+  goalDiffNormMax       Float    @default(2.0)
+  pointsPerMatchNormMax Float    @default(3.0)
+  seasonDecayRate       Float    @default(0.15)
+  seasonMinWeight       Float    @default(0.1)
+  maxSeasonsNorm        Float    @default(10.0)
+  leagueGoalsNormMax    Float    @default(4.0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("rating_configs")
+}
