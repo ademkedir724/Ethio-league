@@ -114,7 +114,7 @@ export async function DELETE(
     }
 
     const images = await prisma.coachImage.findMany({ where: { coachId: id }, select: { imageUrl: true } });
-    await Promise.all(images.map((img) => destroyAsset(extractPublicId(img.imageUrl))));
+    await Promise.all(images.map((img: { imageUrl: string }) => destroyAsset(extractPublicId(img.imageUrl))));
 
     await prisma.coach.delete({ where: { id } });
     return success({ message: "Coach deleted" });

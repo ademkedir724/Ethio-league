@@ -164,7 +164,7 @@ export async function POST(
     }
 
     // Upsert lineup records
-    const createdLineups = [];
+    const createdLineups: Awaited<ReturnType<typeof prisma.matchLineup.upsert>>[] = [];
     for (const entry of lineups) {
       const lineup = await prisma.matchLineup.upsert({
         where: {

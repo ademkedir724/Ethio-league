@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Camera } from "lucide-react";
+import { Camera, Eye, EyeOff } from "lucide-react";
 import { MediaUploadWidget } from "@/components/dashboard/media-upload-widget";
 import {
     Dialog,
@@ -124,6 +124,9 @@ export default function ProfilePage() {
     const [currentPassword, setCurrentPassword] = useState("");
     const [newPassword, setNewPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
+    const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [pwErrors, setPwErrors] = useState<Record<string, string>>({});
     const [pwSaving, setPwSaving] = useState(false);
 
@@ -298,39 +301,72 @@ export default function ProfilePage() {
                             <form onSubmit={handleChangePassword} className="flex flex-col gap-4 max-w-sm">
                                 <div className="flex flex-col gap-2">
                                     <Label htmlFor="currentPassword">Current Password</Label>
-                                    <Input
-                                        id="currentPassword"
-                                        type="password"
-                                        value={currentPassword}
-                                        onChange={(e) => setCurrentPassword(e.target.value)}
-                                        autoComplete="current-password"
-                                    />
+                                    <div className="relative">
+                                        <Input
+                                            id="currentPassword"
+                                            type={showCurrentPassword ? "text" : "password"}
+                                            value={currentPassword}
+                                            onChange={(e) => setCurrentPassword(e.target.value)}
+                                            autoComplete="current-password"
+                                            className="pr-10"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                            aria-label={showCurrentPassword ? "Hide password" : "Show password"}
+                                        >
+                                            {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                        </button>
+                                    </div>
                                     {pwErrors.currentPassword && (
                                         <p className="text-xs text-destructive">{pwErrors.currentPassword}</p>
                                     )}
                                 </div>
                                 <div className="flex flex-col gap-2">
                                     <Label htmlFor="newPassword">New Password</Label>
-                                    <Input
-                                        id="newPassword"
-                                        type="password"
-                                        value={newPassword}
-                                        onChange={(e) => setNewPassword(e.target.value)}
-                                        autoComplete="new-password"
-                                    />
+                                    <div className="relative">
+                                        <Input
+                                            id="newPassword"
+                                            type={showNewPassword ? "text" : "password"}
+                                            value={newPassword}
+                                            onChange={(e) => setNewPassword(e.target.value)}
+                                            autoComplete="new-password"
+                                            className="pr-10"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowNewPassword(!showNewPassword)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                            aria-label={showNewPassword ? "Hide password" : "Show password"}
+                                        >
+                                            {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                        </button>
+                                    </div>
                                     {pwErrors.newPassword && (
                                         <p className="text-xs text-destructive">{pwErrors.newPassword}</p>
                                     )}
                                 </div>
                                 <div className="flex flex-col gap-2">
                                     <Label htmlFor="confirmPassword">Confirm New Password</Label>
-                                    <Input
-                                        id="confirmPassword"
-                                        type="password"
-                                        value={confirmPassword}
-                                        onChange={(e) => setConfirmPassword(e.target.value)}
-                                        autoComplete="new-password"
-                                    />
+                                    <div className="relative">
+                                        <Input
+                                            id="confirmPassword"
+                                            type={showConfirmPassword ? "text" : "password"}
+                                            value={confirmPassword}
+                                            onChange={(e) => setConfirmPassword(e.target.value)}
+                                            autoComplete="new-password"
+                                            className="pr-10"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                            aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                                        >
+                                            {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                        </button>
+                                    </div>
                                     {pwErrors.confirmPassword && (
                                         <p className="text-xs text-destructive">{pwErrors.confirmPassword}</p>
                                     )}

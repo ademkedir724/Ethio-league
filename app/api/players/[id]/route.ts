@@ -106,7 +106,7 @@ export async function DELETE(
     if (!id) return badRequest("Invalid player ID");
 
     const images = await prisma.playerImage.findMany({ where: { playerId: id }, select: { imageUrl: true } });
-    await Promise.all(images.map((img) => destroyAsset(extractPublicId(img.imageUrl))));
+    await Promise.all(images.map((img: { imageUrl: string }) => destroyAsset(extractPublicId(img.imageUrl))));
 
     await prisma.player.delete({ where: { id } });
     return success({ message: "Player deleted" });

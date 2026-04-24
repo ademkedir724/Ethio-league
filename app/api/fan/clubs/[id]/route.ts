@@ -56,7 +56,7 @@ export async function GET(
         });
 
         // Compute current standing if season exists
-        let currentStanding = null;
+        let currentStanding: Record<string, unknown> | null = null;
         if (latestSeasonClub) {
             const matches = await prisma.match.findMany({
                 where: { seasonId: latestSeasonClub.seasonId, status: "completed" },

@@ -519,6 +519,7 @@ export default function SeasonsPage() {
               onChange={(e) => setForm({ ...form, rules: e.target.value })}
             />
           </div>
+        </div>
       </FormDialog>
 
       {/* Delete Confirmation */}
