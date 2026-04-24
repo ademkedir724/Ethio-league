@@ -53,7 +53,7 @@ export async function POST(
         }
 
         // All requests must belong to the same club (Club Admin is scoped to one club)
-        const clubIds = [...new Set(seasonClubs.map((sc) => sc.clubId))];
+        const clubIds = [...new Set(seasonClubs.map((sc) => sc.clubId as string))];
         if (clubIds.length > 1) {
             return badRequest("All player requests must belong to the same club");
         }
