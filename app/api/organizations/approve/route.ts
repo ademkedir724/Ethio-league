@@ -65,7 +65,9 @@ export async function POST(req: NextRequest) {
 
         try {
           await sendPasswordSetupEmail(userRoleScope.user.email, token);
-        } catch {
+        } catch (emailErr) {
+          // Email failure must not block the approval — log it and continue
+          console.error("[approve] Password setup email failed:", emailErr);
           await logAudit({
             userId: auth.userId,
             actionType: "email_failure",
@@ -73,7 +75,6 @@ export async function POST(req: NextRequest) {
             targetType: "user",
             description: "Password setup email failed",
           });
-          return serverError("User activated but email delivery failed");
         }
 
         await logAudit({
@@ -97,11 +98,9 @@ export async function POST(req: NextRequest) {
             fullName: userRoleScope.user.fullName,
           },
           expiresAt: expires.toISOString(),
+          // Always include the setup link — shown in UI popup as fallback if email fails
+          passwordSetupLink: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/set-password?token=${token}`,
         };
-
-        if (process.env.NODE_ENV !== "production") {
-          responseBody.passwordSetupLink = `/set-password?token=${token}`;
-        }
 
         return success(responseBody);
       }
