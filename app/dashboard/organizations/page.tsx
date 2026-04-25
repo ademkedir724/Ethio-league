@@ -480,7 +480,7 @@ function SuperAdminOrganizationsView() {
 
       const data = await response.json();
 
-      // If there's a password setup link, show it
+      // Always show the password setup link popup
       if (data.passwordSetupLink) {
         setPasswordSetupLink(data.passwordSetupLink);
       }
@@ -528,9 +528,38 @@ function SuperAdminOrganizationsView() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success("Link copied to clipboard");
+  const copyToClipboard = async (text: string) => {
+    // Try modern clipboard API first (works on HTTPS)
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        toast.success("Link copied to clipboard");
+        return;
+      } catch {
+        // fall through to legacy method
+      }
+    }
+
+    // Legacy fallback — create input inside the dialog to avoid focus-trap issues
+    const input = document.createElement("input");
+    input.value = text;
+    input.style.position = "fixed";
+    input.style.top = "50%";
+    input.style.left = "50%";
+    input.style.opacity = "0.01";
+    input.style.zIndex = "9999";
+    input.setAttribute("readonly", "");
+    document.body.appendChild(input);
+    input.focus();
+    input.select();
+    input.setSelectionRange(0, text.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(input);
+    if (ok) {
+      toast.success("Link copied to clipboard");
+    } else {
+      toast.error("Copy failed — please select and copy the link manually");
+    }
   };
 
   const columns: Column<Organization>[] = [
@@ -919,7 +948,7 @@ function SuperAdminOrganizationsView() {
         onConfirm={handleReject}
       />
 
-      {/* Password Setup Link Dialog (for demo purposes) */}
+      {/* Password Setup Link Dialog */}
       <Dialog
         open={!!passwordSetupLink}
         onOpenChange={() => setPasswordSetupLink(null)}
@@ -931,8 +960,9 @@ function SuperAdminOrganizationsView() {
               Organization Approved
             </DialogTitle>
             <DialogDescription>
-              The organization has been approved. In production, the following
-              password setup link would be sent via email to the applicant.
+              The organization has been approved. Share the link below with the
+              applicant so they can set their password. A setup email has also
+              been sent if email is configured.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -942,23 +972,30 @@ function SuperAdminOrganizationsView() {
                 Password Setup Link
               </div>
               <div className="flex items-center gap-2">
-                <code className="flex-1 rounded bg-background px-2 py-1 text-xs text-muted-foreground break-all">
-                  {passwordSetupLink}
-                </code>
+                <input
+                  readOnly
+                  value={passwordSetupLink ?? ""}
+                  className="flex-1 rounded bg-background px-2 py-1 text-xs text-muted-foreground border border-border cursor-text select-all"
+                  onFocus={(e) => e.target.select()}
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
                 <Button
                   size="icon"
                   variant="outline"
                   className="h-8 w-8 shrink-0"
-                  onClick={() =>
-                    copyToClipboard(window.location.origin + passwordSetupLink)
-                  }
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    copyToClipboard(passwordSetupLink!);
+                  }}
                 >
                   <Copy className="h-4 w-4" />
                 </Button>
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              This link will expire in 1 hour. The user must set their password
+              This link expires in 1 hour. The user must set their password
               before they can log in.
             </p>
             <Button
