@@ -125,7 +125,8 @@ export async function POST(req: NextRequest) {
       return { league, adminUser };
     });
 
-    const adminSetupLink = `/set-password?token=${token}`;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const adminSetupLink = `${appUrl}/set-password?token=${token}`;
     try {
       await sendPasswordSetupEmail(adminEmail, token);
     } catch {

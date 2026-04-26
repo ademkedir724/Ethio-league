@@ -168,7 +168,8 @@ export async function POST(req: NextRequest) {
         // Notification failure must not break the response
       }
 
-      return created({ club: newClub, adminSetupLink: `/set-password?token=${token}`, user: { id: newUser.id, email: newUser.email } });
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      return created({ club: newClub, adminSetupLink: `${appUrl}/set-password?token=${token}`, user: { id: newUser.id, email: newUser.email } });
     }
 
     // ── Super admin / organization admin workflow (unchanged) ─────────────

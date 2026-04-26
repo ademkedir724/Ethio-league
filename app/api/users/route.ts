@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
       });
 
       // Send setup email (non-blocking failure returns link in response)
-      const passwordSetupLink = `/set-password?token=${token}`;
+      const passwordSetupLink = `${appUrl}/set-password?token=${token}`;
       try {
         await sendPasswordSetupEmail(email, token);
       } catch {
