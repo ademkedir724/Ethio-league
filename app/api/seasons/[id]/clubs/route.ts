@@ -35,7 +35,8 @@ export async function GET(
   }
 }
 
-// POST /api/seasons/:id/clubs — register a club in a season
+// POST /api/seasons/:id/clubs — register one or many clubs in a season
+// Body: { clubId: string } OR { clubIds: string[] }
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -48,8 +49,17 @@ export async function POST(
     const seasonId = parseUUID(idStr);
     if (!seasonId) return badRequest("Invalid season ID");
 
-    const { clubId } = await req.json();
-    if (!clubId) return badRequest("clubId is required");
+    const body = await req.json();
+
+    // Support both single clubId and bulk clubIds array
+    let clubIds: string[] = [];
+    if (Array.isArray(body.clubIds) && body.clubIds.length > 0) {
+      clubIds = body.clubIds;
+    } else if (typeof body.clubId === "string" && body.clubId) {
+      clubIds = [body.clubId];
+    } else {
+      return badRequest("clubId or clubIds is required");
+    }
 
     const season = await prisma.season.findUnique({
       where: { id: seasonId },
@@ -61,17 +71,38 @@ export async function POST(
       return forbidden();
     }
 
-    const existing = await prisma.seasonClub.findUnique({
-      where: { seasonId_clubId: { seasonId, clubId } },
+    // Find which clubs are already registered
+    const existing = await prisma.seasonClub.findMany({
+      where: { seasonId, clubId: { in: clubIds } },
+      select: { clubId: true },
     });
-    if (existing) return badRequest("Club already registered in this season");
+    const alreadyIn = new Set(existing.map((e) => e.clubId));
+    const toAdd = clubIds.filter((id) => !alreadyIn.has(id));
 
-    const seasonClub = await prisma.seasonClub.create({
-      data: { seasonId, clubId },
-      include: { club: true },
+    if (toAdd.length === 0) {
+      return badRequest("All selected clubs are already registered in this season");
+    }
+
+    // Bulk create — run sequentially to avoid interactive transaction timeout on remote DB
+    const created_records = [];
+    for (const clubId of toAdd) {
+      const record = await prisma.seasonClub.create({
+        data: { seasonId, clubId },
+        include: { club: true },
+      });
+      created_records.push(record);
+    }
+
+    // Single-club backward-compat: return the single record directly
+    if (clubIds.length === 1) {
+      return created(created_records[0]);
+    }
+
+    return created({
+      added: created_records.length,
+      skipped: alreadyIn.size,
+      seasonClubs: created_records,
     });
-
-    return created(seasonClub);
   } catch (error) {
     return serverError(error);
   }
