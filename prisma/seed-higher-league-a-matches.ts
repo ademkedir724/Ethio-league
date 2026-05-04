@@ -29,7 +29,7 @@ const pool = new Pool({
 });
 const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 
-const LEAGUE_NAME = "Ethiopian Higher League Group A";
+const LEAGUE_NAME = process.env.LEAGUE_NAME ?? "Ethiopian Higher League Group A";
 const SEASON_NAME = "2025/26";
 const MAX_ROUNDS = 15;
 

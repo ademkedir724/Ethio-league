@@ -1,15 +1,13 @@
 /**
- * seed-higher-league-a-season.ts  —  Phase 3 + Phase 4
+ * seed-higher-league-b-season.ts  —  Phase 3 + Phase 4
  *
- * Phase 3: Create 2025/26 season, register all 10 clubs,
- *          register all 200 players (approved), create 1 head coach per club (approved)
+ * Phase 3: Create 2025/26 season for EHLA Group B,
+ *          register all 10 clubs, 200 players (approved), 1 head coach per club (approved)
  *
- * Phase 4: Reuse existing EFF referees + MEA users (already at org level).
- *          No new referees/MEAs needed — they are org-scoped and available
- *          for assignment via the Assignments UI.
- *          (For a 10-club season: 5 matches/round → need 6 MEAs + 24 referees max)
+ * Phase 4: Verify existing EFF referees + MEA users are sufficient
+ *          (44 refs and 11 MEAs already exist at org level)
  *
- * Run with:  npx tsx prisma/seed-higher-league-a-season.ts
+ * Run with:  npx tsx prisma/seed-higher-league-b-season.ts
  */
 
 import "dotenv/config";
@@ -25,11 +23,24 @@ const pool = new Pool({
 });
 const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 
-const LEAGUE_NAME = "Ethiopian Higher League Group A";
+const LEAGUE_NAME = "Ethiopian Higher League Group B";
 const LICENSE_LEVELS = ["FIFA", "CAF", "National A", "National B", "National C", "Regional"];
 
+const COACH_NAMES = [
+    { firstName: "Tesfaye", lastName: "Worku" },
+    { firstName: "Girma", lastName: "Tadesse" },
+    { firstName: "Dawit", lastName: "Bekele" },
+    { firstName: "Mulugeta", lastName: "Haile" },
+    { firstName: "Henok", lastName: "Alemu" },
+    { firstName: "Yonas", lastName: "Gebre" },
+    { firstName: "Amanuel", lastName: "Negash" },
+    { firstName: "Biruk", lastName: "Eshetu" },
+    { firstName: "Ermias", lastName: "Demeke" },
+    { firstName: "Fasil", lastName: "Kebede" },
+];
+
 async function main() {
-    console.log("\n🌱  EHLA Group A — Phase 3 + Phase 4\n");
+    console.log("\n🌱  EHLA Group B — Phase 3 + Phase 4\n");
 
     // ── Resolve league ─────────────────────────────────────────────────────────
     const league = await prisma.league.findFirst({
@@ -51,17 +62,11 @@ async function main() {
     if (clubs.length === 0) throw new Error("No clubs found. Run Phase 2 first.");
     console.log(`   Found ${clubs.length} clubs\n`);
 
-    // ── Pre-fetch positions ────────────────────────────────────────────────────
-    const allPositions = await prisma.position.findMany({ select: { id: true, code: true } });
-    const positionIds: Record<string, number | null> = {};
-    for (const p of allPositions) positionIds[p.code] = p.id;
-
     // ══════════════════════════════════════════════════════════════════════════
     // PHASE 3 — Season + SeasonClubs + SeasonClubPlayers + SeasonClubCoaches
     // ══════════════════════════════════════════════════════════════════════════
     console.log("── Phase 3: Season + Squad Registration ─────────────────────────\n");
 
-    // Create season
     const existingSeason = await prisma.season.findFirst({
         where: { leagueId: league.id, name: "2025/26" },
     });
@@ -83,16 +88,14 @@ async function main() {
             minStartingPlayers: 11,
             maxBenchPlayers: 7,
             rules:
-                "Ethiopian Higher League Group A 2025/26 season rules: " +
+                "Ethiopian Higher League Group B 2025/26 season rules: " +
                 "Double round-robin format. Top 2 clubs promoted to Ethiopian Premier League. " +
                 "Bottom 2 clubs relegated. Standard FIFA rules apply.",
         },
     });
 
-    const isNew = !existingSeason;
-    console.log(`   ${isNew ? "✅  Created" : "ℹ️   Found existing"} season: "${season.name}"  (${season.id})`);
+    console.log(`   ${!existingSeason ? "✅  Created" : "ℹ️   Found existing"} season: "${season.name}"  (${season.id})`);
 
-    // Register clubs + players + coaches
     let totalPlayers = 0;
     let totalCoaches = 0;
 
@@ -112,7 +115,7 @@ async function main() {
             });
         }
 
-        // SeasonClubPlayers — all 20 players, approved + active
+        // SeasonClubPlayers
         let addedPlayers = 0;
         for (const [pi, player] of club.players.entries()) {
             const existing = await prisma.seasonClubPlayer.findUnique({
@@ -135,33 +138,20 @@ async function main() {
         }
         totalPlayers += addedPlayers;
 
-        // SeasonClubCoach — one head coach per club
+        // SeasonClubCoach
         const existingCoach = await prisma.seasonClubCoach.findFirst({
             where: { seasonClubId: seasonClub.id },
         });
         let addedCoach = 0;
         if (!existingCoach) {
-            // Create a coach record for this club
-            const coachNames = [
-                { firstName: "Tesfaye", lastName: "Bekele" },
-                { firstName: "Girma", lastName: "Haile" },
-                { firstName: "Dawit", lastName: "Tadesse" },
-                { firstName: "Mulugeta", lastName: "Alemu" },
-                { firstName: "Henok", lastName: "Gebre" },
-                { firstName: "Yonas", lastName: "Negash" },
-                { firstName: "Amanuel", lastName: "Worku" },
-                { firstName: "Biruk", lastName: "Demeke" },
-                { firstName: "Ermias", lastName: "Kebede" },
-                { firstName: "Fasil", lastName: "Eshetu" },
-            ];
-            const cn = coachNames[ci % coachNames.length];
+            const cn = COACH_NAMES[ci % COACH_NAMES.length];
             const coach = await prisma.coach.create({
                 data: {
                     firstName: cn.firstName,
                     lastName: cn.lastName,
                     nationality: "Ethiopian",
                     licenseLevel: LICENSE_LEVELS[ci % LICENSE_LEVELS.length],
-                    experienceYears: 5 + (ci % 15),
+                    experienceYears: 4 + (ci % 16),
                     status: "active",
                     clubId: club.id,
                 },
@@ -199,25 +189,14 @@ async function main() {
         where: { roleId: meaRoleId, organizationId: orgId },
     });
 
-    // For 10 clubs: 5 matches/round → need max 6 MEAs and 24 referees
-    const matchesPerRound = 5;
-    const neededMEAs = matchesPerRound + 1;      // 6
-    const neededReferees = (matchesPerRound + 1) * 4; // 24
+    // 10 clubs → 5 matches/round → need 6 MEAs and 24 referees
+    const neededMEAs = 6;
+    const neededReferees = 24;
 
-    console.log(`   EFF referees available : ${refereeCount}  (need ${neededReferees} for this season)`);
-    console.log(`   EFF MEA users available: ${meaCount}  (need ${neededMEAs} for this season)`);
-
-    if (refereeCount >= neededReferees) {
-        console.log("   ✅  Enough referees — assign them via the Assignments page");
-    } else {
-        console.log(`   ⚠️   Only ${refereeCount} referees — need ${neededReferees}. Consider adding more.`);
-    }
-
-    if (meaCount >= neededMEAs) {
-        console.log("   ✅  Enough MEAs — assign them via the Assignments page");
-    } else {
-        console.log(`   ⚠️   Only ${meaCount} MEAs — need ${neededMEAs}. Consider adding more.`);
-    }
+    console.log(`   EFF referees available : ${refereeCount}  (need ${neededReferees})`);
+    console.log(`   EFF MEA users available: ${meaCount}  (need ${neededMEAs})`);
+    console.log(refereeCount >= neededReferees ? "   ✅  Enough referees" : `   ⚠️   Need ${neededReferees - refereeCount} more referees`);
+    console.log(meaCount >= neededMEAs ? "   ✅  Enough MEAs" : `   ⚠️   Need ${neededMEAs - meaCount} more MEAs`);
 
     // ── Summary ────────────────────────────────────────────────────────────────
     const scpCount = await prisma.seasonClubPlayer.count({ where: { seasonClub: { seasonId: season.id } } });
@@ -225,7 +204,7 @@ async function main() {
 
     console.log("\n" + "=".repeat(65));
     console.log("Phase 3 + Phase 4 complete!\n");
-    console.log("  Season         : 2025/26 EHLA Group A");
+    console.log("  Season         : 2025/26 EHLA Group B");
     console.log("  Season ID      : " + season.id);
     console.log("  Season status  : " + season.status);
     console.log("  Clubs in season: " + clubs.length);
@@ -233,11 +212,7 @@ async function main() {
     console.log("  Coaches (approved): " + sccCount);
     console.log("  Referees (org) : " + refereeCount);
     console.log("  MEAs (org)     : " + meaCount);
-    console.log("\n  Next steps:");
-    console.log("  1. Activate the season from the dashboard");
-    console.log("  2. Assign referees + MEAs via the Assignments page");
-    console.log("  3. Generate fixtures from the season page");
-    console.log("  4. Run seed-matches.ts with SEASON_ID=" + season.id);
+    console.log("\n  Next: run Phase 5 with SEASON_ID=" + season.id);
     console.log("=".repeat(65));
 }
 
