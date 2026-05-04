@@ -164,27 +164,78 @@ export default function StandingsPage() {
 
     return (
         <div className="flex flex-col gap-6">
-            <PageHeader title="League Standings">
-                <div className="flex items-center gap-2">
-                    {/* League picker — org_admin / super_admin */}
-                    {needsLeaguePicker && leagues && leagues.length > 0 && (
-                        <Select value={selectedLeagueId} onValueChange={(v) => setSelectedLeagueId(v)}>
-                            <SelectTrigger className="w-48 h-8 text-sm">
-                                <SelectValue placeholder="Select league" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {leagues.map((l) => (
-                                    <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
+            <PageHeader title="League Standings" />
 
-                    {/* Season picker — all roles except MEA */}
-                    {!isMEARole && seasons && seasons.length > 0 && (
+            {/* ── Org Admin: League → Season two-step selector ── */}
+            {needsLeaguePicker && (
+                <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/30 p-4">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                        {/* Step 1: League */}
+                        <div className="flex flex-col gap-1 min-w-0 flex-1">
+                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                1 · League
+                            </label>
+                            {leagues && leagues.length > 0 ? (
+                                <Select value={selectedLeagueId} onValueChange={(v) => setSelectedLeagueId(v)}>
+                                    <SelectTrigger className="h-9 text-sm">
+                                        <SelectValue placeholder="Select a league…" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {leagues.map((l) => (
+                                            <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            ) : (
+                                <Skeleton className="h-9 w-full" />
+                            )}
+                        </div>
+
+                        {/* Arrow separator */}
+                        <span className="text-muted-foreground/40 text-lg mt-5 hidden sm:block">›</span>
+
+                        {/* Step 2: Season — only enabled after league is chosen */}
+                        <div className="flex flex-col gap-1 min-w-0 flex-1">
+                            <label className={`text-xs font-medium uppercase tracking-wide ${selectedLeagueId ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
+                                2 · Season
+                            </label>
+                            {selectedLeagueId && seasons ? (
+                                seasons.length > 0 ? (
+                                    <Select value={selectedSeasonId} onValueChange={setSelectedSeasonId}>
+                                        <SelectTrigger className="h-9 text-sm">
+                                            <SelectValue placeholder="Select a season…" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {seasons.map((s) => (
+                                                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                ) : (
+                                    <div className="h-9 flex items-center px-3 rounded-md border border-border text-sm text-muted-foreground">
+                                        No seasons found
+                                    </div>
+                                )
+                            ) : (
+                                <div className={`h-9 flex items-center px-3 rounded-md border text-sm ${selectedLeagueId ? "border-border text-muted-foreground" : "border-border/40 text-muted-foreground/40"}`}>
+                                    {selectedLeagueId ? "Loading…" : "Select a league first"}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── League Admin: Season selector ── */}
+            {isLeagueAdminRole && (
+                <div className="flex flex-col gap-1 rounded-xl border border-border bg-muted/30 p-4 max-w-xs">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Season
+                    </label>
+                    {seasons && seasons.length > 0 ? (
                         <Select value={selectedSeasonId} onValueChange={setSelectedSeasonId}>
-                            <SelectTrigger className="w-44 h-8 text-sm">
-                                <SelectValue placeholder="Select season" />
+                            <SelectTrigger className="h-9 text-sm">
+                                <SelectValue placeholder="Select a season…" />
                             </SelectTrigger>
                             <SelectContent>
                                 {seasons.map((s) => (
@@ -192,15 +243,37 @@ export default function StandingsPage() {
                                 ))}
                             </SelectContent>
                         </Select>
+                    ) : (
+                        <Skeleton className="h-9 w-full" />
                     )}
                 </div>
-            </PageHeader>
+            )}
 
+            {/* ── Club Admin: Season selector ── */}
+            {isClubAdminRole && seasons && seasons.length > 0 && (
+                <div className="flex flex-col gap-1 rounded-xl border border-border bg-muted/30 p-4 max-w-xs">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Season
+                    </label>
+                    <Select value={selectedSeasonId} onValueChange={setSelectedSeasonId}>
+                        <SelectTrigger className="h-9 text-sm">
+                            <SelectValue placeholder="Select a season…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {seasons.map((s) => (
+                                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            )}
+
+            {/* ── Empty state ── */}
             {!effectiveSeasonId ? (
                 <Card>
                     <CardContent className="flex h-32 items-center justify-center text-sm text-muted-foreground">
                         {needsLeaguePicker && !selectedLeagueId
-                            ? "Select a league to view standings."
+                            ? "Select a league to get started."
                             : "Select a season to view standings."}
                     </CardContent>
                 </Card>
