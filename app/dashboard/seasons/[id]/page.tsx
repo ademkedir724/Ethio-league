@@ -735,7 +735,8 @@ function SeasonClubsTab({ seasonId, season }: { seasonId: string; season: Season
     const { data: allClubs } = useSWR<Club[]>("/api/clubs", authFetcher);
 
     const [addOpen, setAddOpen] = useState(false);
-    const [selectedClubId, setSelectedClubId] = useState("");
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [search, setSearch] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const [removeTarget, setRemoveTarget] = useState<SeasonClub | null>(null);
 
@@ -749,22 +750,52 @@ function SeasonClubsTab({ seasonId, season }: { seasonId: string; season: Season
         [allClubs, assignedClubIds]
     );
 
+    const filteredClubs = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        if (!q) return availableClubs;
+        return availableClubs.filter((c) => c.name.toLowerCase().includes(q));
+    }, [availableClubs, search]);
+
+    const toggleClub = (id: string) => {
+        setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const toggleAll = () => {
+        if (selectedIds.size === filteredClubs.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(filteredClubs.map((c) => c.id)));
+        }
+    };
+
     const handleAdd = async () => {
-        if (!selectedClubId) { toast.error("Select a club"); return; }
+        if (selectedIds.size === 0) { toast.error("Select at least one club"); return; }
         setIsSaving(true);
         try {
             const res = await fetchWithAuth(`/api/seasons/${seasonId}/clubs`, {
                 method: "POST",
-                body: JSON.stringify({ clubId: selectedClubId }),
+                body: JSON.stringify({ clubIds: Array.from(selectedIds) }),
             });
+            const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                const d = await res.json().catch(() => ({}));
-                toast.error(d.error || "Failed to add club");
+                toast.error(data.error || "Failed to add clubs");
                 return;
             }
-            toast.success("Club added to season");
+            const added = data.added ?? 1;
+            const skipped = data.skipped ?? 0;
+            toast.success(
+                skipped > 0
+                    ? `${added} club${added !== 1 ? "s" : ""} added (${skipped} already in season)`
+                    : `${added} club${added !== 1 ? "s" : ""} added to season`
+            );
             setAddOpen(false);
-            setSelectedClubId("");
+            setSelectedIds(new Set());
+            setSearch("");
             mutate(`/api/seasons/${seasonId}/clubs`);
             mutate(`/api/seasons/${seasonId}`);
         } catch { toast.error("Something went wrong"); }
@@ -804,9 +835,9 @@ function SeasonClubsTab({ seasonId, season }: { seasonId: string; season: Season
                         </Badge>
                     )}
                 </div>
-                <Button size="sm" onClick={() => setAddOpen(true)}>
+                <Button size="sm" onClick={() => { setSelectedIds(new Set()); setSearch(""); setAddOpen(true); }}>
                     <Plus className="h-4 w-4" />
-                    Add Club
+                    Add Clubs
                 </Button>
             </div>
 
@@ -852,29 +883,94 @@ function SeasonClubsTab({ seasonId, season }: { seasonId: string; season: Season
                 </div>
             )}
 
-            {/* Add Club Dialog */}
-            <Dialog open={addOpen} onOpenChange={setAddOpen}>
-                <DialogContent className="max-w-sm">
+            {/* ── Add Clubs Dialog (multi-select) ── */}
+            <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) { setSelectedIds(new Set()); setSearch(""); } }}>
+                <DialogContent className="max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Add Club to Season</DialogTitle>
-                        <DialogDescription>Select a club from your league to add to this season.</DialogDescription>
+                        <DialogTitle>Add Clubs to Season</DialogTitle>
+                        <DialogDescription>
+                            Select one or more clubs from your league to add to this season.
+                        </DialogDescription>
                     </DialogHeader>
-                    <Select value={selectedClubId || "none"} onValueChange={(v) => setSelectedClubId(v === "none" ? "" : v)}>
-                        <SelectTrigger><SelectValue placeholder="Select a club" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="none">Select a club</SelectItem>
-                            {availableClubs.map((c) => (
-                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    {availableClubs.length === 0 && (
-                        <p className="text-xs text-muted-foreground">All clubs are already assigned to this season.</p>
+
+                    {availableClubs.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-2 text-center">All clubs are already assigned to this season.</p>
+                    ) : (
+                        <div className="flex flex-col gap-3">
+                            {/* Search */}
+                            <input
+                                type="text"
+                                placeholder="Search clubs..."
+                                value={search}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
+                                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+
+                            {/* Select all / count */}
+                            <div className="flex items-center justify-between px-1">
+                                <button
+                                    type="button"
+                                    onClick={toggleAll}
+                                    className="text-xs text-primary hover:underline"
+                                >
+                                    {selectedIds.size === filteredClubs.length && filteredClubs.length > 0
+                                        ? "Deselect all"
+                                        : "Select all"}
+                                </button>
+                                <span className="text-xs text-muted-foreground">
+                                    {selectedIds.size} selected
+                                </span>
+                            </div>
+
+                            {/* Club list */}
+                            <div className="flex flex-col gap-1 max-h-64 overflow-y-auto pr-1">
+                                {filteredClubs.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground text-center py-4">No clubs match your search.</p>
+                                ) : (
+                                    filteredClubs.map((c) => {
+                                        const checked = selectedIds.has(c.id);
+                                        return (
+                                            <button
+                                                key={c.id}
+                                                type="button"
+                                                onClick={() => toggleClub(c.id)}
+                                                className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${checked
+                                                        ? "border-primary/40 bg-primary/5"
+                                                        : "border-border hover:bg-muted/40"
+                                                    }`}
+                                            >
+                                                {/* Checkbox indicator */}
+                                                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${checked
+                                                        ? "border-primary bg-primary text-primary-foreground"
+                                                        : "border-muted-foreground/40"
+                                                    }`}>
+                                                    {checked && <Check className="h-3 w-3" />}
+                                                </span>
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="text-sm font-medium truncate">{c.name}</span>
+                                                    {c.shortName && (
+                                                        <span className="text-xs text-muted-foreground">{c.shortName}</span>
+                                                    )}
+                                                </div>
+                                            </button>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
                     )}
+
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-                        <Button onClick={handleAdd} disabled={isSaving || !selectedClubId}>
-                            {isSaving ? "Adding..." : "Add Club"}
+                        <Button
+                            onClick={handleAdd}
+                            disabled={isSaving || selectedIds.size === 0}
+                        >
+                            {isSaving
+                                ? "Adding..."
+                                : selectedIds.size > 0
+                                    ? `Add ${selectedIds.size} Club${selectedIds.size !== 1 ? "s" : ""}`
+                                    : "Add Clubs"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

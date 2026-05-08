@@ -102,61 +102,122 @@ function StatusBadge({ status }: { status: string }) {
     return <Badge variant="secondary">{status}</Badge>;
 }
 
-// ── Picker Dialog ──────────────────────────────────────────────────────────────
+// ── Multi-select Picker Dialog ─────────────────────────────────────────────────
 
-interface PickerDialogProps {
+interface MultiPickerDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     title: string;
     description: string;
     items: Array<{ id: string; label: string; sublabel?: string }>;
-    onSelect: (id: string) => void;
+    onConfirm: (ids: string[]) => void;
 }
 
-function PickerDialog({ open, onOpenChange, title, description, items, onSelect }: PickerDialogProps) {
+function MultiPickerDialog({ open, onOpenChange, title, description, items, onConfirm }: MultiPickerDialogProps) {
     const [search, setSearch] = useState("");
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+
+    // Reset when dialog opens
+    useEffect(() => {
+        if (open) { setSearch(""); setSelected(new Set()); }
+    }, [open]);
 
     const filtered = items.filter((item) =>
         item.label.toLowerCase().includes(search.toLowerCase()) ||
         (item.sublabel?.toLowerCase().includes(search.toLowerCase()) ?? false)
     );
 
-    const handleSelect = (id: string) => {
-        onSelect(id);
-        setSearch("");
+    const toggleItem = (id: string) => {
+        setSelected((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
+
+    const toggleAll = () => {
+        if (selected.size === filtered.length) setSelected(new Set());
+        else setSelected(new Set(filtered.map((i) => i.id)));
+    };
+
+    const handleConfirm = () => {
+        onConfirm(Array.from(selected));
         onOpenChange(false);
     };
 
     return (
-        <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); if (!val) setSearch(""); }}>
+        <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); }}>
             <DialogContent className="max-w-md">
                 <DialogHeader>
                     <DialogTitle>{title}</DialogTitle>
                     <DialogDescription>{description}</DialogDescription>
                 </DialogHeader>
-                <Input
-                    placeholder="Search..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="mb-2"
-                />
-                <div className="max-h-72 overflow-y-auto flex flex-col gap-1">
-                    {filtered.length === 0 ? (
-                        <p className="text-sm text-muted-foreground py-4 text-center">No results found.</p>
-                    ) : (
-                        filtered.map((item) => (
+
+                {items.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-4 text-center">No available items.</p>
+                ) : (
+                    <div className="flex flex-col gap-3">
+                        {/* Search */}
+                        <Input
+                            placeholder="Search..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                        />
+
+                        {/* Select all / count row */}
+                        <div className="flex items-center justify-between px-1">
                             <button
-                                key={item.id}
-                                onClick={() => handleSelect(item.id)}
-                                className="flex flex-col items-start rounded-md px-3 py-2 text-left hover:bg-muted transition-colors"
+                                type="button"
+                                onClick={toggleAll}
+                                className="text-xs text-primary hover:underline"
                             >
-                                <span className="text-sm font-medium">{item.label}</span>
-                                {item.sublabel && (
-                                    <span className="text-xs text-muted-foreground">{item.sublabel}</span>
-                                )}
+                                {selected.size === filtered.length && filtered.length > 0 ? "Deselect all" : "Select all"}
                             </button>
-                        ))
-                    )}
+                            <span className="text-xs text-muted-foreground">{selected.size} selected</span>
+                        </div>
+
+                        {/* Item list */}
+                        <div className="max-h-64 overflow-y-auto flex flex-col gap-1 pr-1">
+                            {filtered.length === 0 ? (
+                                <p className="text-sm text-muted-foreground py-4 text-center">No results found.</p>
+                            ) : (
+                                filtered.map((item) => {
+                                    const checked = selected.has(item.id);
+                                    return (
+                                        <button
+                                            key={item.id}
+                                            type="button"
+                                            onClick={() => toggleItem(item.id)}
+                                            className={`flex items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${checked ? "border-primary/40 bg-primary/5" : "border-border hover:bg-muted/40"
+                                                }`}
+                                        >
+                                            <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${checked ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"
+                                                }`}>
+                                                {checked && (
+                                                    <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
+                                                        <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                                    </svg>
+                                                )}
+                                            </span>
+                                            <div className="flex flex-col min-w-0">
+                                                <span className="text-sm font-medium truncate">{item.label}</span>
+                                                {item.sublabel && (
+                                                    <span className="text-xs text-muted-foreground truncate">{item.sublabel}</span>
+                                                )}
+                                            </div>
+                                        </button>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-2">
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+                    <Button onClick={handleConfirm} disabled={selected.size === 0}>
+                        {selected.size > 0 ? `Add ${selected.size}` : "Add"}
+                    </Button>
                 </div>
             </DialogContent>
         </Dialog>
@@ -251,12 +312,12 @@ export default function SeasonAssignmentsPage() {
         setPendingMEAIds((prev) => prev.filter((mid) => mid !== id));
     };
 
-    const handleAddReferee = (id: string) => {
-        setPendingRefereeIds((prev) => [...prev, id]);
+    const handleAddReferees = (ids: string[]) => {
+        setPendingRefereeIds((prev) => [...prev, ...ids.filter((id) => !prev.includes(id))]);
     };
 
-    const handleAddMEA = (id: string) => {
-        setPendingMEAIds((prev) => [...prev, id]);
+    const handleAddMEAs = (ids: string[]) => {
+        setPendingMEAIds((prev) => [...prev, ...ids.filter((id) => !prev.includes(id))]);
     };
 
     const handleSave = async () => {
@@ -407,7 +468,7 @@ export default function SeasonAssignmentsPage() {
                             disabled={!isSeasonActive}
                         >
                             <Plus className="h-3.5 w-3.5 mr-1" />
-                            Add MEA
+                            Add MEAs
                         </Button>
                     </CardContent>
                 </Card>
@@ -465,7 +526,7 @@ export default function SeasonAssignmentsPage() {
                             disabled={!isSeasonActive}
                         >
                             <Plus className="h-3.5 w-3.5 mr-1" />
-                            Add Referee
+                            Add Referees
                         </Button>
                     </CardContent>
                 </Card>
@@ -481,32 +542,32 @@ export default function SeasonAssignmentsPage() {
                 </Button>
             </div>
 
-            {/* MEA Picker Dialog */}
-            <PickerDialog
+            {/* MEA Multi-Picker Dialog */}
+            <MultiPickerDialog
                 open={pickerOpen === "meas"}
                 onOpenChange={(open) => setPickerOpen(open ? "meas" : null)}
-                title="Add Match Event Admin"
-                description="Select a Match Event Admin to assign to this season."
+                title="Add Match Event Admins"
+                description="Select one or more Match Event Admins to assign to this season."
                 items={availableMEAs.map((u) => ({
                     id: u.id,
                     label: u.fullName,
                     sublabel: u.email,
                 }))}
-                onSelect={handleAddMEA}
+                onConfirm={handleAddMEAs}
             />
 
-            {/* Referee Picker Dialog */}
-            <PickerDialog
+            {/* Referee Multi-Picker Dialog */}
+            <MultiPickerDialog
                 open={pickerOpen === "referees"}
                 onOpenChange={(open) => setPickerOpen(open ? "referees" : null)}
-                title="Add Referee"
-                description="Select a referee to assign to this season."
+                title="Add Referees"
+                description="Select one or more referees to assign to this season."
                 items={availableReferees.map((r) => ({
                     id: r.id,
                     label: `${r.firstName} ${r.lastName}`,
                     sublabel: [r.licenseLevel, r.nationality].filter(Boolean).join(" · ") || undefined,
                 }))}
-                onSelect={handleAddReferee}
+                onConfirm={handleAddReferees}
             />
         </div>
     );
