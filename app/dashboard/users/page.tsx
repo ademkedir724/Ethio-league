@@ -7,6 +7,8 @@ import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
 import { useOrganization } from "@/lib/org-context";
 import { getRoleLabel } from "@/lib/role-labels";
+import { usePaginated } from "@/lib/use-paginated";
+import { Pagination } from "@/components/dashboard/pagination";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -100,17 +102,20 @@ function OrgAdminUsersView() {
   const { getOrganizationId } = useAuth();
   const orgId = getOrganizationId();
 
-  const { data: rawData, isLoading: usersLoading } = useSWR<ApiUser[]>(
-    "/api/users",
-    authFetcher
-  );
-
-  const users: User[] = useMemo(() => (rawData ?? []).map(mapApiUser), [rawData]);
-  const isLoading = orgLoading || usersLoading;
-
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+
+  const { items: rawItems, pagination, setPage, setLimit, isLoading: usersLoading, mutate: mutateUsers } = usePaginated<ApiUser>(
+    "/api/users",
+    {
+      defaultLimit: 20,
+      extraParams: { search: search || undefined },
+    }
+  );
+
+  const users: User[] = useMemo(() => rawItems.map(mapApiUser), [rawItems]);
+  const isLoading = orgLoading || usersLoading;
   const [formOpen, setFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form, setForm] = useState({ fullName: "", email: "", phone: "" });
@@ -128,22 +133,19 @@ function OrgAdminUsersView() {
 
   const filtered = useMemo(() => {
     return orgUsers.filter((u) => {
-      const matchesSearch =
-        u.fullName.toLowerCase().includes(search.toLowerCase()) ||
-        u.email.toLowerCase().includes(search.toLowerCase());
       const matchesRole = roleFilter === "all" || u.roles?.includes(roleFilter);
       const matchesStatus = statusFilter === "all" || u.status === statusFilter;
-      return matchesSearch && matchesRole && matchesStatus;
+      return matchesRole && matchesStatus;
     });
-  }, [orgUsers, search, roleFilter, statusFilter]);
+  }, [orgUsers, roleFilter, statusFilter]);
 
   const stats = useMemo(() => {
     const orgAdmins = orgUsers.filter((u) => u.roles?.includes("ORGANIZATION_ADMIN")).length;
     const leagueAdmins = orgUsers.filter((u) => u.roles?.includes("LEAGUE_ADMIN")).length;
     const clubAdmins = orgUsers.filter((u) => u.roles?.includes("CLUB_ADMIN")).length;
     const matchEventAdmins = orgUsers.filter((u) => u.roles?.includes("MATCH_EVENT_ADMIN")).length;
-    return { total: orgUsers.length, orgAdmins, leagueAdmins, clubAdmins, matchEventAdmins };
-  }, [orgUsers]);
+    return { total: pagination.total, orgAdmins, leagueAdmins, clubAdmins, matchEventAdmins };
+  }, [orgUsers, pagination.total]);
 
   const openCreateMatchEventAdmin = () => {
     setEditingUser(null);
@@ -208,7 +210,7 @@ function OrgAdminUsersView() {
       }
 
       setFormOpen(false);
-      mutate("/api/users");
+      mutateUsers();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Operation failed");
     } finally {
@@ -231,7 +233,7 @@ function OrgAdminUsersView() {
       }
 
       toast.success(`User ${newStatus === "active" ? "activated" : "deactivated"}`);
-      mutate("/api/users");
+      mutateUsers();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Operation failed");
     }

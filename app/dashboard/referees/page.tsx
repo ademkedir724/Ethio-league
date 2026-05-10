@@ -7,6 +7,8 @@ import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
 import { useOrganization } from "@/lib/org-context";
 import { usePermissions } from "@/lib/use-permissions";
+import { usePaginated } from "@/lib/use-paginated";
+import { Pagination } from "@/components/dashboard/pagination";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -138,20 +140,22 @@ export default function RefereesPage() {
     ? `/api/referees?organizationId=${orgId}`
     : "/api/referees";
 
-  const { data, isLoading: refereesLoading } = useSWR(apiUrl, authFetcher, {
-    fallbackData: mockReferees,
-    onError: () => { },
-  });
+  const [search, setSearch] = useState("");
+  const [licenseFilter, setLicenseFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
 
-  const referees: Referee[] = data || mockReferees;
+  const { items: referees, pagination, setPage, setLimit, isLoading: refereesLoading, mutate: mutateReferees } = usePaginated<Referee>(
+    apiUrl,
+    {
+      defaultLimit: 20,
+      extraParams: { search: search || undefined },
+    }
+  );
   const isLoading = orgLoading || refereesLoading;
 
   // Org admin: full CRUD, Super admin: view-only
   const canEdit = isOrgAdmin() ? canManage("referees") : false;
 
-  const [search, setSearch] = useState("");
-  const [licenseFilter, setLicenseFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [formOpen, setFormOpen] = useState(false);
   const [editingRef, setEditingRef] = useState<Referee | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Referee | null>(null);
@@ -161,23 +165,19 @@ export default function RefereesPage() {
 
   const filtered = useMemo(() => {
     return referees.filter((r) => {
-      const fullName = `${r.firstName} ${r.lastName}`.toLowerCase();
-      const matchesSearch =
-        fullName.includes(search.toLowerCase()) ||
-        r.region.toLowerCase().includes(search.toLowerCase());
       const matchesLicense = licenseFilter === "all" || r.licenseLevel === licenseFilter;
       const matchesStatus = statusFilter === "all" || r.status === statusFilter;
-      return matchesSearch && matchesLicense && matchesStatus;
+      return matchesLicense && matchesStatus;
     });
-  }, [referees, search, licenseFilter, statusFilter]);
+  }, [referees, licenseFilter, statusFilter]);
 
   const stats = useMemo(() => {
-    const total = referees.length;
+    const total = pagination.total;
     const active = referees.filter((r) => r.status === "active").length;
     const fifa = referees.filter((r) => r.licenseLevel === "FIFA").length;
     const totalMatches = referees.reduce((s, r) => s + r.matchesOfficiated, 0);
     return { total, active, fifa, totalMatches };
-  }, [referees]);
+  }, [referees, pagination.total]);
 
   const openCreate = () => {
     setEditingRef(null);
@@ -248,7 +248,7 @@ export default function RefereesPage() {
       }
 
       setFormOpen(false);
-      mutate(apiUrl);
+      mutateReferees();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Operation failed");
     } finally {
@@ -272,7 +272,7 @@ export default function RefereesPage() {
 
       toast.success("Referee deleted successfully");
       setDeleteTarget(null);
-      mutate(apiUrl);
+      mutateReferees();
     } catch {
       toast.error("Failed to delete referee");
     } finally {
@@ -295,7 +295,7 @@ export default function RefereesPage() {
       }
 
       toast.success(`Referee ${newStatus === "active" ? "activated" : "deactivated"}`);
-      mutate(apiUrl);
+      mutateReferees();
     } catch {
       toast.error("Failed to update referee status");
     }
@@ -458,7 +458,7 @@ export default function RefereesPage() {
         data={filtered}
         isLoading={isLoading}
         searchValue={search}
-        onSearchChange={setSearch}
+        onSearchChange={(v) => { setSearch(v); setPage(1); }}
         searchPlaceholder="Search referees..."
         emptyMessage="No referees found."
         filterSlot={
@@ -488,6 +488,14 @@ export default function RefereesPage() {
             </Select>
           </div>
         }
+      />
+      <Pagination
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        limit={pagination.limit}
+        onPageChange={setPage}
+        onLimitChange={setLimit}
       />
 
       {/* Create / Edit Dialog */}

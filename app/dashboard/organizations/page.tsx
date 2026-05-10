@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
 import { useOrganization } from "@/lib/org-context";
+import { usePaginated } from "@/lib/use-paginated";
+import { Pagination } from "@/components/dashboard/pagination";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -409,15 +411,19 @@ function OrgAdminOrganizationsView() {
 // Full organizations management with approve/reject capabilities
 
 function SuperAdminOrganizationsView() {
-  const { data, isLoading } = useSWR<Organization[]>(
-    "/api/organizations",
-    authFetcher
-  );
-
-  const organizations: Organization[] = data || [];
-
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+
+  const { items: organizations, pagination, setPage, setLimit, isLoading, mutate: mutateOrgs } = usePaginated<Organization>(
+    "/api/organizations",
+    {
+      defaultLimit: 15,
+      extraParams: {
+        search: search || undefined,
+        status: statusFilter !== "all" ? statusFilter : undefined,
+      },
+    }
+  );
   const [viewingOrg, setViewingOrg] = useState<Organization | null>(null);
   const [approveTarget, setApproveTarget] = useState<Organization | null>(null);
   const [rejectTarget, setRejectTarget] = useState<Organization | null>(null);
@@ -436,17 +442,7 @@ function SuperAdminOrganizationsView() {
     [organizations]
   );
 
-  const filtered = useMemo(() => {
-    return organizations.filter((org) => {
-      const matchesSearch =
-        org.name.toLowerCase().includes(search.toLowerCase()) ||
-        org.city?.toLowerCase().includes(search.toLowerCase()) ||
-        org.country?.toLowerCase().includes(search.toLowerCase());
-      const matchesStatus =
-        statusFilter === "all" || org.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-  }, [organizations, search, statusFilter]);
+  const filtered = organizations;
 
   const stats = useMemo(() => {
     const active = organizations.filter(
@@ -456,8 +452,8 @@ function SuperAdminOrganizationsView() {
     const rejected = organizations.filter(
       (o) => o.status === "rejected"
     ).length;
-    return { total: organizations.length, active, pending, rejected };
-  }, [organizations]);
+    return { total: pagination.total, active, pending, rejected };
+  }, [organizations, pagination.total]);
 
   const handleApprove = async () => {
     if (!approveTarget) return;
@@ -486,7 +482,7 @@ function SuperAdminOrganizationsView() {
       }
 
       toast.success(`Organization "${approveTarget.name}" has been approved`);
-      mutate("/api/organizations");
+      mutateOrgs();
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to approve organization"
@@ -517,7 +513,7 @@ function SuperAdminOrganizationsView() {
       }
 
       toast.success(`Organization "${rejectTarget.name}" has been rejected`);
-      mutate("/api/organizations");
+      mutateOrgs();
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to reject organization"
@@ -713,14 +709,14 @@ function SuperAdminOrganizationsView() {
         <TabsContent value="all">
           <DataTable
             columns={columns}
-            data={filtered}
+            data={organizations}
             isLoading={isLoading}
             searchValue={search}
-            onSearchChange={setSearch}
+            onSearchChange={(v) => { setSearch(v); setPage(1); }}
             searchPlaceholder="Search organizations..."
             emptyMessage="No organizations found."
             filterSlot={
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
                 <SelectTrigger className="w-36">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -732,6 +728,14 @@ function SuperAdminOrganizationsView() {
                 </SelectContent>
               </Select>
             }
+          />
+          <Pagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            total={pagination.total}
+            limit={pagination.limit}
+            onPageChange={setPage}
+            onLimitChange={setLimit}
           />
         </TabsContent>
 

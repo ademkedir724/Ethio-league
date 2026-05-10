@@ -5,6 +5,8 @@ import useSWR, { mutate } from "swr";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
 import { usePermissions } from "@/lib/use-permissions";
+import { usePaginated } from "@/lib/use-paginated";
+import { Pagination } from "@/components/dashboard/pagination";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -110,10 +112,16 @@ function ClubAdminPlayersView() {
   const { getClubId } = useAuth();
   const clubId = getClubId();
 
-  // All permanent players for this club
-  const { data: allPlayers, isLoading: playersLoading, error } = useSWR<Player[]>(
+  const [search, setSearch] = useState("");
+  const [selectedSeasonId, setSelectedSeasonId] = useState<string>("unassigned");
+
+  // All permanent players for this club (paginated)
+  const { items: allPlayers, pagination, setPage, setLimit, isLoading: playersLoading, error, mutate: mutatePlayers } = usePaginated<Player>(
     "/api/players",
-    authFetcher
+    {
+      defaultLimit: 20,
+      extraParams: { search: search || undefined },
+    }
   );
 
   // Club details to get seasons
@@ -127,8 +135,6 @@ function ClubAdminPlayersView() {
     [clubDetail]
   );
 
-  const [selectedSeasonId, setSelectedSeasonId] = useState<string>("unassigned");
-  const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Player | null>(null);
@@ -143,27 +149,13 @@ function ClubAdminPlayersView() {
 
   const permanentPlayers: Player[] = allPlayers ?? [];
 
-  // IDs of players assigned to ANY season
-  const assignedPlayerIds = useMemo(() => {
-    // We don't have a cross-season list easily, so we track per-season
-    return new Set((seasonPlayers ?? []).map((scp) => scp.player.id));
-  }, [seasonPlayers]);
-
-  // Unassigned = permanent players not in the selected season (or all if "unassigned" tab)
+  // Display players: either paginated permanent list or season-specific list
   const displayPlayers = useMemo(() => {
     if (selectedSeasonId === "unassigned") {
       return permanentPlayers;
     }
-    // Show season players
     return (seasonPlayers ?? []).map((scp) => scp.player);
   }, [selectedSeasonId, permanentPlayers, seasonPlayers]);
-
-  const filtered = useMemo(() => {
-    return displayPlayers.filter((p) => {
-      const fullName = `${p.firstName} ${p.lastName}`.toLowerCase();
-      return fullName.includes(search.toLowerCase());
-    });
-  }, [displayPlayers, search]);
 
   const openCreate = () => {
     setEditingPlayer(null);
@@ -238,7 +230,7 @@ function ClubAdminPlayersView() {
       }
 
       toast.success(editingPlayer ? "Player updated" : "Player created");
-      mutate("/api/players");
+      mutatePlayers();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
       throw err;
@@ -257,7 +249,7 @@ function ClubAdminPlayersView() {
       }
       toast.success("Player deleted");
       setDeleteTarget(null);
-      mutate("/api/players");
+      mutatePlayers();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
     }
@@ -359,7 +351,7 @@ function ClubAdminPlayersView() {
       )}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <StatCard title="Total Players" value={permanentPlayers.length} icon={UserCircle} />
+        <StatCard title="Total Players" value={pagination.total} icon={UserCircle} />
         <StatCard title="Active" value={permanentPlayers.filter((p) => p.status === "active").length} icon={UserCircle} />
         <StatCard title="Seasons" value={seasons.length} icon={UserCircle} description="Participated" />
       </div>
@@ -383,10 +375,10 @@ function ClubAdminPlayersView() {
         <TabsContent value={selectedSeasonId}>
           <DataTable
             columns={columns}
-            data={filtered}
+            data={displayPlayers}
             isLoading={isLoading}
             searchValue={search}
-            onSearchChange={setSearch}
+            onSearchChange={(v) => { setSearch(v); setPage(1); }}
             searchPlaceholder="Search players..."
             emptyMessage={
               selectedSeasonId === "unassigned"
@@ -394,6 +386,16 @@ function ClubAdminPlayersView() {
                 : "No players assigned to this season."
             }
           />
+          {selectedSeasonId === "unassigned" && (
+            <Pagination
+              page={pagination.page}
+              totalPages={pagination.totalPages}
+              total={pagination.total}
+              limit={pagination.limit}
+              onPageChange={setPage}
+              onLimitChange={setLimit}
+            />
+          )}
         </TabsContent>
       </Tabs>
 
@@ -465,7 +467,7 @@ function ClubAdminPlayersView() {
                       body: JSON.stringify({ photoUrl: url }),
                     });
                     if (!res.ok) throw new Error("Failed to update photo");
-                    mutate("/api/players");
+                    mutatePlayers();
                     toast.success("Photo updated");
                   } catch {
                     toast.error("Failed to save photo");
@@ -615,8 +617,11 @@ function PlayerDetailDialog({ player, open, onClose }: { player: PlayerWithHisto
 }
 
 function ReadOnlyPlayersView() {
-  const { data: players, isLoading, error } = useSWR<PlayerWithHistory[]>("/api/players", authFetcher);
   const [search, setSearch] = useState("");
+  const { items: players, pagination, setPage, setLimit, isLoading, error } = usePaginated<PlayerWithHistory>(
+    "/api/players",
+    { defaultLimit: 20, extraParams: { search: search || undefined } }
+  );
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerWithHistory | null>(null);
 
   // System-wide search
@@ -626,12 +631,6 @@ function ReadOnlyPlayersView() {
     systemQuery.length >= 2 ? `/api/players?scope=system&search=${encodeURIComponent(systemQuery)}` : null,
     authFetcher
   );
-
-  const filtered = useMemo(() => {
-    return (players ?? []).filter((p) =>
-      `${p.firstName} ${p.lastName}`.toLowerCase().includes(search.toLowerCase())
-    );
-  }, [players, search]);
 
   const columns: Column<Player>[] = [
     {
@@ -710,12 +709,20 @@ function ReadOnlyPlayersView() {
         <TabsContent value="scoped" className="mt-4">
           <DataTable
             columns={columns}
-            data={filtered}
+            data={players}
             isLoading={isLoading}
             searchValue={search}
-            onSearchChange={setSearch}
+            onSearchChange={(v) => { setSearch(v); setPage(1); }}
             searchPlaceholder="Search players..."
             emptyMessage="No players found."
+          />
+          <Pagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            total={pagination.total}
+            limit={pagination.limit}
+            onPageChange={setPage}
+            onLimitChange={setLimit}
           />
         </TabsContent>
 
@@ -761,8 +768,11 @@ function ReadOnlyPlayersView() {
 
 function LeagueAdminPlayersView() {
   // Org-scoped players (API already filters by leagueId for league_admin)
-  const { data: leaguePlayers, isLoading, error } = useSWR<PlayerWithHistory[]>("/api/players", authFetcher);
   const [search, setSearch] = useState("");
+  const { items: leaguePlayers, pagination, setPage, setLimit, isLoading, error } = usePaginated<PlayerWithHistory>(
+    "/api/players",
+    { defaultLimit: 20, extraParams: { search: search || undefined } }
+  );
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerWithHistory | null>(null);
 
   // System-wide search
@@ -772,11 +782,6 @@ function LeagueAdminPlayersView() {
     systemQuery.length >= 2 ? `/api/players?scope=system&search=${encodeURIComponent(systemQuery)}` : null,
     authFetcher
   );
-
-  const filtered = useMemo(() =>
-    (leaguePlayers ?? []).filter((p) =>
-      `${p.firstName} ${p.lastName}`.toLowerCase().includes(search.toLowerCase())
-    ), [leaguePlayers, search]);
 
   const columns: Column<Player>[] = [
     {
@@ -855,12 +860,20 @@ function LeagueAdminPlayersView() {
         <TabsContent value="league" className="mt-4">
           <DataTable
             columns={columns}
-            data={filtered}
+            data={leaguePlayers}
             isLoading={isLoading}
             searchValue={search}
-            onSearchChange={setSearch}
+            onSearchChange={(v) => { setSearch(v); setPage(1); }}
             searchPlaceholder="Search players..."
             emptyMessage="No players found in your league."
+          />
+          <Pagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            total={pagination.total}
+            limit={pagination.limit}
+            onPageChange={setPage}
+            onLimitChange={setLimit}
           />
         </TabsContent>
 
