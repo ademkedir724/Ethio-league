@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
             });
 
             // Fire-and-forget — don't block the response on email delivery
-            sendPasswordResetEmail(user.email, token).catch((err) =>
+            sendPasswordResetEmail(user.email, token, req).catch((err) =>
                 console.error("[email] Failed to send password reset email:", err)
             );
         }
