@@ -5,12 +5,16 @@
  * Environment variables:
  *   RESEND_API_KEY          — Resend API key (get one free at resend.com)
  *   SMTP_FROM               — sender address, e.g. "Ethio League <noreply@yourdomain.com>"
- *   NEXT_PUBLIC_APP_URL     — base URL of the app (used to build links)
+ *   NEXT_PUBLIC_APP_URL     — base URL of the app (used to build links).
+ *                             Set this in production. In local dev it is
+ *                             derived automatically from the incoming request.
  *
  * For local dev without email config, all functions log the link to the
  * console and return silently — the API response includes the link as a
  * fallback so the dev dropbox still works.
  */
+
+import type { NextRequest } from "next/server";
 
 const RESEND_API = "https://api.resend.com/emails";
 
@@ -18,8 +22,39 @@ function getConfig() {
   return {
     apiKey: process.env.RESEND_API_KEY,
     from: process.env.SMTP_FROM || "Ethio League <noreply@ethioleague.com>",
-    appUrl: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
   };
+}
+
+/**
+ * Resolves the base URL of the application.
+ *
+ * Priority:
+ *  1. `NEXT_PUBLIC_APP_URL` env var  — always wins (set this in production)
+ *  2. `origin` header from the incoming request — correct in local dev
+ *  3. `host` header from the incoming request — fallback
+ *  4. `http://localhost:3000` — last resort
+ */
+export function getAppUrl(req?: NextRequest | Request): string {
+  // 1. Explicit env var (production / staging)
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
+  }
+
+  // 2 & 3. Derive from the incoming request headers
+  if (req) {
+    const origin = req.headers.get("origin");
+    if (origin) return origin.replace(/\/$/, "");
+
+    const host = req.headers.get("host");
+    if (host) {
+      // host may be "localhost:3000" or "myapp.vercel.app"
+      const protocol = host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
+      return `${protocol}://${host}`;
+    }
+  }
+
+  // 4. Last resort
+  return "http://localhost:3000";
 }
 
 async function sendEmail(to: string, subject: string, html: string, text: string): Promise<void> {
@@ -45,8 +80,12 @@ async function sendEmail(to: string, subject: string, html: string, text: string
   }
 }
 
-export async function sendPasswordSetupEmail(to: string, token: string): Promise<void> {
-  const { appUrl } = getConfig();
+export async function sendPasswordSetupEmail(
+  to: string,
+  token: string,
+  req?: NextRequest | Request
+): Promise<void> {
+  const appUrl = getAppUrl(req);
   const setupUrl = `${appUrl}/set-password?token=${token}`;
 
   console.log(`[email] Password setup link for ${to}: ${setupUrl}`);
@@ -71,8 +110,12 @@ export async function sendPasswordSetupEmail(to: string, token: string): Promise
   );
 }
 
-export async function sendPasswordResetEmail(to: string, token: string): Promise<void> {
-  const { appUrl } = getConfig();
+export async function sendPasswordResetEmail(
+  to: string,
+  token: string,
+  req?: NextRequest | Request
+): Promise<void> {
+  const appUrl = getAppUrl(req);
   const resetUrl = `${appUrl}/reset-password?token=${token}`;
 
   console.log(`[email] Password reset link for ${to}: ${resetUrl}`);

@@ -8,7 +8,7 @@ import {
   forbidden,
   serverError,
 } from "@/lib/api-helpers";
-import { sendPasswordSetupEmail } from "@/lib/email";
+import { sendPasswordSetupEmail, getAppUrl } from "@/lib/email";
 import { logAudit } from "@/lib/audit";
 import { NextResponse } from "next/server";
 
@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
       if (existing) return badRequest("A user with this email already exists");
 
       const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const appUrl = getAppUrl(req);
 
       const result = await prisma.$transaction(async (tx) => {
         const user = await tx.user.create({
@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
       // Send setup email (non-blocking failure returns link in response)
       const passwordSetupLink = `${appUrl}/set-password?token=${token}`;
       try {
-        await sendPasswordSetupEmail(email, token);
+        await sendPasswordSetupEmail(email, token, req);
       } catch {
         // email not configured — return link in response for dev
       }

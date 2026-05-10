@@ -4,7 +4,7 @@ import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, created, badRequest, forbidden, serverError } from "@/lib/api-helpers";
 import { assertLeagueScope } from "@/lib/scope-guard";
-import { sendPasswordSetupEmail } from "@/lib/email";
+import { sendPasswordSetupEmail, getAppUrl } from "@/lib/email";
 import { logAudit } from "@/lib/audit";
 
 // GET /api/clubs — list clubs (scope-filtered by role)
@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
 
       // Send password setup email
       try {
-        await sendPasswordSetupEmail(adminEmail, token);
+        await sendPasswordSetupEmail(adminEmail, token, req);
       } catch (emailErr) {
         await logAudit({
           userId: auth.userId,
@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
         // Notification failure must not break the response
       }
 
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const appUrl = getAppUrl(req);
       return created({ club: newClub, adminSetupLink: `${appUrl}/set-password?token=${token}`, user: { id: newUser.id, email: newUser.email } });
     }
 
