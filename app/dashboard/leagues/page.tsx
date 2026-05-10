@@ -5,6 +5,8 @@ import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
+import { usePaginated } from "@/lib/use-paginated";
+import { Pagination } from "@/components/dashboard/pagination";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,14 +104,22 @@ export default function LeaguesPage() {
     return <ClubAdminLeaguesView />;
   }
 
-  const { data: leaguesData, isLoading, error } = useSWR<League[]>("/api/leagues", authFetcher);
-  const { data: leagueTypesData } = useSWR<LeagueType[]>("/api/seasons/league-types", authFetcher);
-
-  const leagues: League[] = leaguesData ?? [];
-  const leagueTypes: LeagueType[] = leagueTypesData ?? [];
-
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+
+  const { items: leagues, pagination, setPage, setLimit, isLoading, error, mutate: mutateLeagues } = usePaginated<League>(
+    "/api/leagues",
+    {
+      defaultLimit: 15,
+      extraParams: {
+        search: search || undefined,
+        status: statusFilter !== "all" ? statusFilter : undefined,
+      },
+    }
+  );
+  const { data: leagueTypesData } = useSWR<LeagueType[]>("/api/seasons/league-types", authFetcher);
+  const leagueTypes: LeagueType[] = leagueTypesData ?? [];
+
   const [formOpen, setFormOpen] = useState(false);
   const [editingLeague, setEditingLeague] = useState<League | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<League | null>(null);
@@ -119,13 +129,7 @@ export default function LeaguesPage() {
   const [setupLink, setSetupLink] = useState<string | null>(null);
   const [setupLinkEmail, setSetupLinkEmail] = useState<string>("");
 
-  const filtered = useMemo(() => {
-    return leagues.filter((l) => {
-      const matchesSearch = l.name.toLowerCase().includes(search.toLowerCase());
-      const matchesStatus = statusFilter === "all" || l.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-  }, [leagues, search, statusFilter]);
+  const filtered = leagues;
 
   const openCreate = () => {
     setEditingLeague(null);
@@ -210,7 +214,7 @@ export default function LeaguesPage() {
 
       toast.success(editingLeague ? "League updated" : "League created");
       setFormOpen(false);
-      mutate("/api/leagues");
+      mutateLeagues();
     } catch {
       toast.error("Something went wrong");
     } finally {
@@ -229,7 +233,7 @@ export default function LeaguesPage() {
       }
       toast.success("League deleted");
       setDeleteTarget(null);
-      mutate("/api/leagues");
+      mutateLeagues();
     } catch {
       toast.error("Failed to delete league");
     }
@@ -257,10 +261,10 @@ export default function LeaguesPage() {
         <Input
           placeholder="Search leagues..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           className="w-64"
         />
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
           <SelectTrigger className="w-36">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
@@ -293,7 +297,7 @@ export default function LeaguesPage() {
       ) : (
         <>
           <p className="text-xs text-muted-foreground -mt-2">
-            {filtered.length} league{filtered.length !== 1 ? "s" : ""}
+            {pagination.total} league{pagination.total !== 1 ? "s" : ""}
             {" · "}
             {filtered.filter((l) => l.status === "active").length} active
           </p>
@@ -309,6 +313,14 @@ export default function LeaguesPage() {
               />
             ))}
           </div>
+          <Pagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            total={pagination.total}
+            limit={pagination.limit}
+            onPageChange={setPage}
+            onLimitChange={setLimit}
+          />
         </>
       )}
 

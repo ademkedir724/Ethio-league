@@ -6,6 +6,8 @@ import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
 import { useOrganization } from "@/lib/org-context";
 import { usePermissions } from "@/lib/use-permissions";
+import { usePaginated } from "@/lib/use-paginated";
+import { Pagination } from "@/components/dashboard/pagination";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -87,20 +89,26 @@ export default function MatchesPage() {
   // Build API URL based on role — matches API filters by role server-side
   const apiUrl = "/api/matches";
 
-  const { data, isLoading: matchesLoading, error } = useSWR(apiUrl, authFetcher, {
-    fallbackData: undefined,
-  });
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [leagueFilter, setLeagueFilter] = useState("all");
 
-  const matches: Match[] = data || [];
+  const { items: matches, pagination, setPage, setLimit, isLoading: matchesLoading, error, mutate: mutateMatches } = usePaginated<Match>(
+    apiUrl,
+    {
+      defaultLimit: 20,
+      extraParams: {
+        search: search || undefined,
+        status: statusFilter !== "all" ? statusFilter : undefined,
+      },
+    }
+  );
   const isLoading = orgLoading || matchesLoading;
 
   // Org admin is strictly view-only for matches
   // Only league admin and match event admin can manage matches
   const canEdit = canManage("matches") && !isOrgAdmin();
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [leagueFilter, setLeagueFilter] = useState("all");
   const [formOpen, setFormOpen] = useState(false);
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Match | null>(null);
@@ -114,25 +122,17 @@ export default function MatchesPage() {
 
   const filtered = useMemo(() => {
     return matches.filter((m) => {
-      const home = m.homeClub?.name ?? "";
-      const away = m.awayClub?.name ?? "";
-      const stadium = m.stadium?.name ?? "";
-      const matchesSearch =
-        home.toLowerCase().includes(search.toLowerCase()) ||
-        away.toLowerCase().includes(search.toLowerCase()) ||
-        stadium.toLowerCase().includes(search.toLowerCase());
-      const matchesStatus = statusFilter === "all" || m.status === statusFilter;
       const matchesLeague = leagueFilter === "all" || (m.season?.name ?? "") === leagueFilter;
-      return matchesSearch && matchesStatus && matchesLeague;
+      return matchesLeague;
     });
-  }, [matches, search, statusFilter, leagueFilter]);
+  }, [matches, leagueFilter]);
 
   const stats = useMemo(() => {
     const completed = matches.filter((m) => m.status === "completed").length;
     const live = matches.filter((m) => m.status === "live").length;
     const upcoming = matches.filter((m) => m.status === "upcoming" || m.status === "scheduled").length;
-    return { total: matches.length, completed, live, upcoming };
-  }, [matches]);
+    return { total: pagination.total, completed, live, upcoming };
+  }, [matches, pagination.total]);
 
   const openCreate = () => {
     setEditingMatch(null);
@@ -180,7 +180,7 @@ export default function MatchesPage() {
         return;
       }
       toast.success("Fixtures generated successfully");
-      mutate(apiUrl);
+      mutateMatches();
     } catch {
       toast.error("Failed to generate fixtures");
     }
@@ -198,7 +198,7 @@ export default function MatchesPage() {
         return;
       }
       toast.success("Match started");
-      mutate(apiUrl);
+      mutateMatches();
     } catch {
       toast.error("Failed to start match");
     }
@@ -216,7 +216,7 @@ export default function MatchesPage() {
         return;
       }
       toast.success("Match ended");
-      mutate(apiUrl);
+      mutateMatches();
     } catch {
       toast.error("Failed to end match");
     }
@@ -238,7 +238,7 @@ export default function MatchesPage() {
         return;
       }
       toast.success("Match updated");
-      mutate(apiUrl);
+      mutateMatches();
     } catch {
       toast.error("Failed to update match");
     }
@@ -256,7 +256,7 @@ export default function MatchesPage() {
         return;
       }
       toast.success("Match deleted");
-      mutate(apiUrl);
+      mutateMatches();
     } catch {
       toast.error("Failed to delete match");
     }
@@ -486,12 +486,12 @@ export default function MatchesPage() {
         data={filtered}
         isLoading={isLoading}
         searchValue={search}
-        onSearchChange={setSearch}
+        onSearchChange={(v) => { setSearch(v); setPage(1); }}
         searchPlaceholder="Search matches..."
         emptyMessage="No matches found."
         filterSlot={
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={leagueFilter} onValueChange={setLeagueFilter}>
+            <Select value={leagueFilter} onValueChange={(v) => { setLeagueFilter(v); setPage(1); }}>
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="League" />
               </SelectTrigger>
@@ -504,7 +504,7 @@ export default function MatchesPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
               <SelectTrigger className="w-32">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
@@ -520,6 +520,14 @@ export default function MatchesPage() {
             </Select>
           </div>
         }
+      />
+      <Pagination
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        limit={pagination.limit}
+        onPageChange={setPage}
+        onLimitChange={setLimit}
       />
 
       {/* Create / Edit Dialog (only shown if canEdit) */}

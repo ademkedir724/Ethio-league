@@ -2,10 +2,12 @@
 
 import { useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import useSWR, { mutate } from "swr";
+import useSWR from "swr";
 import { toast } from "sonner";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
+import { usePaginated } from "@/lib/use-paginated";
+import { Pagination } from "@/components/dashboard/pagination";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -125,14 +127,18 @@ export default function LeagueSeasonsPage() {
         authFetcher
     );
 
-    // Fetch seasons for this league
+    // Fetch seasons for this league (paginated)
     const {
-        data: seasons,
+        items: seasons,
+        pagination,
+        setPage,
+        setLimit,
         isLoading: seasonsLoading,
         error,
-    } = useSWR<Season[]>(
+        mutate: mutateSeasons,
+    } = usePaginated<Season>(
         leagueId ? `/api/leagues/${leagueId}/seasons` : null,
-        authFetcher
+        { defaultLimit: 20 }
     );
 
     const isLoading = leagueLoading || seasonsLoading;
@@ -231,7 +237,7 @@ export default function LeagueSeasonsPage() {
             toast.success(editingSeason ? "Season updated" : "Season created");
             setActivationErrors([]);
             setFormOpen(false);
-            mutate(`/api/leagues/${leagueId}/seasons`);
+            mutateSeasons();
         } catch {
             toast.error("Something went wrong");
         } finally {
@@ -252,7 +258,7 @@ export default function LeagueSeasonsPage() {
             }
             toast.success("Season deleted");
             setDeleteTarget(null);
-            mutate(`/api/leagues/${leagueId}/seasons`);
+            mutateSeasons();
         } catch {
             toast.error("Failed to delete season");
         }
@@ -317,6 +323,14 @@ export default function LeagueSeasonsPage() {
                             isLast={index === seasons.length - 1}
                         />
                     ))}
+                    <Pagination
+                        page={pagination.page}
+                        totalPages={pagination.totalPages}
+                        total={pagination.total}
+                        limit={pagination.limit}
+                        onPageChange={setPage}
+                        onLimitChange={setLimit}
+                    />
                 </div>
             )}
 
