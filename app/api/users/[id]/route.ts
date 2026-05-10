@@ -92,14 +92,38 @@ export async function PATCH(
         allowedFields = ["status"];
       }
     } else if (isOrgAdmin) {
-      // org_admin can only edit league_admin and match_event_admin users in their org
+      // org_admin can edit league_admin, club_admin, and match_event_admin users in their org
       const orgId = auth.roles.find((r) => r.roleName === "organization_admin")?.organizationId;
-      const targetInOrg = targetUser.userRoleScopes.some((s) => s.organizationId === orgId);
-      const targetIsEditable =
-        targetRoles.includes("league_admin") || targetRoles.includes("match_event_admin");
-      if (orgId && targetInOrg && targetIsEditable) {
-        canEdit = true;
-        allowedFields = ["fullName", "phone", "status"];
+      if (orgId) {
+        const targetIsEditable =
+          targetRoles.includes("league_admin") ||
+          targetRoles.includes("club_admin") ||
+          targetRoles.includes("match_event_admin");
+
+        if (targetIsEditable) {
+          // Check if target is scoped to this org directly (league_admin, match_event_admin)
+          const inOrgDirect = targetUser.userRoleScopes.some((s) => s.organizationId === orgId);
+
+          // For club_admin: check if their club belongs to a season in a league under this org
+          let inOrgViaClub = false;
+          if (!inOrgDirect && targetRoles.includes("club_admin")) {
+            const clubScope = targetUser.userRoleScopes.find((s) => s.role.name === "club_admin" && s.clubId);
+            if (clubScope?.clubId) {
+              const seasonClub = await prisma.seasonClub.findFirst({
+                where: {
+                  clubId: clubScope.clubId,
+                  season: { league: { organizationId: orgId } },
+                },
+              });
+              inOrgViaClub = !!seasonClub;
+            }
+          }
+
+          if (inOrgDirect || inOrgViaClub) {
+            canEdit = true;
+            allowedFields = ["fullName", "phone", "status"];
+          }
+        }
       }
     } else if (isLeagueAdmin) {
       // league_admin can only edit club_admin users scoped to their league's clubs
@@ -141,18 +165,38 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/users/:id — super_admin only
+// DELETE /api/users/:id — super_admin or organization_admin (own org users only)
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireAuth(req, ["super_admin"]);
+    const auth = await requireAuth(req, ["super_admin", "organization_admin"]);
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;
     const id = parseUUID(idStr);
     if (!id) return badRequest("Invalid user ID");
+
+    // org_admin can only delete users scoped to their organization
+    const isOrgAdmin = auth.roles.some((r) => r.roleName === "organization_admin");
+    if (isOrgAdmin) {
+      const orgId = auth.roles.find((r) => r.roleName === "organization_admin")?.organizationId;
+      const targetUser = await prisma.user.findUnique({
+        where: { id },
+        include: { userRoleScopes: true },
+      });
+      if (!targetUser) return notFound("User not found");
+      const inOrg = targetUser.userRoleScopes.some((s) => s.organizationId === orgId);
+      if (!inOrg) return forbidden("You can only delete users in your organization");
+      // Prevent org_admin from deleting themselves or other org_admins
+      const targetRoles = await prisma.userRoleScope.findMany({
+        where: { userId: id },
+        include: { role: true },
+      });
+      const isTargetOrgAdmin = targetRoles.some((s) => s.role.name === "organization_admin");
+      if (isTargetOrgAdmin) return forbidden("Cannot delete another organization admin");
+    }
 
     await prisma.user.delete({ where: { id } });
     return success({ message: "User deleted" });
