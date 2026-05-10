@@ -1,19 +1,22 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { success, created, badRequest, serverError } from "@/lib/api-helpers";
+import { success, created, badRequest, serverError, parsePagination, paginated } from "@/lib/api-helpers";
 
 // GET /api/players — list players (scope-filtered by role)
 // ?search=<name>  — name filter
 // ?scope=system   — bypass role scope, search all players system-wide (any role)
 // ?scope=club     — explicit club pool (default for club_admin)
+// ?page=1&limit=20
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req);
     if (isAuthError(auth)) return auth;
 
-    const searchQuery = req.nextUrl.searchParams.get("search")?.trim();
-    const scopeParam = req.nextUrl.searchParams.get("scope");
+    const sp = req.nextUrl.searchParams;
+    const searchQuery = sp.get("search")?.trim();
+    const scopeParam = sp.get("scope");
+    const { page, limit, skip } = parsePagination(sp);
 
     const where: Record<string, unknown> = {};
 
@@ -21,20 +24,17 @@ export async function GET(req: NextRequest) {
     const isOrgAdmin = auth.roles.some((r) => r.roleName === "organization_admin");
     const isLeagueAdmin = auth.roles.some((r) => r.roleName === "league_admin");
 
-    // scope=system bypasses all role filters — any role can search system-wide
     const isSystemSearch =
       scopeParam === "system" ||
       (isClubAdmin && searchQuery && scopeParam !== "club");
 
     if (isSystemSearch) {
-      // System-wide search — no scope filter, just name match
       if (searchQuery) {
         where.OR = [
           { firstName: { contains: searchQuery, mode: "insensitive" } },
           { lastName: { contains: searchQuery, mode: "insensitive" } },
         ];
       }
-      // If no search query with scope=system, return all (super_admin use case)
     } else if (isClubAdmin) {
       const clubId = auth.roles.find((r) => r.roleName === "club_admin")?.clubId;
       if (clubId) {
@@ -52,12 +52,7 @@ export async function GET(req: NextRequest) {
         if (searchQuery) {
           where.AND = [
             { seasonClubPlayers: { some: { seasonClub: { season: { leagueId } } } } },
-            {
-              OR: [
-                { firstName: { contains: searchQuery, mode: "insensitive" } },
-                { lastName: { contains: searchQuery, mode: "insensitive" } },
-              ],
-            },
+            { OR: [{ firstName: { contains: searchQuery, mode: "insensitive" } }, { lastName: { contains: searchQuery, mode: "insensitive" } }] },
           ];
         } else {
           where.seasonClubPlayers = { some: { seasonClub: { season: { leagueId } } } };
@@ -70,16 +65,23 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const players = await prisma.player.findMany({
-      where,
-      include: {
-        primaryPosition: { select: { id: true, code: true, name: true } },
-        originClub: { select: { id: true, name: true } },
-      },
-      orderBy: { lastName: "asc" },
-      take: isSystemSearch ? 50 : undefined,
-    });
-    return success(players);
+    const include = {
+      primaryPosition: { select: { id: true, code: true, name: true } },
+      originClub: { select: { id: true, name: true } },
+    };
+
+    const [total, players] = await Promise.all([
+      prisma.player.count({ where }),
+      prisma.player.findMany({
+        where,
+        include,
+        orderBy: { lastName: "asc" },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return paginated(players, total, page, limit);
   } catch (error) {
     return serverError(error);
   }
