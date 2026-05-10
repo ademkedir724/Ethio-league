@@ -60,6 +60,9 @@ import {
   Copy,
   Pencil,
   Globe,
+  Trash2,
+  PauseCircle,
+  PlayCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -427,6 +430,9 @@ function SuperAdminOrganizationsView() {
   const [viewingOrg, setViewingOrg] = useState<Organization | null>(null);
   const [approveTarget, setApproveTarget] = useState<Organization | null>(null);
   const [rejectTarget, setRejectTarget] = useState<Organization | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<Organization | null>(null);
+  const [activateTarget, setActivateTarget] = useState<Organization | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Organization | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [passwordSetupLink, setPasswordSetupLink] = useState<string | null>(
     null
@@ -521,6 +527,73 @@ function SuperAdminOrganizationsView() {
     } finally {
       setIsProcessing(false);
       setRejectTarget(null);
+    }
+  };
+
+  const handleSuspend = async () => {
+    if (!suspendTarget) return;
+    setIsProcessing(true);
+    try {
+      const response = await fetchWithAuth(`/api/organizations/${suspendTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "suspended" }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to suspend organization");
+      }
+      toast.success(`Organization "${suspendTarget.name}" has been suspended`);
+      mutateOrgs();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to suspend organization");
+    } finally {
+      setIsProcessing(false);
+      setSuspendTarget(null);
+    }
+  };
+
+  const handleActivate = async () => {
+    if (!activateTarget) return;
+    setIsProcessing(true);
+    try {
+      const response = await fetchWithAuth(`/api/organizations/${activateTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "approved" }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to activate organization");
+      }
+      toast.success(`Organization "${activateTarget.name}" has been activated`);
+      mutateOrgs();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to activate organization");
+    } finally {
+      setIsProcessing(false);
+      setActivateTarget(null);
+    }
+  };
+
+  const handleDeleteOrg = async () => {
+    if (!deleteTarget) return;
+    setIsProcessing(true);
+    try {
+      const response = await fetchWithAuth(`/api/organizations/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete organization");
+      }
+      toast.success(`Organization "${deleteTarget.name}" has been deleted`);
+      mutateOrgs();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete organization");
+    } finally {
+      setIsProcessing(false);
+      setDeleteTarget(null);
     }
   };
 
@@ -651,6 +724,38 @@ function SuperAdminOrganizationsView() {
                 </DropdownMenuItem>
               </>
             )}
+            {(org.status === "approved" || org.status === "active") && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setSuspendTarget(org)}
+                  className="text-amber-400 focus:text-amber-400"
+                >
+                  <PauseCircle className="mr-2 h-4 w-4" />
+                  Suspend
+                </DropdownMenuItem>
+              </>
+            )}
+            {org.status === "suspended" && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setActivateTarget(org)}
+                  className="text-emerald-400 focus:text-emerald-400"
+                >
+                  <PlayCircle className="mr-2 h-4 w-4" />
+                  Activate
+                </DropdownMenuItem>
+              </>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => setDeleteTarget(org)}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -950,6 +1055,39 @@ function SuperAdminOrganizationsView() {
         confirmLabel={isProcessing ? "Rejecting..." : "Reject"}
         variant="destructive"
         onConfirm={handleReject}
+      />
+
+      {/* Suspend Confirmation */}
+      <ConfirmDialog
+        open={!!suspendTarget}
+        onOpenChange={(open) => !open && setSuspendTarget(null)}
+        title="Suspend Organization"
+        description={`Suspend "${suspendTarget?.name}"? Their access will be restricted until reactivated.`}
+        confirmLabel={isProcessing ? "Suspending..." : "Suspend"}
+        variant="destructive"
+        onConfirm={handleSuspend}
+      />
+
+      {/* Activate Confirmation */}
+      <ConfirmDialog
+        open={!!activateTarget}
+        onOpenChange={(open) => !open && setActivateTarget(null)}
+        title="Activate Organization"
+        description={`Reactivate "${activateTarget?.name}"? They will regain full access.`}
+        confirmLabel={isProcessing ? "Activating..." : "Activate"}
+        variant="default"
+        onConfirm={handleActivate}
+      />
+
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete Organization"
+        description={`Permanently delete "${deleteTarget?.name}"? This cannot be undone and will remove all associated data.`}
+        confirmLabel={isProcessing ? "Deleting..." : "Delete"}
+        variant="destructive"
+        onConfirm={handleDeleteOrg}
       />
 
       {/* Password Setup Link Dialog */}

@@ -513,33 +513,41 @@ function OrgAdminUsersView() {
 // Full user management across all organizations
 
 function SuperAdminUsersView() {
-  const { data: rawData, isLoading } = useSWR<ApiUser[]>("/api/users", authFetcher);
-  const users: User[] = useMemo(() => (rawData ?? []).map(mapApiUser), [rawData]);
-
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+
+  const { items: rawItems, pagination, setPage, setLimit, isLoading, mutate: mutateUsers } = usePaginated<ApiUser>(
+    "/api/users",
+    {
+      defaultLimit: 20,
+      extraParams: {
+        search: search || undefined,
+        status: statusFilter !== "all" ? statusFilter : undefined,
+      },
+    }
+  );
+
+  const users: User[] = useMemo(() => rawItems.map(mapApiUser), [rawItems]);
+
   const [formOpen, setFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<User | null>(null);
   const [form, setForm] = useState(emptyForm);
 
   const filtered = useMemo(() => {
     return users.filter((u) => {
-      const matchesSearch =
-        u.fullName.toLowerCase().includes(search.toLowerCase()) ||
-        u.email.toLowerCase().includes(search.toLowerCase());
       const matchesRole = roleFilter === "all" || u.roles.includes(roleFilter);
-      const matchesStatus = statusFilter === "all" || u.status === statusFilter;
-      return matchesSearch && matchesRole && matchesStatus;
+      return matchesRole;
     });
-  }, [users, search, roleFilter, statusFilter]);
+  }, [users, roleFilter]);
 
   const stats = useMemo(() => {
-    const active = users.filter((u) => u.status === "active").length;
+    const active = pagination.total;
     const pending = users.filter((u) => u.status === "pending").length;
-    return { total: users.length, active, pending };
-  }, [users]);
+    return { total: pagination.total, active, pending };
+  }, [users, pagination.total]);
 
   const openCreate = () => {
     setEditingUser(null);
@@ -573,7 +581,7 @@ function SuperAdminUsersView() {
         }
         toast.success("User updated");
         setFormOpen(false);
-        mutate("/api/users");
+        mutateUsers();
       } catch {
         toast.error("Something went wrong");
       }
@@ -601,16 +609,18 @@ function SuperAdminUsersView() {
         }
         toast.success("User created");
         setFormOpen(false);
-        mutate("/api/users");
+        mutateUsers();
       } catch {
         toast.error("Something went wrong");
       }
     }
   };
 
-  const handleSuspend = async (u: User) => {
+  const handleSuspend = async () => {
+    if (!suspendTarget) return;
+    const u = suspendTarget;
+    const newStatus = u.status === "active" ? "suspended" : "active";
     try {
-      const newStatus = u.status === "active" ? "inactive" : "active";
       const res = await fetchWithAuth(`/api/users/${u.id}`, {
         method: "PATCH",
         body: JSON.stringify({ status: newStatus }),
@@ -621,7 +631,8 @@ function SuperAdminUsersView() {
         return;
       }
       toast.success(`User ${newStatus === "active" ? "activated" : "suspended"}`);
-      mutate("/api/users");
+      setSuspendTarget(null);
+      mutateUsers();
     } catch {
       toast.error("Something went wrong");
     }
@@ -638,7 +649,7 @@ function SuperAdminUsersView() {
       }
       toast.success("User deleted");
       setDeleteTarget(null);
-      mutate("/api/users");
+      mutateUsers();
     } catch {
       toast.error("Something went wrong");
     }
@@ -718,19 +729,19 @@ function SuperAdminUsersView() {
               Edit
             </DropdownMenuItem>
             {u.status === "pending" && (
-              <DropdownMenuItem className="text-emerald-400 focus:text-emerald-400" onClick={() => handleSuspend(u)}>
+              <DropdownMenuItem className="text-emerald-400 focus:text-emerald-400" onClick={() => setSuspendTarget(u)}>
                 <ShieldCheck className="mr-2 h-4 w-4" />
                 Activate
               </DropdownMenuItem>
             )}
             {u.status === "active" && (
-              <DropdownMenuItem className="text-amber-400 focus:text-amber-400" onClick={() => handleSuspend(u)}>
+              <DropdownMenuItem className="text-amber-400 focus:text-amber-400" onClick={() => setSuspendTarget(u)}>
                 <UserX className="mr-2 h-4 w-4" />
                 Suspend
               </DropdownMenuItem>
             )}
-            {u.status === "inactive" && (
-              <DropdownMenuItem className="text-emerald-400 focus:text-emerald-400" onClick={() => handleSuspend(u)}>
+            {(u.status === "inactive" || u.status === "suspended") && (
+              <DropdownMenuItem className="text-emerald-400 focus:text-emerald-400" onClick={() => setSuspendTarget(u)}>
                 <ShieldCheck className="mr-2 h-4 w-4" />
                 Activate
               </DropdownMenuItem>
@@ -771,12 +782,12 @@ function SuperAdminUsersView() {
         data={filtered}
         isLoading={isLoading}
         searchValue={search}
-        onSearchChange={setSearch}
+        onSearchChange={(v) => { setSearch(v); setPage(1); }}
         searchPlaceholder="Search users..."
         emptyMessage="No users found."
         filterSlot={
           <div className="flex items-center gap-2">
-            <Select value={roleFilter} onValueChange={setRoleFilter}>
+            <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); setPage(1); }}>
               <SelectTrigger className="w-44">
                 <SelectValue placeholder="Role" />
               </SelectTrigger>
@@ -789,7 +800,7 @@ function SuperAdminUsersView() {
                 <SelectItem value="MATCH_EVENT_ADMIN">Match Recorder</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
               <SelectTrigger className="w-36">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
@@ -798,10 +809,19 @@ function SuperAdminUsersView() {
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="suspended">Suspended</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
             </Select>
           </div>
         }
+      />
+      <Pagination
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        limit={pagination.limit}
+        onPageChange={setPage}
+        onLimitChange={setLimit}
       />
 
       {/* Create / Edit Dialog */}
@@ -850,6 +870,21 @@ function SuperAdminUsersView() {
         </div>
       </FormDialog>
 
+      {/* Suspend / Activate Confirmation */}
+      <ConfirmDialog
+        open={!!suspendTarget}
+        onOpenChange={(open) => !open && setSuspendTarget(null)}
+        title={suspendTarget?.status === "active" ? "Suspend User" : "Activate User"}
+        description={
+          suspendTarget?.status === "active"
+            ? `Suspend "${suspendTarget?.fullName}"? They will lose access until reactivated.`
+            : `Activate "${suspendTarget?.fullName}"? They will regain access to the platform.`
+        }
+        confirmLabel={suspendTarget?.status === "active" ? "Suspend" : "Activate"}
+        variant={suspendTarget?.status === "active" ? "destructive" : "default"}
+        onConfirm={handleSuspend}
+      />
+
       {/* Delete Confirmation */}
       <ConfirmDialog
         open={!!deleteTarget}
@@ -868,8 +903,8 @@ function SuperAdminUsersView() {
 // Shows league admins, club admins, and match event admins in the same org
 
 function LeagueAdminUsersView() {
-  const { data: rawData, isLoading } = useSWR<ApiUser[]>("/api/users", authFetcher);
-  const users: User[] = useMemo(() => (rawData ?? []).map(mapApiUser), [rawData]);
+  const { data: rawData, isLoading } = useSWR("/api/users", authFetcher);
+  const users: User[] = useMemo(() => ((rawData?.data ?? rawData) ?? []).map(mapApiUser), [rawData]);
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
