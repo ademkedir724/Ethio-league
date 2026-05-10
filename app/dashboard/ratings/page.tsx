@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import { useAuth } from "@/lib/auth-context";
-import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
+import { authFetcher } from "@/lib/fetch-client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -349,21 +349,140 @@ function ConfigTab({ config, isLoading, onSaved }: { config: RatingConfig | unde
 
 // ─── Recompute Tab ────────────────────────────────────────────────────────────
 
+interface PhaseProgress {
+    total: number;
+    done: number;
+    failed: number;
+    complete?: boolean;
+}
+
+interface RecomputeProgress {
+    players?: PhaseProgress;
+    clubs?: PhaseProgress;
+    coaches?: PhaseProgress;
+    referees?: PhaseProgress;
+    leagues?: PhaseProgress;
+    currentPhase?: string;
+    isDone?: boolean;
+    isError?: boolean;
+    errorMessage?: string;
+    totalProcessed?: number;
+    totalFailed?: number;
+}
+
+const PHASE_LABELS: Record<string, string> = {
+    players: "Players",
+    clubs: "Clubs",
+    coaches: "Coaches",
+    referees: "Referees",
+    leagues: "Leagues",
+};
+
+const PHASE_ORDER = ["players", "clubs", "coaches", "referees", "leagues"];
+
+function ProgressBar({ done, total, failed }: { done: number; total: number; failed: number }) {
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    return (
+        <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{done} / {total}</span>
+                <span className="flex items-center gap-2">
+                    {failed > 0 && <span className="text-destructive">{failed} failed</span>}
+                    <span>{pct}%</span>
+                </span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                <div
+                    className="h-full rounded-full bg-primary transition-all duration-300"
+                    style={{ width: `${pct}%` }}
+                />
+            </div>
+        </div>
+    );
+}
+
 function RecomputeTab() {
     const [isRunning, setIsRunning] = useState(false);
+    const [progress, setProgress] = useState<RecomputeProgress | null>(null);
 
     const handleRecompute = async () => {
         setIsRunning(true);
+        setProgress({});
+
         try {
-            const res = await fetchWithAuth("/api/ratings/recompute", { method: "POST" });
-            if (!res.ok) {
+            const token = localStorage.getItem("accessToken");
+            const res = await fetch("/api/ratings/recompute", {
+                method: "GET",
+                headers: {
+                    "Accept": "text/event-stream",
+                    ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+                },
+            });
+
+            if (!res.ok || !res.body) {
                 const data = await res.json().catch(() => ({}));
                 toast.error((data as { error?: string }).error || "Failed to start recompute");
+                setIsRunning(false);
                 return;
             }
-            toast.success("Full recompute started. Ratings will update in the background.");
-        } catch {
-            toast.error("Something went wrong");
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() ?? "";
+
+                for (const line of lines) {
+                    if (!line.startsWith("data: ")) continue;
+                    try {
+                        const event = JSON.parse(line.slice(6));
+
+                        if (event.phase === "done") {
+                            setProgress((prev) => ({
+                                ...prev,
+                                isDone: true,
+                                totalProcessed: event.totalProcessed,
+                                totalFailed: event.totalFailed,
+                                currentPhase: undefined,
+                                // Ensure all phases show complete
+                                ...(event.summary && {
+                                    players: { ...event.summary.players, complete: true },
+                                    clubs: { ...event.summary.clubs, complete: true },
+                                    coaches: { ...event.summary.coaches, complete: true },
+                                    referees: { ...event.summary.referees, complete: true },
+                                    leagues: { ...event.summary.leagues, complete: true },
+                                }),
+                            }));
+                            toast.success(`Recompute complete — ${event.totalProcessed} entities updated${event.totalFailed > 0 ? `, ${event.totalFailed} failed` : ""}`);
+                        } else if (event.phase === "error") {
+                            setProgress((prev) => ({ ...prev, isError: true, errorMessage: event.message }));
+                            toast.error("Recompute failed: " + event.message);
+                        } else if (PHASE_ORDER.includes(event.phase)) {
+                            setProgress((prev) => ({
+                                ...prev,
+                                currentPhase: event.complete ? undefined : event.phase,
+                                [event.phase]: {
+                                    total: event.total,
+                                    done: event.done,
+                                    failed: event.failed,
+                                    complete: event.complete ?? false,
+                                },
+                            }));
+                        }
+                    } catch {
+                        // malformed SSE line — skip
+                    }
+                }
+            }
+        } catch (err) {
+            toast.error("Connection error during recompute");
+            console.error(err);
         } finally {
             setIsRunning(false);
         }
@@ -375,19 +494,68 @@ function RecomputeTab() {
                 <CardHeader>
                     <CardTitle className="text-base">On-Demand Full Recompute</CardTitle>
                     <CardDescription>
-                        Recalculates ratings for all players, clubs, coaches, referees, and leagues using the current formula weights and all available match data. Runs asynchronously — the page won't wait for it to finish.
+                        Recalculates ratings for all players, clubs, coaches, referees, and leagues using the current formula weights and all available match data.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4">
                     <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
-                        This processes every entity in the system. On large datasets it may take a few minutes. Existing ratings remain visible until the new values are written.
+                        This processes every entity in the system. On large datasets it may take a few minutes. Progress is shown live below.
                     </div>
                     <div>
                         <Button onClick={handleRecompute} disabled={isRunning} className="gap-2">
                             <RefreshCw className={`h-4 w-4 ${isRunning ? "animate-spin" : ""}`} />
-                            {isRunning ? "Starting..." : "Run Full Recompute"}
+                            {isRunning ? "Running..." : "Run Full Recompute"}
                         </Button>
                     </div>
+
+                    {/* Live progress */}
+                    {progress && (
+                        <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/30 p-4">
+                            <p className="text-sm font-medium text-foreground">
+                                {progress.isDone
+                                    ? `✓ Complete — ${progress.totalProcessed} entities updated${(progress.totalFailed ?? 0) > 0 ? `, ${progress.totalFailed} failed` : ""}`
+                                    : progress.isError
+                                        ? "✗ Error during recompute"
+                                        : progress.currentPhase
+                                            ? `Processing ${PHASE_LABELS[progress.currentPhase]}...`
+                                            : "Starting..."}
+                            </p>
+
+                            <div className="flex flex-col gap-3">
+                                {PHASE_ORDER.map((phase) => {
+                                    const p = progress[phase as keyof RecomputeProgress] as PhaseProgress | undefined;
+                                    if (!p) return null;
+                                    const isActive = progress.currentPhase === phase;
+                                    const isDone = p.complete;
+                                    return (
+                                        <div key={phase} className={`flex flex-col gap-1.5 rounded-lg border p-3 transition-colors ${isDone
+                                            ? "border-emerald-500/20 bg-emerald-500/5"
+                                            : isActive
+                                                ? "border-primary/30 bg-primary/5"
+                                                : "border-border"
+                                            }`}>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm font-medium flex items-center gap-2">
+                                                    {isDone ? (
+                                                        <span className="text-emerald-400">✓</span>
+                                                    ) : isActive ? (
+                                                        <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />
+                                                    ) : (
+                                                        <span className="h-3.5 w-3.5 rounded-full border border-border inline-block" />
+                                                    )}
+                                                    {PHASE_LABELS[phase]}
+                                                </span>
+                                                {p.failed > 0 && (
+                                                    <span className="text-xs text-destructive">{p.failed} failed</span>
+                                                )}
+                                            </div>
+                                            <ProgressBar done={p.done} total={p.total} failed={p.failed} />
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 
