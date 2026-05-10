@@ -118,6 +118,8 @@ function OrgAdminUsersView() {
   const isLoading = orgLoading || usersLoading;
   const [formOpen, setFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<User | null>(null);
   const [form, setForm] = useState({ fullName: "", email: "", phone: "" });
   const [isSaving, setIsSaving] = useState(false);
   const [passwordSetupLink, setPasswordSetupLink] = useState<string | null>(null);
@@ -239,6 +241,43 @@ function OrgAdminUsersView() {
     }
   };
 
+  const handleSuspend = async () => {
+    if (!suspendTarget) return;
+    const newStatus = suspendTarget.status === "active" ? "suspended" : "active";
+    try {
+      const response = await fetchWithAuth(`/api/users/${suspendTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to update status");
+      }
+      toast.success(`User ${newStatus === "active" ? "activated" : "suspended"}`);
+      setSuspendTarget(null);
+      mutateUsers();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Operation failed");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      const response = await fetchWithAuth(`/api/users/${deleteTarget.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete user");
+      }
+      toast.success("User deleted");
+      setDeleteTarget(null);
+      mutateUsers();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Operation failed");
+    }
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("Link copied to clipboard");
@@ -301,9 +340,9 @@ function OrgAdminUsersView() {
       header: "",
       className: "w-12",
       render: (u) => {
-        // Only allow editing Match Event Admins
-        const canEdit = u.roles?.includes("MATCH_EVENT_ADMIN");
-        if (!canEdit) return null;
+        // Org admin can manage league_admin, club_admin, and match_event_admin
+        const isOrgAdminSelf = u.roles?.includes("ORGANIZATION_ADMIN");
+        if (isOrgAdminSelf) return null; // can't manage other org admins
 
         return (
           <DropdownMenu>
@@ -321,21 +360,29 @@ function OrgAdminUsersView() {
               <DropdownMenuSeparator />
               {u.status === "active" ? (
                 <DropdownMenuItem
-                  onClick={() => handleToggleStatus(u)}
+                  onClick={() => setSuspendTarget(u)}
                   className="text-amber-400 focus:text-amber-400"
                 >
                   <UserX className="mr-2 h-4 w-4" />
-                  Deactivate
+                  Suspend
                 </DropdownMenuItem>
               ) : (
                 <DropdownMenuItem
-                  onClick={() => handleToggleStatus(u)}
+                  onClick={() => setSuspendTarget(u)}
                   className="text-emerald-400 focus:text-emerald-400"
                 >
                   <ShieldCheck className="mr-2 h-4 w-4" />
                   Activate
                 </DropdownMenuItem>
               )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => setDeleteTarget(u)}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         );
@@ -505,6 +552,32 @@ function OrgAdminUsersView() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Suspend / Activate Confirmation */}
+      <ConfirmDialog
+        open={!!suspendTarget}
+        onOpenChange={(open) => !open && setSuspendTarget(null)}
+        title={suspendTarget?.status === "active" ? "Suspend User" : "Activate User"}
+        description={
+          suspendTarget?.status === "active"
+            ? `Suspend "${suspendTarget?.fullName}"? They will lose access until reactivated.`
+            : `Activate "${suspendTarget?.fullName}"? They will regain access.`
+        }
+        confirmLabel={suspendTarget?.status === "active" ? "Suspend" : "Activate"}
+        variant={suspendTarget?.status === "active" ? "destructive" : "default"}
+        onConfirm={handleSuspend}
+      />
+
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete User"
+        description={`Permanently delete "${deleteTarget?.fullName}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

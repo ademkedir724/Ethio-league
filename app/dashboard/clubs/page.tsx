@@ -46,6 +46,7 @@ import Image from "next/image";
 import {
   Shield, Plus, MoreHorizontal, Check, X, Eye,
   MapPin, ShieldCheck, Link as LinkIcon, Copy,
+  PauseCircle, PlayCircle, Trash2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -407,6 +408,9 @@ function OrgAdminClubsView() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [approveTarget, setApproveTarget] = useState<Club | null>(null);
   const [rejectTarget, setRejectTarget] = useState<Club | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<Club | null>(null);
+  const [activateTarget, setActivateTarget] = useState<Club | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Club | null>(null);
 
   const baseUrl = isOrgAdmin() && orgId ? `/api/clubs?organizationId=${orgId}` : "/api/clubs";
   const { items: clubs, pagination, setPage, setLimit, isLoading, error, mutate: mutateClubs } = usePaginated<Club>(
@@ -456,6 +460,45 @@ function OrgAdminClubsView() {
     } catch { toast.error("Failed to reject club"); }
   };
 
+  const handleSuspend = async () => {
+    if (!suspendTarget) return;
+    try {
+      const res = await fetchWithAuth(`/api/clubs/${suspendTarget.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "suspended" }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d.error || "Failed"); return; }
+      toast.success(`${suspendTarget.name} suspended`);
+      setSuspendTarget(null);
+      mutateClubs();
+    } catch { toast.error("Failed to suspend club"); }
+  };
+
+  const handleActivate = async () => {
+    if (!activateTarget) return;
+    try {
+      const res = await fetchWithAuth(`/api/clubs/${activateTarget.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "active" }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d.error || "Failed"); return; }
+      toast.success(`${activateTarget.name} activated`);
+      setActivateTarget(null);
+      mutateClubs();
+    } catch { toast.error("Failed to activate club"); }
+  };
+
+  const handleDeleteClub = async () => {
+    if (!deleteTarget) return;
+    try {
+      const res = await fetchWithAuth(`/api/clubs/${deleteTarget.id}`, { method: "DELETE" });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d.error || "Failed"); return; }
+      toast.success(`${deleteTarget.name} deleted`);
+      setDeleteTarget(null);
+      mutateClubs();
+    } catch { toast.error("Failed to delete club"); }
+  };
+
   const columns: Column<Club>[] = [
     {
       key: "name",
@@ -501,22 +544,59 @@ function OrgAdminClubsView() {
     {
       key: "actions",
       header: "",
-      className: "w-24",
-      render: (c) => {
-        if (isOrgAdmin() && c.status === "pending") {
-          return (
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-400 hover:bg-emerald-400/10" onClick={() => setApproveTarget(c)}>
-                <Check className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => setRejectTarget(c)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          );
-        }
-        return <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => router.push(`/dashboard/clubs/${c.id}`)}><Eye className="h-4 w-4" /></Button>;
-      },
+      className: "w-12",
+      render: (c) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+              <MoreHorizontal className="h-4 w-4" />
+              <span className="sr-only">Actions</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem onClick={() => router.push(`/dashboard/clubs/${c.id}`)}>
+              <Eye className="mr-2 h-4 w-4" />
+              View
+            </DropdownMenuItem>
+            {c.status === "pending" && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setApproveTarget(c)} className="text-emerald-400 focus:text-emerald-400">
+                  <Check className="mr-2 h-4 w-4" />
+                  Approve
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setRejectTarget(c)} className="text-destructive focus:text-destructive">
+                  <X className="mr-2 h-4 w-4" />
+                  Reject
+                </DropdownMenuItem>
+              </>
+            )}
+            {(c.status === "active" || c.status === "approved") && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setSuspendTarget(c)} className="text-amber-400 focus:text-amber-400">
+                  <PauseCircle className="mr-2 h-4 w-4" />
+                  Suspend
+                </DropdownMenuItem>
+              </>
+            )}
+            {c.status === "suspended" && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setActivateTarget(c)} className="text-emerald-400 focus:text-emerald-400">
+                  <PlayCircle className="mr-2 h-4 w-4" />
+                  Activate
+                </DropdownMenuItem>
+              </>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setDeleteTarget(c)} className="text-destructive focus:text-destructive">
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
     },
   ];
 
@@ -582,6 +662,33 @@ function OrgAdminClubsView() {
         confirmLabel="Reject"
         variant="destructive"
         onConfirm={handleReject}
+      />
+      <ConfirmDialog
+        open={!!suspendTarget}
+        onOpenChange={(open) => !open && setSuspendTarget(null)}
+        title="Suspend Club"
+        description={`Suspend "${suspendTarget?.name}"? Their access will be restricted.`}
+        confirmLabel="Suspend"
+        variant="destructive"
+        onConfirm={handleSuspend}
+      />
+      <ConfirmDialog
+        open={!!activateTarget}
+        onOpenChange={(open) => !open && setActivateTarget(null)}
+        title="Activate Club"
+        description={`Reactivate "${activateTarget?.name}"?`}
+        confirmLabel="Activate"
+        variant="default"
+        onConfirm={handleActivate}
+      />
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete Club"
+        description={`Permanently delete "${deleteTarget?.name}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={handleDeleteClub}
       />
     </div>
   );

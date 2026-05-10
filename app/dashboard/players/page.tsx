@@ -41,7 +41,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { UserCircle, Plus, MoreHorizontal, Pencil, Trash2, Eye } from "lucide-react";
+import { UserCircle, Plus, MoreHorizontal, Pencil, Trash2, Eye, UserX, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import Image from "next/image";
 import { ImageGallery } from "@/components/dashboard/image-gallery";
@@ -617,12 +617,15 @@ function PlayerDetailDialog({ player, open, onClose }: { player: PlayerWithHisto
 }
 
 function ReadOnlyPlayersView() {
+  const { isOrgAdmin } = useAuth();
   const [search, setSearch] = useState("");
-  const { items: players, pagination, setPage, setLimit, isLoading, error } = usePaginated<PlayerWithHistory>(
+  const { items: players, pagination, setPage, setLimit, isLoading, error, mutate: mutatePlayers } = usePaginated<PlayerWithHistory>(
     "/api/players",
     { defaultLimit: 20, extraParams: { search: search || undefined } }
   );
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerWithHistory | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<PlayerWithHistory | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PlayerWithHistory | null>(null);
 
   // System-wide search
   const [systemInput, setSystemInput] = useState("");
@@ -631,6 +634,32 @@ function ReadOnlyPlayersView() {
     systemQuery.length >= 2 ? `/api/players?scope=system&search=${encodeURIComponent(systemQuery)}` : null,
     authFetcher
   );
+
+  const handleSuspend = async () => {
+    if (!suspendTarget) return;
+    const newStatus = suspendTarget.status === "active" ? "inactive" : "active";
+    try {
+      const res = await fetchWithAuth(`/api/players/${suspendTarget.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d.error || "Failed"); return; }
+      toast.success(`Player ${newStatus === "active" ? "activated" : "suspended"}`);
+      setSuspendTarget(null);
+      mutatePlayers();
+    } catch { toast.error("Something went wrong"); }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      const res = await fetchWithAuth(`/api/players/${deleteTarget.id}`, { method: "DELETE" });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d.error || "Failed"); return; }
+      toast.success("Player deleted");
+      setDeleteTarget(null);
+      mutatePlayers();
+    } catch { toast.error("Something went wrong"); }
+  };
 
   const columns: Column<Player>[] = [
     {
@@ -679,15 +708,51 @@ function ReadOnlyPlayersView() {
       render: (p) => <RatingBadge entityType="player" entityId={p.id} compact />,
     },
     {
-      key: "view",
+      key: "actions",
       header: "",
       className: "w-12",
-      render: (p) => (
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
-          onClick={() => setSelectedPlayer(p as PlayerWithHistory)}>
-          <Eye className="h-4 w-4" />
-        </Button>
-      ),
+      render: (p) => {
+        if (!isOrgAdmin()) {
+          return (
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
+              onClick={() => setSelectedPlayer(p as PlayerWithHistory)}>
+              <Eye className="h-4 w-4" />
+            </Button>
+          );
+        }
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => setSelectedPlayer(p as PlayerWithHistory)}>
+                <Eye className="mr-2 h-4 w-4" />
+                View
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {p.status === "active" ? (
+                <DropdownMenuItem onClick={() => setSuspendTarget(p as PlayerWithHistory)} className="text-amber-400 focus:text-amber-400">
+                  <UserX className="mr-2 h-4 w-4" />
+                  Suspend
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => setSuspendTarget(p as PlayerWithHistory)} className="text-emerald-400 focus:text-emerald-400">
+                  <ShieldCheck className="mr-2 h-4 w-4" />
+                  Activate
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setDeleteTarget(p as PlayerWithHistory)} className="text-destructive focus:text-destructive">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
     },
   ];
 
@@ -758,6 +823,30 @@ function ReadOnlyPlayersView() {
         player={selectedPlayer}
         open={!!selectedPlayer}
         onClose={() => setSelectedPlayer(null)}
+      />
+
+      <ConfirmDialog
+        open={!!suspendTarget}
+        onOpenChange={(open) => !open && setSuspendTarget(null)}
+        title={suspendTarget?.status === "active" ? "Suspend Player" : "Activate Player"}
+        description={
+          suspendTarget?.status === "active"
+            ? `Suspend "${suspendTarget?.firstName} ${suspendTarget?.lastName}"?`
+            : `Activate "${suspendTarget?.firstName} ${suspendTarget?.lastName}"?`
+        }
+        confirmLabel={suspendTarget?.status === "active" ? "Suspend" : "Activate"}
+        variant={suspendTarget?.status === "active" ? "destructive" : "default"}
+        onConfirm={handleSuspend}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete Player"
+        description={`Permanently delete "${deleteTarget?.firstName} ${deleteTarget?.lastName}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={handleDelete}
       />
     </div>
   );

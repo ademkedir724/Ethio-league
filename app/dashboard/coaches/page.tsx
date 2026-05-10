@@ -43,7 +43,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Trophy, Plus, MoreHorizontal, Pencil, Trash2, Eye, UserX } from "lucide-react";
+import { Trophy, Plus, MoreHorizontal, Pencil, Trash2, Eye, UserX, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { RatingBadge } from "@/components/dashboard/rating-badge";
 
@@ -206,10 +206,12 @@ export default function CoachesPage() {
   // Both org admin and super admin are view-only for coaches
   // Only club admins can manage coaches
   const canEdit = canManage("coaches");
+  const canOrgAdminManage = isOrgAdmin();
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingCoach, setEditingCoach] = useState<Coach | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Coach | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<Coach | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [formPhotoUrl, setFormPhotoUrl] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
@@ -338,6 +340,21 @@ export default function CoachesPage() {
     }
   };
 
+  const handleSuspendCoach = async () => {
+    if (!suspendTarget) return;
+    const newStatus = suspendTarget.status === "active" ? "inactive" : "active";
+    try {
+      const res = await fetchWithAuth(`/api/coaches/${suspendTarget.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d.error || "Failed"); return; }
+      toast.success(`${suspendTarget.firstName} ${suspendTarget.lastName} ${newStatus === "active" ? "activated" : "suspended"}.`);
+      setSuspendTarget(null);
+      mutateCoaches();
+    } catch { toast.error("Something went wrong."); }
+  };
+
   const getInitials = (first: string, last: string) =>
     `${first[0]}${last[0]}`.toUpperCase();
 
@@ -437,6 +454,41 @@ export default function CoachesPage() {
                   onClick={() => setDeleteTarget(c)}
                   className="text-destructive focus:text-destructive"
                 >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          );
+        }
+        if (canOrgAdminManage) {
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                  <MoreHorizontal className="h-4 w-4" />
+                  <span className="sr-only">Actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => setDetailCoachId(c.id)}>
+                  <Eye className="mr-2 h-4 w-4" />
+                  View
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {c.status === "active" ? (
+                  <DropdownMenuItem onClick={() => setSuspendTarget(c)} className="text-amber-400 focus:text-amber-400">
+                    <UserX className="mr-2 h-4 w-4" />
+                    Suspend
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onClick={() => setSuspendTarget(c)} className="text-emerald-400 focus:text-emerald-400">
+                    <ShieldCheck className="mr-2 h-4 w-4" />
+                    Activate
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setDeleteTarget(c)} className="text-destructive focus:text-destructive">
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete
                 </DropdownMenuItem>
@@ -643,6 +695,22 @@ export default function CoachesPage() {
           />
         </>
       )}
+
+      {/* Org Admin: Suspend / Activate Confirmation */}
+      <ConfirmDialog
+        open={!!suspendTarget}
+        onOpenChange={(open) => !open && setSuspendTarget(null)}
+        title={suspendTarget?.status === "active" ? "Suspend Coach" : "Activate Coach"}
+        description={
+          suspendTarget?.status === "active"
+            ? `Suspend "${suspendTarget?.firstName} ${suspendTarget?.lastName}"?`
+            : `Activate "${suspendTarget?.firstName} ${suspendTarget?.lastName}"?`
+        }
+        confirmLabel={suspendTarget?.status === "active" ? "Suspend" : "Activate"}
+        variant={suspendTarget?.status === "active" ? "destructive" : "default"}
+        onConfirm={handleSuspendCoach}
+      />
+
       <CoachDetailDialog coachId={detailCoachId} open={!!detailCoachId} onClose={() => setDetailCoachId(null)} />
     </div>
   );
