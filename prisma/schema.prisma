@@ -93,6 +93,7 @@ model Organization {
 
   leagues        League[]
   userRoleScopes UserRoleScope[]
+  referees       Referee[]
 
   @@map("organizations")
 }
@@ -236,9 +237,12 @@ model Referee {
   experienceYears Int?
   photoUrl        String?
   status          String    @default("active")
+  /// Organization that owns/created this referee. Nullable for legacy referees.
+  organizationId  String?   @db.Uuid
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  organization   Organization?   @relation(fields: [organizationId], references: [id])
   seasonReferees SeasonReferee[]
   matchReferees  MatchReferee[]
 
