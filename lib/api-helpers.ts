@@ -45,3 +45,47 @@ export function parseUUID(params: { id?: string } | string): string | null {
 export function unprocessableEntity(body: unknown) {
   return NextResponse.json(body, { status: 422 });
 }
+
+// ─── Pagination helpers ───────────────────────────────────────────────────────
+
+export interface PaginationParams {
+  page: number;
+  limit: number;
+  skip: number;
+}
+
+/**
+ * Parses ?page= and ?limit= from a URL's searchParams.
+ * Clamps limit between min and max (default 10–25).
+ */
+export function parsePagination(
+  searchParams: URLSearchParams,
+  defaultLimit = 20,
+  minLimit = 10,
+  maxLimit = 25
+): PaginationParams {
+  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
+  const limit = Math.min(
+    maxLimit,
+    Math.max(minLimit, parseInt(searchParams.get("limit") ?? String(defaultLimit), 10))
+  );
+  return { page, limit, skip: (page - 1) * limit };
+}
+
+/**
+ * Wraps paginated data in a standard envelope.
+ */
+export function paginated(
+  data: unknown[],
+  total: number,
+  page: number,
+  limit: number
+) {
+  return success({
+    data,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  });
+}
