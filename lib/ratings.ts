@@ -1231,35 +1231,35 @@ export async function runFullRecompute(): Promise<void> {
     let processed = 0;
     let failures = 0;
 
-    const players = await prisma.player.findMany({ where: { status: "active" }, select: { id: true } });
+    const players = await prisma.player.findMany({ select: { id: true } });
     for (const p of players) {
         await computeAndPersistPlayerRating(p.id, prisma)
             .then(() => processed++)
             .catch((err) => { failures++; console.error(`[ratings] compute failed: player ${p.id}`, err); });
     }
 
-    const clubs = await prisma.club.findMany({ where: { status: "active" }, select: { id: true } });
+    const clubs = await prisma.club.findMany({ select: { id: true } });
     for (const c of clubs) {
         await computeAndPersistClubRating(c.id, prisma)
             .then(() => processed++)
             .catch((err) => { failures++; console.error(`[ratings] compute failed: club ${c.id}`, err); });
     }
 
-    const coaches = await prisma.coach.findMany({ where: { status: "active" }, select: { id: true } });
+    const coaches = await prisma.coach.findMany({ select: { id: true } });
     for (const c of coaches) {
         await computeAndPersistCoachRating(c.id, prisma)
             .then(() => processed++)
             .catch((err) => { failures++; console.error(`[ratings] compute failed: coach ${c.id}`, err); });
     }
 
-    const referees = await prisma.referee.findMany({ where: { status: "active" }, select: { id: true } });
+    const referees = await prisma.referee.findMany({ select: { id: true } });
     for (const r of referees) {
         await computeAndPersistRefereeRating(r.id, prisma)
             .then(() => processed++)
             .catch((err) => { failures++; console.error(`[ratings] compute failed: referee ${r.id}`, err); });
     }
 
-    const leagues = await prisma.league.findMany({ where: { status: "active" }, select: { id: true } });
+    const leagues = await prisma.league.findMany({ select: { id: true } });
     for (const l of leagues) {
         await computeAndPersistLeagueRating(l.id, prisma)
             .then(() => processed++)
