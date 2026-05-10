@@ -83,10 +83,13 @@ export async function PATCH(
       // Any user can edit their own name/phone
       canEdit = true;
     } else if (isSuperAdmin) {
-      // super_admin can only edit organization_admin users
+      // super_admin can edit any user's status, and org_admin users' details
+      canEdit = true;
       if (targetRoles.includes("organization_admin")) {
-        canEdit = true;
         allowedFields = ["fullName", "phone", "status"];
+      } else {
+        // For all other users, super_admin can only change status
+        allowedFields = ["status"];
       }
     } else if (isOrgAdmin) {
       // org_admin can only edit league_admin and match_event_admin users in their org

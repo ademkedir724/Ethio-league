@@ -79,11 +79,15 @@ export async function GET(req: NextRequest) {
     const sp = req.nextUrl.searchParams;
     const { page, limit, skip } = parsePagination(sp);
     const search = sp.get("search")?.trim();
+    const statusFilter = sp.get("status")?.trim();
     if (search) {
       (where as Record<string, unknown>).OR = [
         { fullName: { contains: search, mode: "insensitive" } },
         { email: { contains: search, mode: "insensitive" } },
       ];
+    }
+    if (statusFilter) {
+      (where as Record<string, unknown>).status = statusFilter;
     }
 
     const select = {
