@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { success, badRequest, notFound, forbidden, serverError, parseUUID } from "@/lib/api-helpers";
+import { badRequest, notFound, forbidden, serverError, parseUUID, parsePagination, paginated } from "@/lib/api-helpers";
 import { assertLeagueScope, assertOrgScope } from "@/lib/scope-guard";
 
 // GET /api/leagues/[id]/seasons — list seasons for a league
@@ -24,15 +24,25 @@ export async function GET(
       return forbidden();
     }
 
-    const seasons = await prisma.season.findMany({
-      where: { leagueId },
-      include: {
-        _count: { select: { seasonClubs: true, matches: true } },
-      },
-      orderBy: { startDate: "desc" },
-    });
+    const sp = req.nextUrl.searchParams;
+    const { page, limit, skip } = parsePagination(sp);
 
-    return success(seasons);
+    const where = { leagueId };
+
+    const [total, seasons] = await Promise.all([
+      prisma.season.count({ where }),
+      prisma.season.findMany({
+        where,
+        include: {
+          _count: { select: { seasonClubs: true, matches: true } },
+        },
+        orderBy: { startDate: "desc" },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return paginated(seasons, total, page, limit);
   } catch (error) {
     return serverError(error);
   }
