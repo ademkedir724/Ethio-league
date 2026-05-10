@@ -1,40 +1,44 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { success, created, badRequest, serverError } from "@/lib/api-helpers";
+import { success, created, badRequest, serverError, parsePagination, paginated } from "@/lib/api-helpers";
 
 // GET /api/referees
-// - super_admin        → all referees
-// - organization_admin → referees belonging to their organization
-// - league_admin       → referees assigned to seasons in their league
-// - club_admin / fan   → referees assigned to seasons in their club's league (read-only)
-// - others             → all referees (read-only)
+// ?page=1&limit=20&search=<name>
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req);
     if (isAuthError(auth)) return auth;
 
+    const sp = req.nextUrl.searchParams;
+    const { page, limit, skip } = parsePagination(sp);
+    const search = sp.get("search")?.trim();
+
     const isSuperAdmin = auth.roles.some((r) => r.roleName === "super_admin");
+
+    const nameFilter = search
+      ? { OR: [{ firstName: { contains: search, mode: "insensitive" as const } }, { lastName: { contains: search, mode: "insensitive" as const } }] }
+      : {};
+
     if (isSuperAdmin) {
-      return success(await prisma.referee.findMany({ orderBy: { lastName: "asc" } }));
+      const [total, referees] = await Promise.all([
+        prisma.referee.count({ where: nameFilter }),
+        prisma.referee.findMany({ where: nameFilter, orderBy: { lastName: "asc" }, skip, take: limit }),
+      ]);
+      return paginated(referees, total, page, limit);
     }
 
-    // Org admin — referees owned by their organization
-    const orgAdminRole = auth.roles.find(
-      (r) => r.roleName === "organization_admin" && r.organizationId
-    );
+    const orgAdminRole = auth.roles.find((r) => r.roleName === "organization_admin" && r.organizationId);
     if (orgAdminRole?.organizationId) {
-      const referees = await prisma.referee.findMany({
-        where: { organizationId: orgAdminRole.organizationId },
-        orderBy: { lastName: "asc" },
-      });
-      return success(referees);
+      const where = { organizationId: orgAdminRole.organizationId, ...nameFilter };
+      const [total, referees] = await Promise.all([
+        prisma.referee.count({ where }),
+        prisma.referee.findMany({ where, orderBy: { lastName: "asc" }, skip, take: limit }),
+      ]);
+      return paginated(referees, total, page, limit);
     }
 
-    // League admin — referees assigned to any season in their league
-    const leagueAdminRole = auth.roles.find(
-      (r) => r.roleName === "league_admin" && r.leagueId
-    );
+    const leagueAdminRole = auth.roles.find((r) => r.roleName === "league_admin" && r.leagueId);
     if (leagueAdminRole?.leagueId) {
       const rows = await prisma.seasonReferee.findMany({
         where: { season: { leagueId: leagueAdminRole.leagueId } },
@@ -42,43 +46,44 @@ export async function GET(req: NextRequest) {
         distinct: ["refereeId"],
       });
       const ids = rows.map((r) => r.refereeId);
-      if (ids.length === 0) return success([]);
-      return success(
-        await prisma.referee.findMany({
-          where: { id: { in: ids } },
-          orderBy: { lastName: "asc" },
-        })
-      );
+      if (ids.length === 0) return paginated([], 0, page, limit);
+      const where = { id: { in: ids }, ...nameFilter };
+      const [total, referees] = await Promise.all([
+        prisma.referee.count({ where }),
+        prisma.referee.findMany({ where, orderBy: { lastName: "asc" }, skip, take: limit }),
+      ]);
+      return paginated(referees, total, page, limit);
     }
 
-    // Club admin — referees assigned to seasons their club participates in
-    const clubAdminRole = auth.roles.find(
-      (r) => r.roleName === "club_admin" && r.clubId
-    );
+    const clubAdminRole = auth.roles.find((r) => r.roleName === "club_admin" && r.clubId);
     if (clubAdminRole?.clubId) {
       const seasonClubs = await prisma.seasonClub.findMany({
         where: { clubId: clubAdminRole.clubId },
         select: { seasonId: true },
       });
       const seasonIds = seasonClubs.map((sc) => sc.seasonId);
-      if (seasonIds.length === 0) return success([]);
+      if (seasonIds.length === 0) return paginated([], 0, page, limit);
       const rows = await prisma.seasonReferee.findMany({
         where: { seasonId: { in: seasonIds } },
         select: { refereeId: true },
         distinct: ["refereeId"],
       });
       const ids = rows.map((r) => r.refereeId);
-      if (ids.length === 0) return success([]);
-      return success(
-        await prisma.referee.findMany({
-          where: { id: { in: ids } },
-          orderBy: { lastName: "asc" },
-        })
-      );
+      if (ids.length === 0) return paginated([], 0, page, limit);
+      const where = { id: { in: ids }, ...nameFilter };
+      const [total, referees] = await Promise.all([
+        prisma.referee.count({ where }),
+        prisma.referee.findMany({ where, orderBy: { lastName: "asc" }, skip, take: limit }),
+      ]);
+      return paginated(referees, total, page, limit);
     }
 
-    // All other roles — return all (read-only)
-    return success(await prisma.referee.findMany({ orderBy: { lastName: "asc" } }));
+    // All other roles
+    const [total, referees] = await Promise.all([
+      prisma.referee.count({ where: nameFilter }),
+      prisma.referee.findMany({ where: nameFilter, orderBy: { lastName: "asc" }, skip, take: limit }),
+    ]);
+    return paginated(referees, total, page, limit);
   } catch (error) {
     return serverError(error);
   }

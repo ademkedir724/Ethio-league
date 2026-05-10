@@ -1,13 +1,17 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { success, created, badRequest, serverError } from "@/lib/api-helpers";
+import { success, created, badRequest, serverError, parsePagination, paginated } from "@/lib/api-helpers";
 
 // GET /api/coaches — list coaches, scoped by role
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req);
     if (isAuthError(auth)) return auth;
+
+    const sp = req.nextUrl.searchParams;
+    const { page, limit, skip } = parsePagination(sp);
+    const search = sp.get("search")?.trim();
 
     const isClubAdmin = auth.roles.some((r) => r.roleName === "club_admin");
     const isOrgAdmin = auth.roles.some((r) => r.roleName === "organization_admin");
@@ -17,34 +21,56 @@ export async function GET(req: NextRequest) {
     if (isClubAdmin) {
       const clubId = auth.roles.find((r) => r.roleName === "club_admin")?.clubId;
 
-      const coaches = await prisma.coach.findMany({
-        where: clubId
-          ? {
+      const baseWhere = clubId
+        ? {
+          OR: [
+            { clubId },
+            { seasonClubCoaches: { some: { seasonClub: { clubId } } } },
+          ],
+        }
+        : {};
+
+      const where: Record<string, unknown> = { ...baseWhere };
+      if (search) {
+        where.AND = [
+          baseWhere,
+          {
             OR: [
-              { clubId },
-              { seasonClubCoaches: { some: { seasonClub: { clubId } } } },
+              { firstName: { contains: search, mode: "insensitive" } },
+              { lastName: { contains: search, mode: "insensitive" } },
             ],
-          }
-          : {},
-        orderBy: { lastName: "asc" },
-        include: {
-          originClub: { select: { id: true, name: true } },
-          seasonClubCoaches: {
-            where: { seasonClub: { season: { status: "active" } } },
-            select: {
-              role: true,
-              seasonClub: {
-                select: {
-                  club: { select: { id: true, name: true } },
-                  season: { select: { id: true, name: true, status: true } },
+          },
+        ];
+        delete where.OR;
+        delete where.clubId;
+      }
+
+      const [total, coaches] = await Promise.all([
+        prisma.coach.count({ where }),
+        prisma.coach.findMany({
+          where,
+          orderBy: { lastName: "asc" },
+          skip,
+          take: limit,
+          include: {
+            originClub: { select: { id: true, name: true } },
+            seasonClubCoaches: {
+              where: { seasonClub: { season: { status: "active" } } },
+              select: {
+                role: true,
+                seasonClub: {
+                  select: {
+                    club: { select: { id: true, name: true } },
+                    season: { select: { id: true, name: true, status: true } },
+                  },
                 },
               },
+              take: 1,
+              orderBy: { createdAt: "desc" },
             },
-            take: 1,
-            orderBy: { createdAt: "desc" },
           },
-        },
-      });
+        }),
+      ]);
 
       const result = coaches.map((c) => {
         const active = c.seasonClubCoaches[0];
@@ -57,7 +83,7 @@ export async function GET(req: NextRequest) {
           seasonStatus: active?.seasonClub.season.status ?? null,
         };
       });
-      return success(result);
+      return paginated(result, total, page, limit);
     }
 
     // ── Org Admin / League Admin / Super Admin: query SeasonClubCoach ──
@@ -72,6 +98,17 @@ export async function GET(req: NextRequest) {
     }
     // super_admin: no filter
 
+    if (search) {
+      sccWhere.coach = {
+        OR: [
+          { firstName: { contains: search, mode: "insensitive" } },
+          { lastName: { contains: search, mode: "insensitive" } },
+        ],
+      };
+    }
+
+    // For paginating deduplicated results we fetch all then slice
+    // (dedup by coachId is done in-memory; count is approximate)
     const assignments = await prisma.seasonClubCoach.findMany({
       where: sccWhere,
       include: {
@@ -111,7 +148,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const result = Array.from(seen.values()).map((a) => ({
+    const allResults = Array.from(seen.values()).map((a) => ({
       ...a.coach,
       currentClub: a.seasonClub.club.name,
       currentClubId: a.seasonClub.club.id,
@@ -120,7 +157,10 @@ export async function GET(req: NextRequest) {
       seasonStatus: a.seasonClub.season.status,
     }));
 
-    return success(result);
+    const total = allResults.length;
+    const result = allResults.slice(skip, skip + limit);
+
+    return paginated(result, total, page, limit);
   } catch (error) {
     return serverError(error);
   }
