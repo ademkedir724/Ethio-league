@@ -105,10 +105,10 @@ function AssignPlayerDialog({
     const [open, setOpen] = useState(false);
     const [form, setForm] = useState(emptyForm);
 
-    const { data: allPlayers } = useSWR<Player[]>(open ? "/api/players" : null, authFetcher);
+    const { data: allPlayers } = useSWR(open ? "/api/players" : null, authFetcher);
     const { data: positions } = useSWR<Position[]>(open ? "/api/players/positions" : null, authFetcher);
 
-    const availablePlayers = (allPlayers || []).filter((p) => !assignedPlayerIds.has(p.id));
+    const availablePlayers = ((allPlayers?.data ?? allPlayers) || []).filter((p: Player) => !assignedPlayerIds.has(p.id));
     const isClubInactive = seasonClub.status !== "active";
 
     const handleSubmit = async () => {

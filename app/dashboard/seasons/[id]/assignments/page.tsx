@@ -147,7 +147,7 @@ function MultiPickerDialog({ open, onOpenChange, title, description, items, onCo
 
     return (
         <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); }}>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
                 <DialogHeader>
                     <DialogTitle>{title}</DialogTitle>
                     <DialogDescription>{description}</DialogDescription>
@@ -156,12 +156,13 @@ function MultiPickerDialog({ open, onOpenChange, title, description, items, onCo
                 {items.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-4 text-center">No available items.</p>
                 ) : (
-                    <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-3 min-h-0 flex-1">
                         {/* Search */}
                         <Input
                             placeholder="Search..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
+                            autoFocus
                         />
 
                         {/* Select all / count row */}
@@ -173,11 +174,13 @@ function MultiPickerDialog({ open, onOpenChange, title, description, items, onCo
                             >
                                 {selected.size === filtered.length && filtered.length > 0 ? "Deselect all" : "Select all"}
                             </button>
-                            <span className="text-xs text-muted-foreground">{selected.size} selected</span>
+                            <span className="text-xs text-muted-foreground">
+                                {filtered.length} result{filtered.length !== 1 ? "s" : ""} · {selected.size} selected
+                            </span>
                         </div>
 
-                        {/* Item list */}
-                        <div className="max-h-64 overflow-y-auto flex flex-col gap-1 pr-1">
+                        {/* Item list — scrollable, fills available space */}
+                        <div className="flex-1 overflow-y-auto flex flex-col gap-1 pr-1 min-h-0" style={{ maxHeight: "calc(60vh - 160px)" }}>
                             {filtered.length === 0 ? (
                                 <p className="text-sm text-muted-foreground py-4 text-center">No results found.</p>
                             ) : (
@@ -213,7 +216,7 @@ function MultiPickerDialog({ open, onOpenChange, title, description, items, onCo
                     </div>
                 )}
 
-                <div className="flex justify-end gap-2 pt-2">
+                <div className="flex justify-end gap-2 pt-3 border-t border-border mt-2">
                     <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
                     <Button onClick={handleConfirm} disabled={selected.size === 0}>
                         {selected.size > 0 ? `Add ${selected.size}` : "Add"}
@@ -242,15 +245,17 @@ export default function SeasonAssignmentsPage() {
         authFetcher
     );
 
-    const { data: allReferees, isLoading: refereesLoading } = useSWR<Referee[]>(
+    const { data: allRefereesRaw, isLoading: refereesLoading } = useSWR(
         "/api/referees",
         authFetcher
     );
+    const allReferees: Referee[] = allRefereesRaw?.data ?? allRefereesRaw ?? [];
 
-    const { data: allUsers, isLoading: usersLoading } = useSWR<MEAUser[]>(
+    const { data: allUsersRaw, isLoading: usersLoading } = useSWR(
         "/api/users",
         authFetcher
     );
+    const allUsers: MEAUser[] = allUsersRaw?.data ?? allUsersRaw ?? [];
 
     // ── Local state ──
     const [pendingRefereeIds, setPendingRefereeIds] = useState<string[]>([]);
@@ -434,31 +439,33 @@ export default function SeasonAssignmentsPage() {
                         {pendingMEAIds.length === 0 ? (
                             <p className="text-sm text-muted-foreground py-2">No MEAs assigned yet.</p>
                         ) : (
-                            pendingMEAIds.map((id) => {
-                                const mea = assignedMEAMap.get(id);
-                                if (!mea) return null;
-                                return (
-                                    <div
-                                        key={id}
-                                        className="flex items-center justify-between rounded-md border border-border px-3 py-2"
-                                    >
-                                        <div className="flex flex-col">
-                                            <span className="text-sm font-medium">{mea.fullName}</span>
-                                            <span className="text-xs text-muted-foreground">{mea.email}</span>
-                                        </div>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                            onClick={() => handleRemoveMEA(id)}
-                                            disabled={!isSeasonActive}
-                                            aria-label={`Remove ${mea.fullName}`}
+                            <div className="max-h-72 overflow-y-auto flex flex-col gap-1.5 pr-1">
+                                {pendingMEAIds.map((id) => {
+                                    const mea = assignedMEAMap.get(id);
+                                    if (!mea) return null;
+                                    return (
+                                        <div
+                                            key={id}
+                                            className="flex items-center justify-between rounded-md border border-border px-3 py-2"
                                         >
-                                            <X className="h-3.5 w-3.5" />
-                                        </Button>
-                                    </div>
-                                );
-                            })
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-medium">{mea.fullName}</span>
+                                                <span className="text-xs text-muted-foreground">{mea.email}</span>
+                                            </div>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                                onClick={() => handleRemoveMEA(id)}
+                                                disabled={!isSeasonActive}
+                                                aria-label={`Remove ${mea.fullName}`}
+                                            >
+                                                <X className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         )}
                         <Button
                             variant="outline"
@@ -486,37 +493,39 @@ export default function SeasonAssignmentsPage() {
                         {pendingRefereeIds.length === 0 ? (
                             <p className="text-sm text-muted-foreground py-2">No referees assigned yet.</p>
                         ) : (
-                            pendingRefereeIds.map((id) => {
-                                const referee = assignedRefereeMap.get(id);
-                                if (!referee) return null;
-                                return (
-                                    <div
-                                        key={id}
-                                        className="flex items-center justify-between rounded-md border border-border px-3 py-2"
-                                    >
-                                        <div className="flex flex-col">
-                                            <span className="text-sm font-medium">
-                                                {referee.firstName} {referee.lastName}
-                                            </span>
-                                            <span className="text-xs text-muted-foreground">
-                                                {[referee.licenseLevel, referee.nationality]
-                                                    .filter(Boolean)
-                                                    .join(" · ") || "—"}
-                                            </span>
-                                        </div>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                            onClick={() => handleRemoveReferee(id)}
-                                            disabled={!isSeasonActive}
-                                            aria-label={`Remove ${referee.firstName} ${referee.lastName}`}
+                            <div className="max-h-72 overflow-y-auto flex flex-col gap-1.5 pr-1">
+                                {pendingRefereeIds.map((id) => {
+                                    const referee = assignedRefereeMap.get(id);
+                                    if (!referee) return null;
+                                    return (
+                                        <div
+                                            key={id}
+                                            className="flex items-center justify-between rounded-md border border-border px-3 py-2"
                                         >
-                                            <X className="h-3.5 w-3.5" />
-                                        </Button>
-                                    </div>
-                                );
-                            })
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-medium">
+                                                    {referee.firstName} {referee.lastName}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground">
+                                                    {[referee.licenseLevel, referee.nationality]
+                                                        .filter(Boolean)
+                                                        .join(" · ") || "—"}
+                                                </span>
+                                            </div>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                                onClick={() => handleRemoveReferee(id)}
+                                                disabled={!isSeasonActive}
+                                                aria-label={`Remove ${referee.firstName} ${referee.lastName}`}
+                                            >
+                                                <X className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         )}
                         <Button
                             variant="outline"
