@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { success, created, badRequest, serverError } from "@/lib/api-helpers";
+import { success, created, badRequest, serverError, parsePagination, paginated } from "@/lib/api-helpers";
 import { assertOrgScope } from "@/lib/scope-guard";
 import { logAudit } from "@/lib/audit";
-import { sendPasswordSetupEmail } from "@/lib/email";
+import { sendPasswordSetupEmail, getAppUrl } from "@/lib/email";
 
 // GET /api/leagues — list leagues scoped by role
+// ?page=1&limit=20&search=<name>
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req);
@@ -25,21 +26,30 @@ export async function GET(req: NextRequest) {
     } else if (leagueAdminRole?.leagueId) {
       where = { id: leagueAdminRole.leagueId };
     } else {
-      // club_admin, MEA, and other roles have no league scope — return empty
-      return success([]);
+      return paginated([], 0, 1, 20);
     }
 
-    const leagues = await prisma.league.findMany({
-      where,
-      include: {
-        organization: { select: { id: true, name: true } },
-        leagueType: { select: { id: true, name: true } },
-        _count: { select: { seasons: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    const sp = req.nextUrl.searchParams;
+    const { page, limit, skip } = parsePagination(sp);
+    const search = sp.get("search")?.trim();
+    if (search) (where as Record<string, unknown>).name = { contains: search, mode: "insensitive" };
 
-    return success(leagues);
+    const [total, leagues] = await Promise.all([
+      prisma.league.count({ where }),
+      prisma.league.findMany({
+        where,
+        include: {
+          organization: { select: { id: true, name: true } },
+          leagueType: { select: { id: true, name: true } },
+          _count: { select: { seasons: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return paginated(leagues, total, page, limit);
   } catch (error) {
     return serverError(error);
   }
@@ -125,10 +135,10 @@ export async function POST(req: NextRequest) {
       return { league, adminUser };
     });
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const appUrl = getAppUrl(req);
     const adminSetupLink = `${appUrl}/set-password?token=${token}`;
     try {
-      await sendPasswordSetupEmail(adminEmail, token);
+      await sendPasswordSetupEmail(adminEmail, token, req);
     } catch {
       // dev mode — link returned in response
     }

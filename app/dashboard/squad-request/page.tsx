@@ -81,20 +81,23 @@ export default function SquadRequestPage() {
     const { getClubId } = useAuth();
     const clubId = getClubId();
 
-    const { data: seasons } = useSWR<Array<{
-        id: string; status: string;
-        seasonClubs: Array<{ id: string; clubId: string; status: string }>;
-    }>>(
+    const { data: seasonsRaw } = useSWR(
         clubId ? `/api/seasons?clubId=${clubId}` : null, authFetcher
     );
+    const seasons: Array<{
+        id: string; status: string;
+        seasonClubs: Array<{ id: string; clubId: string; status: string }>;
+    }> = seasonsRaw?.data ?? seasonsRaw ?? [];
     // Find the active (or first) season and the club's SeasonClub record within it
-    const activeSeason = seasons?.find((s) => s.status === "active") ?? seasons?.[0];
+    const activeSeason = seasons.find((s) => s.status === "active") ?? seasons[0];
     const seasonId = activeSeason?.id;
     const seasonClubId = activeSeason?.seasonClubs?.find((sc) => sc.clubId === clubId)?.id;
 
     // Club pool (players/coaches with clubId = this club)
-    const { data: clubPlayers } = useSWR<Player[]>(clubId ? "/api/players" : null, authFetcher);
-    const { data: clubCoaches } = useSWR<Coach[]>(clubId ? "/api/coaches" : null, authFetcher);
+    const { data: clubPlayersRaw } = useSWR(clubId ? "/api/players" : null, authFetcher);
+    const { data: clubCoachesRaw } = useSWR(clubId ? "/api/coaches" : null, authFetcher);
+    const clubPlayers: Player[] = clubPlayersRaw?.data ?? clubPlayersRaw ?? [];
+    const clubCoaches: Coach[] = clubCoachesRaw?.data ?? clubCoachesRaw ?? [];
     const { data: positions } = useSWR<Position[]>("/api/players/positions", authFetcher);
 
     // Current season squad

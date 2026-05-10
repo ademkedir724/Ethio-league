@@ -82,11 +82,11 @@ export default function LineupsPage() {
     const [apiErrors, setApiErrors] = useState<string[]>([]);
 
     // Fetch all seasons for this club
-    const { data: seasonsData } = useSWR<Season[]>(
+    const { data: seasonsRaw } = useSWR(
         clubId ? `/api/seasons?clubId=${clubId}` : null,
         authFetcher
     );
-    const seasons = seasonsData ?? [];
+    const seasons: Season[] = seasonsRaw?.data ?? seasonsRaw ?? [];
 
     // Auto-select active season on first load
     useMemo(() => {
@@ -115,7 +115,7 @@ export default function LineupsPage() {
 
     const isPending = (clubData as { status?: string } | undefined)?.status === "pending";
 
-    const allMatches: Match[] = matchesData || [];
+    const allMatches: Match[] = matchesData?.data ?? matchesData ?? [];
     const upcomingMatches = useMemo(
         () => allMatches.filter((m) => m.status === "scheduled" || m.status === "upcoming"),
         [allMatches]

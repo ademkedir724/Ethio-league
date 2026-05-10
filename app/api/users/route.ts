@@ -7,12 +7,15 @@ import {
   badRequest,
   forbidden,
   serverError,
+  parsePagination,
+  paginated,
 } from "@/lib/api-helpers";
-import { sendPasswordSetupEmail } from "@/lib/email";
+import { sendPasswordSetupEmail, getAppUrl } from "@/lib/email";
 import { logAudit } from "@/lib/audit";
 import { NextResponse } from "next/server";
 
 // GET /api/users — list users scoped by role
+// ?page=1&limit=20&search=<name|email>
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req, ["super_admin", "organization_admin", "league_admin"]);
@@ -28,15 +31,11 @@ export async function GET(req: NextRequest) {
       // no filter — sees all
     } else if (orgAdminRole?.organizationId) {
       const orgId = orgAdminRole.organizationId;
-      // Get all club IDs that belong to this org (via league)
       const orgClubs = await prisma.club.findMany({
         where: { league: { organizationId: orgId } },
         select: { id: true },
       });
       const clubIds = orgClubs.map((c) => c.id);
-
-      // Users scoped to this org directly (org_admin, league_admin, mea)
-      // OR scoped to a club that belongs to this org (club_admin)
       where = {
         userRoleScopes: {
           some: {
@@ -54,20 +53,16 @@ export async function GET(req: NextRequest) {
       });
       if (league) {
         const orgId = league.organizationId;
-        // Get all club IDs in this org
         const orgClubs = await prisma.club.findMany({
           where: { league: { organizationId: orgId } },
           select: { id: true },
         });
         const clubIds = orgClubs.map((c) => c.id);
-
         where = {
           userRoleScopes: {
             some: {
               AND: [
-                {
-                  role: { name: { in: ["league_admin", "match_event_admin", "club_admin"] } },
-                },
+                { role: { name: { in: ["league_admin", "match_event_admin", "club_admin"] } } },
                 {
                   OR: [
                     { organizationId: orgId },
@@ -81,23 +76,38 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const users = await prisma.user.findMany({
-      where,
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        phone: true,
-        photoUrl: true,
-        status: true,
-        createdAt: true,
-        userRoleScopes: {
-          include: { role: true },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-    return success(users);
+    const sp = req.nextUrl.searchParams;
+    const { page, limit, skip } = parsePagination(sp);
+    const search = sp.get("search")?.trim();
+    const statusFilter = sp.get("status")?.trim();
+    if (search) {
+      (where as Record<string, unknown>).OR = [
+        { fullName: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+      ];
+    }
+    if (statusFilter) {
+      (where as Record<string, unknown>).status = statusFilter;
+    }
+
+    const select = {
+      id: true,
+      email: true,
+      fullName: true,
+      phone: true,
+      photoUrl: true,
+      status: true,
+      createdAt: true,
+      userRoleScopes: { include: { role: true } },
+    };
+
+    const [total, users] = await Promise.all([
+      prisma.user.count({ where }),
+      prisma.user.findMany({ where, select, orderBy: { createdAt: "desc" }, skip, take: limit }),
+    ]);
+
+    return paginated(users, total, page, limit);
+
   } catch (error) {
     return serverError(error);
   }
@@ -131,7 +141,7 @@ export async function POST(req: NextRequest) {
       if (existing) return badRequest("A user with this email already exists");
 
       const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const appUrl = getAppUrl(req);
 
       const result = await prisma.$transaction(async (tx) => {
         const user = await tx.user.create({
@@ -163,7 +173,7 @@ export async function POST(req: NextRequest) {
       // Send setup email (non-blocking failure returns link in response)
       const passwordSetupLink = `${appUrl}/set-password?token=${token}`;
       try {
-        await sendPasswordSetupEmail(email, token);
+        await sendPasswordSetupEmail(email, token, req);
       } catch {
         // email not configured — return link in response for dev
       }

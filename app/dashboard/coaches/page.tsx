@@ -7,6 +7,8 @@ import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
 import { useOrganization } from "@/lib/org-context";
 import { usePermissions } from "@/lib/use-permissions";
+import { usePaginated } from "@/lib/use-paginated";
+import { Pagination } from "@/components/dashboard/pagination";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { FormDialog } from "@/components/dashboard/form-dialog";
@@ -41,7 +43,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Trophy, Plus, MoreHorizontal, Pencil, Trash2, Eye, UserX } from "lucide-react";
+import { Trophy, Plus, MoreHorizontal, Pencil, Trash2, Eye, UserX, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { RatingBadge } from "@/components/dashboard/rating-badge";
 
@@ -188,23 +190,28 @@ export default function CoachesPage() {
   // Scope the API URL by role — league_admin scoping is handled server-side
   const apiUrl = "/api/coaches";
 
-  const { data, isLoading: coachesLoading, error } = useSWR(apiUrl, authFetcher, {
-    fallbackData: undefined,
-  });
+  const [search, setSearch] = useState("");
+  const [licenseFilter, setLicenseFilter] = useState("all");
+  const [clubFilter, setClubFilter] = useState("all");
 
-  const coaches: Coach[] = data || [];
+  const { items: coaches, pagination, setPage, setLimit, isLoading: coachesLoading, error, mutate: mutateCoaches } = usePaginated<Coach>(
+    apiUrl,
+    {
+      defaultLimit: 20,
+      extraParams: { search: search || undefined },
+    }
+  );
   const isLoading = orgLoading || coachesLoading;
 
   // Both org admin and super admin are view-only for coaches
   // Only club admins can manage coaches
   const canEdit = canManage("coaches");
+  const canOrgAdminManage = isOrgAdmin();
 
-  const [search, setSearch] = useState("");
-  const [licenseFilter, setLicenseFilter] = useState("all");
-  const [clubFilter, setClubFilter] = useState("all");
   const [formOpen, setFormOpen] = useState(false);
   const [editingCoach, setEditingCoach] = useState<Coach | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Coach | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<Coach | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [formPhotoUrl, setFormPhotoUrl] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
@@ -217,16 +224,12 @@ export default function CoachesPage() {
 
   const filtered = useMemo(() => {
     return coaches.filter((c) => {
-      const fullName = `${c.firstName} ${c.lastName}`.toLowerCase();
       const clubName = (c.currentClub ?? "").toLowerCase();
-      const matchesSearch =
-        fullName.includes(search.toLowerCase()) ||
-        clubName.includes(search.toLowerCase());
       const matchesLicense = licenseFilter === "all" || c.licenseLevel === licenseFilter;
       const matchesClub = clubFilter === "all" || c.currentClub === clubFilter;
-      return matchesSearch && matchesLicense && matchesClub;
+      return matchesLicense && matchesClub;
     });
-  }, [coaches, search, licenseFilter, clubFilter]);
+  }, [coaches, licenseFilter, clubFilter]);
 
   const stats = useMemo(() => {
     const headCoaches = coaches.filter((c) =>
@@ -238,8 +241,8 @@ export default function CoachesPage() {
     const proCertified = coaches.filter((c) =>
       c.licenseLevel === "CAF Pro" || c.licenseLevel === "FIFA Pro"
     ).length;
-    return { total: coaches.length, headCoaches, avgExperience, proCertified };
-  }, [coaches]);
+    return { total: pagination.total, headCoaches, avgExperience, proCertified };
+  }, [coaches, pagination.total]);
 
   const openCreate = () => {
     setEditingCoach(null);
@@ -295,7 +298,7 @@ export default function CoachesPage() {
     }
 
     toast.success(editingCoach ? "Coach updated successfully." : "Coach created successfully.");
-    mutate(apiUrl);
+    mutateCoaches();
   };
 
   const handleDelete = async () => {
@@ -312,7 +315,7 @@ export default function CoachesPage() {
 
       toast.success(`${deleteTarget.firstName} ${deleteTarget.lastName} deleted.`);
       setDeleteTarget(null);
-      mutate(apiUrl);
+      mutateCoaches();
     } catch (err: any) {
       toast.error(err.message || "Something went wrong.");
     }
@@ -331,10 +334,25 @@ export default function CoachesPage() {
       }
 
       toast.success(`${coach.firstName} ${coach.lastName} deactivated.`);
-      mutate(apiUrl);
+      mutateCoaches();
     } catch (err: any) {
       toast.error(err.message || "Something went wrong.");
     }
+  };
+
+  const handleSuspendCoach = async () => {
+    if (!suspendTarget) return;
+    const newStatus = suspendTarget.status === "active" ? "inactive" : "active";
+    try {
+      const res = await fetchWithAuth(`/api/coaches/${suspendTarget.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d.error || "Failed"); return; }
+      toast.success(`${suspendTarget.firstName} ${suspendTarget.lastName} ${newStatus === "active" ? "activated" : "suspended"}.`);
+      setSuspendTarget(null);
+      mutateCoaches();
+    } catch { toast.error("Something went wrong."); }
   };
 
   const getInitials = (first: string, last: string) =>
@@ -443,6 +461,41 @@ export default function CoachesPage() {
             </DropdownMenu>
           );
         }
+        if (canOrgAdminManage) {
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                  <MoreHorizontal className="h-4 w-4" />
+                  <span className="sr-only">Actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => setDetailCoachId(c.id)}>
+                  <Eye className="mr-2 h-4 w-4" />
+                  View
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {c.status === "active" ? (
+                  <DropdownMenuItem onClick={() => setSuspendTarget(c)} className="text-amber-400 focus:text-amber-400">
+                    <UserX className="mr-2 h-4 w-4" />
+                    Suspend
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onClick={() => setSuspendTarget(c)} className="text-emerald-400 focus:text-emerald-400">
+                    <ShieldCheck className="mr-2 h-4 w-4" />
+                    Activate
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setDeleteTarget(c)} className="text-destructive focus:text-destructive">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          );
+        }
         return (
           <Button
             variant="ghost" size="icon"
@@ -497,10 +550,10 @@ export default function CoachesPage() {
       {/* Table */}
       <DataTable
         columns={columns}
-        data={filtered}
+        data={coaches}
         isLoading={isLoading}
         searchValue={search}
-        onSearchChange={setSearch}
+        onSearchChange={(v) => { setSearch(v); setPage(1); }}
         searchPlaceholder="Search coaches..."
         emptyMessage="No coaches found."
         filterSlot={
@@ -533,6 +586,14 @@ export default function CoachesPage() {
             </Select>
           </div>
         }
+      />
+      <Pagination
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        limit={pagination.limit}
+        onPageChange={setPage}
+        onLimitChange={setLimit}
       />
 
       {/* Create / Edit Dialog (only shown if canEdit) */}
@@ -634,6 +695,22 @@ export default function CoachesPage() {
           />
         </>
       )}
+
+      {/* Org Admin: Suspend / Activate Confirmation */}
+      <ConfirmDialog
+        open={!!suspendTarget}
+        onOpenChange={(open) => !open && setSuspendTarget(null)}
+        title={suspendTarget?.status === "active" ? "Suspend Coach" : "Activate Coach"}
+        description={
+          suspendTarget?.status === "active"
+            ? `Suspend "${suspendTarget?.firstName} ${suspendTarget?.lastName}"?`
+            : `Activate "${suspendTarget?.firstName} ${suspendTarget?.lastName}"?`
+        }
+        confirmLabel={suspendTarget?.status === "active" ? "Suspend" : "Activate"}
+        variant={suspendTarget?.status === "active" ? "destructive" : "default"}
+        onConfirm={handleSuspendCoach}
+      />
+
       <CoachDetailDialog coachId={detailCoachId} open={!!detailCoachId} onClose={() => setDetailCoachId(null)} />
     </div>
   );

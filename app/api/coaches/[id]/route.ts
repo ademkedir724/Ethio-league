@@ -94,7 +94,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireAuth(req, ["super_admin", "club_admin"]);
+    const auth = await requireAuth(req, ["super_admin", "organization_admin", "club_admin"]);
     if (isAuthError(auth)) return auth;
 
     const { id: idStr } = await params;

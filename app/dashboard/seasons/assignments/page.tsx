@@ -42,10 +42,11 @@ function formatDate(d: string) {
 
 function SeasonList({ leagueId }: { leagueId: string }) {
     const router = useRouter();
-    const { data: seasons, isLoading } = useSWR<Season[]>(
+    const { data: seasonsRaw, isLoading } = useSWR(
         `/api/leagues/${leagueId}/seasons`,
         authFetcher
     );
+    const seasons: Season[] = seasonsRaw?.data ?? seasonsRaw ?? [];
 
     if (isLoading) {
         return (
@@ -93,10 +94,11 @@ export default function SeasonAssignmentsPage() {
     const { isOrgAdmin } = useAuth();
     const [expandedLeagueId, setExpandedLeagueId] = useState<string | null>(null);
 
-    const { data: leagues, isLoading, error } = useSWR<League[]>(
+    const { data: leaguesRaw, isLoading, error } = useSWR(
         isOrgAdmin() ? "/api/leagues" : null,
         authFetcher
     );
+    const leagues: League[] = leaguesRaw?.data ?? leaguesRaw ?? [];
 
     if (!isOrgAdmin()) {
         return (

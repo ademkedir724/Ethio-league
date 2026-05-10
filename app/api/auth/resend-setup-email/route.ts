@@ -3,7 +3,7 @@ import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, badRequest, notFound, serverError } from "@/lib/api-helpers";
-import { sendPasswordSetupEmail } from "@/lib/email";
+import { sendPasswordSetupEmail, getAppUrl } from "@/lib/email";
 import { logAudit } from "@/lib/audit";
 
 const ALLOWED_ROLES = ["super_admin", "organization_admin", "league_admin"];
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
         });
 
         try {
-            await sendPasswordSetupEmail(email, token);
+            await sendPasswordSetupEmail(email, token, req);
         } catch (emailError) {
             await logAudit({
                 userId: auth.userId,

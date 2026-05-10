@@ -732,7 +732,8 @@ function SeasonClubsTab({ seasonId, season }: { seasonId: string; season: Season
     );
 
     // All clubs in this league (to pick from)
-    const { data: allClubs } = useSWR<Club[]>("/api/clubs", authFetcher);
+    const { data: allClubsRaw } = useSWR("/api/clubs", authFetcher);
+    const allClubs: Club[] = allClubsRaw?.data ?? allClubsRaw ?? [];
 
     const [addOpen, setAddOpen] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -935,14 +936,14 @@ function SeasonClubsTab({ seasonId, season }: { seasonId: string; season: Season
                                                 type="button"
                                                 onClick={() => toggleClub(c.id)}
                                                 className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${checked
-                                                        ? "border-primary/40 bg-primary/5"
-                                                        : "border-border hover:bg-muted/40"
+                                                    ? "border-primary/40 bg-primary/5"
+                                                    : "border-border hover:bg-muted/40"
                                                     }`}
                                             >
                                                 {/* Checkbox indicator */}
                                                 <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${checked
-                                                        ? "border-primary bg-primary text-primary-foreground"
-                                                        : "border-muted-foreground/40"
+                                                    ? "border-primary bg-primary text-primary-foreground"
+                                                    : "border-muted-foreground/40"
                                                     }`}>
                                                     {checked && <Check className="h-3 w-3" />}
                                                 </span>
@@ -1196,7 +1197,8 @@ function SeasonCoachesTab({ seasonId }: { seasonId: string }) {
 // ─── Club Admin Season View ───────────────────────────────────────────────────
 
 function ClubAdminSeasonView({ seasonId, clubId }: { seasonId: string; clubId: string }) {
-    const { data: allPlayers } = useSWR<Array<{ id: string; firstName: string; lastName: string; primaryPosition?: { id: number; name: string } | null }>>("/api/players", authFetcher);
+    const { data: allPlayersRaw } = useSWR("/api/players", authFetcher);
+    const allPlayers = allPlayersRaw?.data ?? allPlayersRaw ?? [];
     const { data: seasonPlayers, isLoading } = useSWR<SeasonClubPlayer[]>(`/api/seasons/${seasonId}/players`, authFetcher);
     const { data: positions } = useSWR<Array<{ id: number; name: string; code: string }>>("/api/players/positions", authFetcher);
 

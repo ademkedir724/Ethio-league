@@ -2,12 +2,13 @@ import { NextRequest } from "next/server";
 import crypto from "node:crypto";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { success, created, badRequest, forbidden, serverError } from "@/lib/api-helpers";
+import { success, created, badRequest, forbidden, serverError, parsePagination, paginated } from "@/lib/api-helpers";
 import { assertLeagueScope } from "@/lib/scope-guard";
-import { sendPasswordSetupEmail } from "@/lib/email";
+import { sendPasswordSetupEmail, getAppUrl } from "@/lib/email";
 import { logAudit } from "@/lib/audit";
 
 // GET /api/clubs — list clubs (scope-filtered by role)
+// ?page=1&limit=20&search=<name>
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req);
@@ -23,25 +24,32 @@ export async function GET(req: NextRequest) {
       // no filter
     } else if (isOrgAdmin) {
       const orgId = auth.roles.find((r) => r.roleName === "organization_admin")?.organizationId;
-      if (orgId) {
-        where.league = { organizationId: orgId };
-      }
+      if (orgId) where.league = { organizationId: orgId };
     } else if (isLeagueAdmin) {
       const leagueId = auth.roles.find((r) => r.roleName === "league_admin")?.leagueId;
-      if (leagueId) {
-        where.leagueId = leagueId;
-      }
+      if (leagueId) where.leagueId = leagueId;
     }
 
-    const clubs = await prisma.club.findMany({
-      where,
-      include: {
-        primaryStadium: { select: { id: true, name: true } },
-        _count: { select: { seasonClubs: true } },
-      },
-      orderBy: { name: "asc" },
-    });
-    return success(clubs);
+    const sp = req.nextUrl.searchParams;
+    const { page, limit, skip } = parsePagination(sp);
+    const search = sp.get("search")?.trim();
+    if (search) where.name = { contains: search, mode: "insensitive" };
+
+    const [total, clubs] = await Promise.all([
+      prisma.club.count({ where }),
+      prisma.club.findMany({
+        where,
+        include: {
+          primaryStadium: { select: { id: true, name: true } },
+          _count: { select: { seasonClubs: true } },
+        },
+        orderBy: { name: "asc" },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return paginated(clubs, total, page, limit);
   } catch (error) {
     return serverError(error);
   }
@@ -117,7 +125,7 @@ export async function POST(req: NextRequest) {
 
       // Send password setup email
       try {
-        await sendPasswordSetupEmail(adminEmail, token);
+        await sendPasswordSetupEmail(adminEmail, token, req);
       } catch (emailErr) {
         await logAudit({
           userId: auth.userId,
@@ -168,7 +176,7 @@ export async function POST(req: NextRequest) {
         // Notification failure must not break the response
       }
 
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const appUrl = getAppUrl(req);
       return created({ club: newClub, adminSetupLink: `${appUrl}/set-password?token=${token}`, user: { id: newUser.id, email: newUser.email } });
     }
 

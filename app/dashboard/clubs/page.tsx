@@ -6,6 +6,8 @@ import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
+import { usePaginated } from "@/lib/use-paginated";
+import { Pagination } from "@/components/dashboard/pagination";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -44,6 +46,7 @@ import Image from "next/image";
 import {
   Shield, Plus, MoreHorizontal, Check, X, Eye,
   MapPin, ShieldCheck, Link as LinkIcon, Copy,
+  PauseCircle, PlayCircle, Trash2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -85,9 +88,18 @@ function LeagueAdminClubsView() {
   const { getLeagueId } = useAuth();
   const leagueId = getLeagueId();
 
-  const { data: clubsData, isLoading: clubsLoading, error } = useSWR<Club[]>(
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const { items: clubs, pagination, setPage, setLimit, isLoading: clubsLoading, error, mutate: mutateClubs } = usePaginated<Club>(
     "/api/clubs",
-    authFetcher
+    {
+      defaultLimit: 20,
+      extraParams: {
+        search: search || undefined,
+        status: statusFilter !== "all" ? statusFilter : undefined,
+      },
+    }
   );
 
   // Fetch seasons for this league to populate the season selector
@@ -96,30 +108,19 @@ function LeagueAdminClubsView() {
     authFetcher
   );
 
-  const clubs: Club[] = clubsData ?? [];
   const seasons: Season[] = seasonsData ?? [];
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(emptyCreateForm);
   const [isSaving, setIsSaving] = useState(false);
   const [setupLink, setSetupLink] = useState<string | null>(null);
   const [setupEmail, setSetupEmail] = useState("");
 
-  const filtered = useMemo(() => {
-    return clubs.filter((c) => {
-      const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase());
-      const matchesStatus = statusFilter === "all" || c.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-  }, [clubs, search, statusFilter]);
-
   const stats = useMemo(() => ({
-    total: clubs.length,
+    total: pagination.total,
     active: clubs.filter((c) => c.status === "active").length,
     pending: clubs.filter((c) => c.status === "pending").length,
-  }), [clubs]);
+  }), [clubs, pagination.total]);
 
   const handleCreate = async () => {
     if (!form.name.trim()) { toast.error("Club name is required"); return; }
@@ -153,7 +154,7 @@ function LeagueAdminClubsView() {
       toast.success("Club created");
       setCreateOpen(false);
       setForm(emptyCreateForm);
-      mutate("/api/clubs");
+      mutateClubs();
     } catch {
       toast.error("Something went wrong");
     } finally {
@@ -247,28 +248,38 @@ function LeagueAdminClubsView() {
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
         </div>
       ) : (
-        <DataTable
-          columns={columns}
-          data={filtered}
-          isLoading={false}
-          searchValue={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Search clubs..."
-          emptyMessage="No clubs found."
-          filterSlot={
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
-              </SelectContent>
-            </Select>
-          }
-        />
+        <>
+          <DataTable
+            columns={columns}
+            data={clubs}
+            isLoading={false}
+            searchValue={search}
+            onSearchChange={(v) => { setSearch(v); setPage(1); }}
+            searchPlaceholder="Search clubs..."
+            emptyMessage="No clubs found."
+            filterSlot={
+              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="rejected">Rejected</SelectItem>
+                </SelectContent>
+              </Select>
+            }
+          />
+          <Pagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            total={pagination.total}
+            limit={pagination.limit}
+            onPageChange={setPage}
+            onLimitChange={setLimit}
+          />
+        </>
       )}
 
       {/* Create Club Dialog */}
@@ -393,26 +404,33 @@ function OrgAdminClubsView() {
   const { getOrganizationId, isOrgAdmin } = useAuth();
   const orgId = getOrganizationId();
 
-  const apiUrl = isOrgAdmin() && orgId ? `/api/clubs?organizationId=${orgId}` : "/api/clubs";
-  const { data: clubsData, isLoading, error } = useSWR<Club[]>(apiUrl, authFetcher);
-  const clubs: Club[] = clubsData ?? [];
-
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [approveTarget, setApproveTarget] = useState<Club | null>(null);
   const [rejectTarget, setRejectTarget] = useState<Club | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<Club | null>(null);
+  const [activateTarget, setActivateTarget] = useState<Club | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Club | null>(null);
 
-  const filtered = useMemo(() => clubs.filter((c) => {
-    const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "all" || c.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  }), [clubs, search, statusFilter]);
+  const baseUrl = isOrgAdmin() && orgId ? `/api/clubs?organizationId=${orgId}` : "/api/clubs";
+  const { items: clubs, pagination, setPage, setLimit, isLoading, error, mutate: mutateClubs } = usePaginated<Club>(
+    baseUrl,
+    {
+      defaultLimit: 20,
+      extraParams: {
+        search: search || undefined,
+        status: statusFilter !== "all" ? statusFilter : undefined,
+      },
+    }
+  );
+
+  const filtered = clubs;
 
   const stats = useMemo(() => ({
-    total: clubs.length,
+    total: pagination.total,
     active: clubs.filter((c) => c.status === "active").length,
     pending: clubs.filter((c) => c.status === "pending").length,
-  }), [clubs]);
+  }), [clubs, pagination.total]);
 
   const handleApprove = async () => {
     if (!approveTarget) return;
@@ -424,7 +442,7 @@ function OrgAdminClubsView() {
       if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d.error || "Failed"); return; }
       toast.success(`${approveTarget.name} approved`);
       setApproveTarget(null);
-      mutate(apiUrl);
+      mutateClubs();
     } catch { toast.error("Failed to approve club"); }
   };
 
@@ -438,8 +456,47 @@ function OrgAdminClubsView() {
       if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d.error || "Failed"); return; }
       toast.success(`${rejectTarget.name} rejected`);
       setRejectTarget(null);
-      mutate(apiUrl);
+      mutateClubs();
     } catch { toast.error("Failed to reject club"); }
+  };
+
+  const handleSuspend = async () => {
+    if (!suspendTarget) return;
+    try {
+      const res = await fetchWithAuth(`/api/clubs/${suspendTarget.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "suspended" }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d.error || "Failed"); return; }
+      toast.success(`${suspendTarget.name} suspended`);
+      setSuspendTarget(null);
+      mutateClubs();
+    } catch { toast.error("Failed to suspend club"); }
+  };
+
+  const handleActivate = async () => {
+    if (!activateTarget) return;
+    try {
+      const res = await fetchWithAuth(`/api/clubs/${activateTarget.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "active" }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d.error || "Failed"); return; }
+      toast.success(`${activateTarget.name} activated`);
+      setActivateTarget(null);
+      mutateClubs();
+    } catch { toast.error("Failed to activate club"); }
+  };
+
+  const handleDeleteClub = async () => {
+    if (!deleteTarget) return;
+    try {
+      const res = await fetchWithAuth(`/api/clubs/${deleteTarget.id}`, { method: "DELETE" });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d.error || "Failed"); return; }
+      toast.success(`${deleteTarget.name} deleted`);
+      setDeleteTarget(null);
+      mutateClubs();
+    } catch { toast.error("Failed to delete club"); }
   };
 
   const columns: Column<Club>[] = [
@@ -487,22 +544,59 @@ function OrgAdminClubsView() {
     {
       key: "actions",
       header: "",
-      className: "w-24",
-      render: (c) => {
-        if (isOrgAdmin() && c.status === "pending") {
-          return (
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-400 hover:bg-emerald-400/10" onClick={() => setApproveTarget(c)}>
-                <Check className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => setRejectTarget(c)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          );
-        }
-        return <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => router.push(`/dashboard/clubs/${c.id}`)}><Eye className="h-4 w-4" /></Button>;
-      },
+      className: "w-12",
+      render: (c) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+              <MoreHorizontal className="h-4 w-4" />
+              <span className="sr-only">Actions</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem onClick={() => router.push(`/dashboard/clubs/${c.id}`)}>
+              <Eye className="mr-2 h-4 w-4" />
+              View
+            </DropdownMenuItem>
+            {c.status === "pending" && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setApproveTarget(c)} className="text-emerald-400 focus:text-emerald-400">
+                  <Check className="mr-2 h-4 w-4" />
+                  Approve
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setRejectTarget(c)} className="text-destructive focus:text-destructive">
+                  <X className="mr-2 h-4 w-4" />
+                  Reject
+                </DropdownMenuItem>
+              </>
+            )}
+            {(c.status === "active" || c.status === "approved") && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setSuspendTarget(c)} className="text-amber-400 focus:text-amber-400">
+                  <PauseCircle className="mr-2 h-4 w-4" />
+                  Suspend
+                </DropdownMenuItem>
+              </>
+            )}
+            {c.status === "suspended" && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setActivateTarget(c)} className="text-emerald-400 focus:text-emerald-400">
+                  <PlayCircle className="mr-2 h-4 w-4" />
+                  Activate
+                </DropdownMenuItem>
+              </>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setDeleteTarget(c)} className="text-destructive focus:text-destructive">
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
     },
   ];
 
@@ -524,14 +618,14 @@ function OrgAdminClubsView() {
 
       <DataTable
         columns={columns}
-        data={filtered}
+        data={clubs}
         isLoading={isLoading}
         searchValue={search}
-        onSearchChange={setSearch}
+        onSearchChange={(v) => { setSearch(v); setPage(1); }}
         searchPlaceholder="Search clubs..."
         emptyMessage="No clubs found."
         filterSlot={
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
             <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
@@ -541,6 +635,14 @@ function OrgAdminClubsView() {
             </SelectContent>
           </Select>
         }
+      />
+      <Pagination
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        limit={pagination.limit}
+        onPageChange={setPage}
+        onLimitChange={setLimit}
       />
 
       <ConfirmDialog
@@ -560,6 +662,33 @@ function OrgAdminClubsView() {
         confirmLabel="Reject"
         variant="destructive"
         onConfirm={handleReject}
+      />
+      <ConfirmDialog
+        open={!!suspendTarget}
+        onOpenChange={(open) => !open && setSuspendTarget(null)}
+        title="Suspend Club"
+        description={`Suspend "${suspendTarget?.name}"? Their access will be restricted.`}
+        confirmLabel="Suspend"
+        variant="destructive"
+        onConfirm={handleSuspend}
+      />
+      <ConfirmDialog
+        open={!!activateTarget}
+        onOpenChange={(open) => !open && setActivateTarget(null)}
+        title="Activate Club"
+        description={`Reactivate "${activateTarget?.name}"?`}
+        confirmLabel="Activate"
+        variant="default"
+        onConfirm={handleActivate}
+      />
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete Club"
+        description={`Permanently delete "${deleteTarget?.name}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={handleDeleteClub}
       />
     </div>
   );
@@ -581,14 +710,16 @@ function ClubAdminReadOnlyView() {
   const { getClubId } = useAuth();
   const clubId = getClubId();
 
-  // Club admin sees all clubs in their league (for context), but primarily their own
-  const { data: clubsData, isLoading, error } = useSWR<Club[]>("/api/clubs", authFetcher);
-  const clubs: Club[] = clubsData ?? [];
   const [search, setSearch] = useState("");
 
-  const filtered = useMemo(() => clubs.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase())
-  ), [clubs, search]);
+  // Club admin sees all clubs in their league (for context), but primarily their own
+  const { items: clubs, pagination, setPage, setLimit, isLoading, error } = usePaginated<Club>(
+    "/api/clubs",
+    {
+      defaultLimit: 20,
+      extraParams: { search: search || undefined },
+    }
+  );
 
   const columns: Column<Club>[] = [
     {
@@ -658,12 +789,20 @@ function ClubAdminReadOnlyView() {
       )}
       <DataTable
         columns={columns}
-        data={filtered}
+        data={clubs}
         isLoading={isLoading}
         searchValue={search}
-        onSearchChange={setSearch}
+        onSearchChange={(v) => { setSearch(v); setPage(1); }}
         searchPlaceholder="Search clubs..."
         emptyMessage="No clubs found in your league."
+      />
+      <Pagination
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        limit={pagination.limit}
+        onPageChange={setPage}
+        onLimitChange={setLimit}
       />
     </div>
   );

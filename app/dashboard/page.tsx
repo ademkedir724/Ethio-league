@@ -38,8 +38,8 @@ function SuperAdminOverview() {
   const { data: recentUsers, isLoading: usersLoading } = useSWR("/api/users?limit=5", authFetcher);
 
   const s = stats || {};
-  const matches = (recentMatches || []).slice(0, 5);
-  const users = (recentUsers || []).slice(0, 5);
+  const matches = (recentMatches?.data || recentMatches || []).slice(0, 5);
+  const users = (recentUsers?.data || recentUsers || []).slice(0, 5);
 
   return (
     <div className="flex flex-col gap-6">
@@ -110,7 +110,7 @@ function SuperAdminOverview() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(leagues || []).slice(0, 6).map((l: { id: string; name: string; status: string; logoUrl?: string | null; _count: { seasons: number } }) => (
+                  {(leagues?.data || leagues || []).slice(0, 6).map((l: { id: string; name: string; status: string; logoUrl?: string | null; _count: { seasons: number } }) => (
                     <TableRow key={l.id}>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -128,7 +128,7 @@ function SuperAdminOverview() {
                       <TableCell><StatusBadge status={l.status} /></TableCell>
                     </TableRow>
                   ))}
-                  {(!leagues || leagues.length === 0) && (
+                  {(!(leagues?.data || leagues) || (leagues?.data || leagues).length === 0) && (
                     <TableRow><TableCell colSpan={3} className="text-sm text-muted-foreground">No leagues yet.</TableCell></TableRow>
                   )}
                 </TableBody>
@@ -328,7 +328,7 @@ function OrgAdminOverview() {
                 <Skeleton key={i} className="h-10 w-full" />
               ))}
             </div>
-          ) : leagues && leagues.length > 0 ? (
+          ) : leagues && (leagues.data || leagues).length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
@@ -338,7 +338,7 @@ function OrgAdminOverview() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {leagues.map((league: { id: string; name: string; status: string; _count: { seasons: number } }) => (
+                {(leagues.data || leagues).map((league: { id: string; name: string; status: string; _count: { seasons: number } }) => (
                   <TableRow key={league.id}>
                     <TableCell className="font-medium text-foreground">
                       {league.name}
@@ -573,7 +573,7 @@ function LeagueAdminOverview() {
                 <Skeleton key={i} className="h-10 w-full" />
               ))}
             </div>
-          ) : seasons && seasons.length > 0 ? (
+          ) : seasons && (seasons.data || seasons).length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
@@ -584,7 +584,7 @@ function LeagueAdminOverview() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {seasons.map((season: { id: string; name: string; status: string; _count: { seasonClubs: number; matches: number } }) => (
+                {(seasons.data || seasons).map((season: { id: string; name: string; status: string; _count: { seasonClubs: number; matches: number } }) => (
                   <TableRow key={season.id}>
                     <TableCell className="font-medium text-foreground">
                       {season.name}

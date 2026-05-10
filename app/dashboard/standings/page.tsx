@@ -96,13 +96,14 @@ export default function StandingsPage() {
 
     // ── League picker (super_admin / org_admin) ────────────────────────────────
     const [selectedLeagueId, setSelectedLeagueId] = useState<string>("");
-    const { data: leagues } = useSWR<League[]>(
+    const { data: leaguesRaw } = useSWR(
         needsLeaguePicker ? "/api/leagues" : null,
         authFetcher
     );
+    const leagues: League[] = leaguesRaw?.data ?? leaguesRaw ?? [];
     // Auto-select first league
     useEffect(() => {
-        if (leagues && leagues.length > 0 && !selectedLeagueId) {
+        if (leagues.length > 0 && !selectedLeagueId) {
             setSelectedLeagueId(leagues[0].id);
         }
     }, [leagues, selectedLeagueId]);
@@ -118,14 +119,15 @@ export default function StandingsPage() {
         return null;
     })();
 
-    const { data: seasons } = useSWR<Season[]>(seasonsUrl, authFetcher);
+    const { data: seasonsRaw } = useSWR(seasonsUrl, authFetcher);
+    const seasons: Season[] = seasonsRaw?.data ?? seasonsRaw ?? [];
 
     // Auto-select first season when seasons load or league changes
     useEffect(() => {
         setSelectedSeasonId("");
     }, [selectedLeagueId]);
     useEffect(() => {
-        if (seasons && seasons.length > 0 && !selectedSeasonId) {
+        if (seasons.length > 0 && !selectedSeasonId) {
             setSelectedSeasonId(seasons[0].id);
         }
     }, [seasons, selectedSeasonId]);

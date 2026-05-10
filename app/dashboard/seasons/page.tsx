@@ -2,10 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
-import useSWR, { mutate } from "swr";
+import useSWR from "swr";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
 import { usePermissions } from "@/lib/use-permissions";
+import { usePaginated } from "@/lib/use-paginated";
+import { Pagination } from "@/components/dashboard/pagination";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DataTable, type Column } from "@/components/dashboard/data-table";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -73,43 +75,38 @@ export default function SeasonsPage() {
   const router = useRouter();
   const canEdit = canManage("seasons");
 
-  // Fetch seasons — server already scopes by role
-  const { data: seasonsData, isLoading, error } = useSWR<Season[]>(
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const { items: seasons, pagination, setPage, setLimit, isLoading, error, mutate: mutateSeasonsData } = usePaginated<Season>(
     "/api/seasons",
-    authFetcher
+    {
+      defaultLimit: 20,
+      extraParams: {
+        search: search || undefined,
+        status: statusFilter !== "all" ? statusFilter : undefined,
+      },
+    }
   );
 
   // Fetch leagues for the create form (league selector)
   const { data: leaguesData } = useSWR<League[]>(
-    canEdit ? "/api/leagues" : null,
+    canEdit ? "/api/leagues?limit=100" : null,
     authFetcher
   );
 
-  const seasons: Season[] = seasonsData ?? [];
   const leagues: League[] = leaguesData ?? [];
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [formOpen, setFormOpen] = useState(false);
   const [editingSeason, setEditingSeason] = useState<Season | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Season | null>(null);
   const [form, setForm] = useState(emptyForm);
 
-  const filtered = useMemo(() => {
-    return seasons.filter((s) => {
-      const matchesSearch =
-        s.name.toLowerCase().includes(search.toLowerCase()) ||
-        (s.league?.name ?? "").toLowerCase().includes(search.toLowerCase());
-      const matchesStatus = statusFilter === "all" || s.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-  }, [seasons, search, statusFilter]);
-
   const stats = useMemo(() => {
     const active = seasons.filter((s) => s.status === "active").length;
     const totalMatches = seasons.reduce((sum, s) => sum + (s._count?.matches ?? 0), 0);
-    return { total: seasons.length, active, totalMatches };
-  }, [seasons]);
+    return { total: pagination.total, active, totalMatches };
+  }, [seasons, pagination.total]);
 
   const openCreate = () => {
     setEditingSeason(null);
@@ -198,7 +195,7 @@ export default function SeasonsPage() {
       toast.success("Season created");
     }
     setFormOpen(false);
-    mutate("/api/seasons");
+    mutateSeasonsData();
   };
 
   const handleDelete = async () => {
@@ -213,7 +210,7 @@ export default function SeasonsPage() {
     }
     toast.success("Season deleted");
     setDeleteTarget(null);
-    mutate("/api/seasons");
+    mutateSeasonsData();
   };
 
   const formatDate = (d: string) =>
@@ -374,14 +371,14 @@ export default function SeasonsPage() {
       {/* Table */}
       <DataTable
         columns={columns}
-        data={filtered}
+        data={seasons}
         isLoading={isLoading}
         searchValue={search}
-        onSearchChange={setSearch}
+        onSearchChange={(v) => { setSearch(v); setPage(1); }}
         searchPlaceholder="Search seasons..."
         emptyMessage="No seasons found."
         filterSlot={
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
             <SelectTrigger className="w-36">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
@@ -393,6 +390,14 @@ export default function SeasonsPage() {
             </SelectContent>
           </Select>
         }
+      />
+      <Pagination
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        limit={pagination.limit}
+        onPageChange={setPage}
+        onLimitChange={setLimit}
       />
 
       {/* Create / Edit Dialog */}

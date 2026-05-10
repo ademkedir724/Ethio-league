@@ -1,22 +1,23 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { success, created, badRequest, serverError } from "@/lib/api-helpers";
+import { success, created, badRequest, serverError, parsePagination, paginated } from "@/lib/api-helpers";
 
-// GET /api/matches?seasonId=X&status=Y — list matches (scope-filtered by role)
+// GET /api/matches?seasonId=X&status=Y&page=1&limit=20
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req);
     if (isAuthError(auth)) return auth;
 
-    const seasonId = req.nextUrl.searchParams.get("seasonId");
-    const status = req.nextUrl.searchParams.get("status");
+    const sp = req.nextUrl.searchParams;
+    const seasonId = sp.get("seasonId");
+    const status = sp.get("status");
+    const { page, limit, skip } = parsePagination(sp, 20, 10, 25);
 
     const where: Record<string, unknown> = {};
     if (seasonId) where.seasonId = seasonId;
     if (status) where.status = status;
 
-    // Scope filtering by role
     const isLeagueAdmin = auth.roles.some((r) => r.roleName === "league_admin");
     const isMEA = auth.roles.some((r) => r.roleName === "match_event_admin");
     const isClubAdmin = auth.roles.some((r) => r.roleName === "club_admin");
@@ -31,23 +32,23 @@ export async function GET(req: NextRequest) {
       if (meaSeasonIds.length > 0) where.seasonId = { in: meaSeasonIds };
     } else if (isClubAdmin) {
       const clubId = auth.roles.find((r) => r.roleName === "club_admin")?.clubId;
-      if (clubId) {
-        where.OR = [{ homeClubId: clubId }, { awayClubId: clubId }];
-      }
+      if (clubId) where.OR = [{ homeClubId: clubId }, { awayClubId: clubId }];
     }
 
-    const matches = await prisma.match.findMany({
-      where,
-      include: {
-        homeClub: { select: { id: true, name: true, shortName: true, logoUrl: true } },
-        awayClub: { select: { id: true, name: true, shortName: true, logoUrl: true } },
-        stadium: { select: { id: true, name: true } },
-        season: { select: { id: true, name: true, leagueId: true } },
-        _count: { select: { matchEvents: true, matchReferees: true } },
-      },
-      orderBy: { matchDate: "asc" },
-    });
-    return success(matches);
+    const include = {
+      homeClub: { select: { id: true, name: true, shortName: true, logoUrl: true } },
+      awayClub: { select: { id: true, name: true, shortName: true, logoUrl: true } },
+      stadium: { select: { id: true, name: true } },
+      season: { select: { id: true, name: true, leagueId: true } },
+      _count: { select: { matchEvents: true, matchReferees: true } },
+    };
+
+    const [total, matches] = await Promise.all([
+      prisma.match.count({ where }),
+      prisma.match.findMany({ where, include, orderBy: { matchDate: "asc" }, skip, take: limit }),
+    ]);
+
+    return paginated(matches, total, page, limit);
   } catch (error) {
     return serverError(error);
   }
