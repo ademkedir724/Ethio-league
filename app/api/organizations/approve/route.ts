@@ -3,7 +3,7 @@ import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, badRequest, notFound, serverError } from "@/lib/api-helpers";
-import { sendPasswordSetupEmail } from "@/lib/email";
+import { sendPasswordSetupEmail, getAppUrl } from "@/lib/email";
 import { logAudit } from "@/lib/audit";
 
 // Helper to generate a secure random token
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
         });
 
         try {
-          await sendPasswordSetupEmail(userRoleScope.user.email, token);
+          await sendPasswordSetupEmail(userRoleScope.user.email, token, req);
         } catch (emailErr) {
           // Email failure must not block the approval — log it and continue
           console.error("[approve] Password setup email failed:", emailErr);
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
           },
           expiresAt: expires.toISOString(),
           // Always include the setup link — shown in UI popup as fallback if email fails
-          passwordSetupLink: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/set-password?token=${token}`,
+          passwordSetupLink: `${getAppUrl(req)}/set-password?token=${token}`,
         };
 
         return success(responseBody);

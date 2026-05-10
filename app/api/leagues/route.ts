@@ -4,7 +4,7 @@ import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, created, badRequest, serverError } from "@/lib/api-helpers";
 import { assertOrgScope } from "@/lib/scope-guard";
 import { logAudit } from "@/lib/audit";
-import { sendPasswordSetupEmail } from "@/lib/email";
+import { sendPasswordSetupEmail, getAppUrl } from "@/lib/email";
 
 // GET /api/leagues — list leagues scoped by role
 export async function GET(req: NextRequest) {
@@ -125,10 +125,10 @@ export async function POST(req: NextRequest) {
       return { league, adminUser };
     });
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const appUrl = getAppUrl(req);
     const adminSetupLink = `${appUrl}/set-password?token=${token}`;
     try {
-      await sendPasswordSetupEmail(adminEmail, token);
+      await sendPasswordSetupEmail(adminEmail, token, req);
     } catch {
       // dev mode — link returned in response
     }
