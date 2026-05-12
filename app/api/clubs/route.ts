@@ -8,7 +8,7 @@ import { sendPasswordSetupEmail, getAppUrl } from "@/lib/email";
 import { logAudit } from "@/lib/audit";
 
 // GET /api/clubs — list clubs (scope-filtered by role)
-// ?page=1&limit=20&search=<name>
+// ?page=1&limit=20&search=<name>&seasonId=<uuid>
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req);
@@ -19,8 +19,16 @@ export async function GET(req: NextRequest) {
     const isOrgAdmin = auth.roles.some((r) => r.roleName === "organization_admin");
     const isLeagueAdmin = auth.roles.some((r) => r.roleName === "league_admin");
     const isSuperAdmin = auth.roles.some((r) => r.roleName === "super_admin");
+    const isClubAdmin = auth.roles.some((r) => r.roleName === "club_admin");
 
-    if (isSuperAdmin) {
+    const sp = req.nextUrl.searchParams;
+    const seasonId = sp.get("seasonId")?.trim();
+
+    if (seasonId) {
+      // When a seasonId is provided, return only clubs registered in that season
+      // (any role can use this filter as long as they have access)
+      where.seasonClubs = { some: { seasonId } };
+    } else if (isSuperAdmin) {
       // no filter
     } else if (isOrgAdmin) {
       const orgId = auth.roles.find((r) => r.roleName === "organization_admin")?.organizationId;
@@ -28,12 +36,19 @@ export async function GET(req: NextRequest) {
     } else if (isLeagueAdmin) {
       const leagueId = auth.roles.find((r) => r.roleName === "league_admin")?.leagueId;
       if (leagueId) where.leagueId = leagueId;
+    } else if (isClubAdmin) {
+      const clubId = auth.roles.find((r) => r.roleName === "club_admin")?.clubId;
+      if (clubId) where.id = clubId;
     }
 
-    const sp = req.nextUrl.searchParams;
     const { page, limit, skip } = parsePagination(sp);
     const search = sp.get("search")?.trim();
     if (search) where.name = { contains: search, mode: "insensitive" };
+
+    // When filtering by season, also restrict to active clubs only
+    if (seasonId) {
+      where.status = "active";
+    }
 
     const [total, clubs] = await Promise.all([
       prisma.club.count({ where }),
@@ -123,10 +138,13 @@ export async function POST(req: NextRequest) {
       const newClub = result.club;
       const newUser = result.user;
 
-      // Send password setup email
+      // Send password setup email — non-fatal: club + user are already created.
+      // If email fails (e.g. unverified domain), log it and continue.
+      // The setup link is always returned in the API response as a fallback.
       try {
         await sendPasswordSetupEmail(adminEmail, token, req);
       } catch (emailErr) {
+        console.error("[clubs] Password setup email failed:", emailErr);
         await logAudit({
           userId: auth.userId,
           actionType: "email_failure",
@@ -134,7 +152,7 @@ export async function POST(req: NextRequest) {
           targetType: "user",
           description: `Failed to send password setup email to ${adminEmail}: ${String(emailErr)}`,
         });
-        return serverError(emailErr);
+        // Do NOT return serverError — the record was committed successfully
       }
 
       // Audit log

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { success, badRequest, notFound, serverError } from "@/lib/api-helpers";
+import { success, badRequest, notFound } from "@/lib/api-helpers";
 import { sendPasswordSetupEmail, getAppUrl } from "@/lib/email";
 import { logAudit } from "@/lib/audit";
 
@@ -34,18 +34,23 @@ export async function POST(req: NextRequest) {
             },
         });
 
+        const appUrl = getAppUrl(req);
+        const setupLink = `${appUrl}/set-password?token=${token}`;
+
+        let emailSent = true;
         try {
             await sendPasswordSetupEmail(email, token, req);
         } catch (emailError) {
+            emailSent = false;
+            console.error("Failed to send password setup email:", emailError);
             await logAudit({
                 userId: auth.userId,
                 actionType: "email_failure",
                 targetId: user.id,
                 targetType: "user",
-                description: `Failed to resend password setup email to ${email}`,
+                description: `Failed to resend password setup email to ${email}: ${String(emailError)}`,
             });
-            console.error("Failed to send password setup email:", emailError);
-            return serverError(emailError);
+            // Do NOT return serverError — the token was saved; return the link as fallback
         }
 
         await logAudit({
@@ -56,7 +61,10 @@ export async function POST(req: NextRequest) {
             description: "Password setup email resent",
         });
 
-        return success({ message: "Password setup email sent" });
+        return success({
+            message: emailSent ? "Password setup email sent" : "Email delivery failed — use the setup link below",
+            setupLink,
+        });
     } catch (error) {
         return serverError(error);
     }
