@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { success, created, badRequest, serverError, parsePagination, paginated } from "@/lib/api-helpers";
+import { success, created, badRequest, forbidden, serverError, parsePagination, paginated } from "@/lib/api-helpers";
 
 // GET /api/players — list players (scope-filtered by role)
 // ?search=<name>  — name filter
