@@ -5,6 +5,8 @@ import { success, serverError } from "@/lib/api-helpers";
 // GET /api/fan/leagues
 // Public — no auth required
 // Query: ?search, ?leagueTypeId, ?genderCategory, ?ageCategory, ?organizationId, ?status
+// Only leagues that have at least one active or completed season are shown.
+// Leagues whose every season is "upcoming" are excluded — they have no live activity yet.
 export async function GET(req: NextRequest) {
     try {
         const { searchParams } = req.nextUrl;
@@ -18,6 +20,12 @@ export async function GET(req: NextRequest) {
         const leagues = await prisma.league.findMany({
             where: {
                 status,
+                // Only include leagues that have at least one non-upcoming season
+                seasons: {
+                    some: {
+                        status: { in: ["active", "completed"] },
+                    },
+                },
                 ...(search && { name: { contains: search, mode: "insensitive" } }),
                 ...(leagueTypeId && { leagueTypeId: Number(leagueTypeId) }),
                 ...(genderCategory && { genderCategory }),

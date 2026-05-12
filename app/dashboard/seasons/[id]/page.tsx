@@ -240,10 +240,11 @@ function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
     const [editForm, setEditForm] = useState({ matchDate: "", matchTime: "", stadiumId: "" });
     const [isSavingEdit, setIsSavingEdit] = useState(false);
 
-    const { data: fixtures, isLoading, mutate: mutateFixtures } = useSWR<FixtureMatch[]>(
-        `/api/matches?seasonId=${seasonId}`,
+    const { data: fixturesResponse, isLoading, mutate: mutateFixtures } = useSWR<{ data: FixtureMatch[]; pagination: unknown }>(
+        `/api/matches?seasonId=${seasonId}&limit=200`,
         authFetcher
     );
+    const fixtures = fixturesResponse?.data;
 
     // Fetch season assignments for MEA/referee pickers in edit dialog
     const { data: seasonAssignments } = useSWR<{
@@ -555,10 +556,11 @@ interface SeasonOption {
 
 function LeagueAdminSeasonSelector({ currentSeasonId, leagueId }: { currentSeasonId: string; leagueId: string }) {
     const router = useRouter();
-    const { data: seasons } = useSWR<SeasonOption[]>(
-        leagueId ? `/api/seasons?leagueId=${leagueId}` : null,
+    const { data: seasonsResponse } = useSWR<{ data: SeasonOption[] }>(
+        leagueId ? `/api/seasons?leagueId=${leagueId}&limit=100` : null,
         authFetcher
     );
+    const seasons = seasonsResponse?.data ?? [];
 
     if (!seasons || seasons.length <= 1) return null;
 
@@ -732,8 +734,8 @@ function SeasonClubsTab({ seasonId, season }: { seasonId: string; season: Season
     );
 
     // All clubs in this league (to pick from)
-    const { data: allClubsRaw } = useSWR("/api/clubs", authFetcher);
-    const allClubs: Club[] = allClubsRaw?.data ?? allClubsRaw ?? [];
+    const { data: allClubsRaw } = useSWR<{ data: Club[] }>("/api/clubs?limit=500", authFetcher);
+    const allClubs: Club[] = allClubsRaw?.data ?? [];
 
     const [addOpen, setAddOpen] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -1197,8 +1199,8 @@ function SeasonCoachesTab({ seasonId }: { seasonId: string }) {
 // ─── Club Admin Season View ───────────────────────────────────────────────────
 
 function ClubAdminSeasonView({ seasonId, clubId }: { seasonId: string; clubId: string }) {
-    const { data: allPlayersRaw } = useSWR("/api/players", authFetcher);
-    const allPlayers = allPlayersRaw?.data ?? allPlayersRaw ?? [];
+    const { data: allPlayersRaw } = useSWR<{ data: Array<{ id: string; firstName: string; lastName: string; shortName?: string | null }> }>("/api/players?limit=500", authFetcher);
+    const allPlayers = allPlayersRaw?.data ?? [];
     const { data: seasonPlayers, isLoading } = useSWR<SeasonClubPlayer[]>(`/api/seasons/${seasonId}/players`, authFetcher);
     const { data: positions } = useSWR<Array<{ id: number; name: string; code: string }>>("/api/players/positions", authFetcher);
 
