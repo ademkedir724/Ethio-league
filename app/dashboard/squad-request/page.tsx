@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { ClubPendingBanner, useClubIsActive } from "@/components/dashboard/club-pending-banner";
 
 interface Player {
     id: string;
@@ -80,6 +81,7 @@ function RequestStatusBadge({ status }: { status: string }) {
 export default function SquadRequestPage() {
     const { getClubId } = useAuth();
     const clubId = getClubId();
+    const { isActive: clubIsActive } = useClubIsActive();
 
     const { data: seasonsRaw } = useSWR(
         clubId ? `/api/seasons?clubId=${clubId}` : null, authFetcher
@@ -262,6 +264,8 @@ export default function SquadRequestPage() {
         <div className="flex flex-col gap-6">
             <PageHeader title="Squad Request" description="Build and submit your season squad for League Admin approval." />
 
+            <ClubPendingBanner />
+
             <Tabs defaultValue="players">
                 <TabsList>
                     <TabsTrigger value="players">Players</TabsTrigger>
@@ -342,7 +346,7 @@ export default function SquadRequestPage() {
                         <Card>
                             <CardHeader className="flex flex-row items-center justify-between pb-3">
                                 <CardTitle className="text-base">Draft ({playerDrafts.length})</CardTitle>
-                                <Button size="sm" disabled={playerDrafts.length === 0 || submitting} onClick={submitPlayerRequest}>
+                                <Button size="sm" disabled={playerDrafts.length === 0 || submitting || !clubIsActive} onClick={submitPlayerRequest}>
                                     <Send className="h-3.5 w-3.5 mr-1" />
                                     Submit to League Admin
                                 </Button>
@@ -463,7 +467,7 @@ export default function SquadRequestPage() {
                         <Card>
                             <CardHeader className="flex flex-row items-center justify-between pb-3">
                                 <CardTitle className="text-base">Draft ({coachDrafts.length})</CardTitle>
-                                <Button size="sm" disabled={coachDrafts.length === 0 || submitting} onClick={submitCoachRequest}>
+                                <Button size="sm" disabled={coachDrafts.length === 0 || submitting || !clubIsActive} onClick={submitCoachRequest}>
                                     <Send className="h-3.5 w-3.5 mr-1" />
                                     Submit to League Admin
                                 </Button>

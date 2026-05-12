@@ -41,12 +41,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { UserCircle, Plus, MoreHorizontal, Pencil, Trash2, Eye, UserX, ShieldCheck } from "lucide-react";
+import { UserCircle, Plus, MoreHorizontal, Pencil, Trash2, Eye, UserX, ShieldCheck, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import Image from "next/image";
 import { ImageGallery } from "@/components/dashboard/image-gallery";
 import { MediaUploadWidget } from "@/components/dashboard/media-upload-widget";
 import { RatingBadge } from "@/components/dashboard/rating-badge";
+import { PlayerBulkImportDialog } from "@/components/dashboard/player-bulk-import-dialog";
+import { ClubPendingBanner, useClubIsActive } from "@/components/dashboard/club-pending-banner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -111,6 +113,7 @@ function getAge(dob: string) {
 function ClubAdminPlayersView() {
   const { getClubId } = useAuth();
   const clubId = getClubId();
+  const { isActive: clubIsActive } = useClubIsActive();
 
   const [search, setSearch] = useState("");
   const [selectedSeasonId, setSelectedSeasonId] = useState<string>("unassigned");
@@ -140,6 +143,7 @@ function ClubAdminPlayersView() {
   const [deleteTarget, setDeleteTarget] = useState<Player | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
 
   // Players assigned to the selected season
   const { data: seasonPlayers, isLoading: seasonPlayersLoading } = useSWR<SeasonClubPlayer[]>(
@@ -338,11 +342,17 @@ function ClubAdminPlayersView() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Players" description="Manage your club's players.">
-        <Button onClick={openCreate}>
+        <Button variant="outline" onClick={() => setBulkImportOpen(true)} disabled={!clubIsActive}>
+          <FileSpreadsheet className="h-4 w-4" />
+          Import Excel
+        </Button>
+        <Button onClick={openCreate} disabled={!clubIsActive}>
           <Plus className="h-4 w-4" />
           Add Player
         </Button>
       </PageHeader>
+
+      <ClubPendingBanner />
 
       {error && (
         <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
@@ -501,6 +511,12 @@ function ClubAdminPlayersView() {
         confirmLabel="Delete"
         variant="destructive"
         onConfirm={handleDelete}
+      />
+
+      <PlayerBulkImportDialog
+        open={bulkImportOpen}
+        onOpenChange={setBulkImportOpen}
+        onSuccess={() => mutatePlayers()}
       />
     </div>
   );

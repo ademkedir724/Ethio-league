@@ -29,10 +29,11 @@ export default function SquadManagementPage() {
     const { getLeagueId, isLeagueAdmin } = useAuth();
     const leagueId = getLeagueId();
 
-    const { data: seasons, error, isLoading } = useSWR<Season[]>(
-        leagueId ? `/api/seasons?leagueId=${leagueId}` : null,
+    const { data: seasonsResponse, error, isLoading } = useSWR<{ data: Season[] }>(
+        leagueId ? `/api/seasons?leagueId=${leagueId}&limit=100` : null,
         authFetcher
     );
+    const seasons = seasonsResponse?.data ?? [];
 
     if (!isLeagueAdmin()) {
         return (
@@ -63,7 +64,7 @@ export default function SquadManagementPage() {
                         <Skeleton key={i} className="h-20 rounded-xl" />
                     ))}
                 </div>
-            ) : !seasons || seasons.length === 0 ? (
+            ) : seasons.length === 0 ? (
                 <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
                     <Users className="mb-3 h-10 w-10 text-muted-foreground/40" />
                     <p className="text-sm font-medium text-muted-foreground">No seasons found for your league.</p>
