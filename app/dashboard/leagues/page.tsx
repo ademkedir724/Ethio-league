@@ -603,18 +603,20 @@ function ClubAdminLeaguesView() {
   const clubId = getClubId();
 
   // Fetch seasons this club participates in
-  const { data: seasons, isLoading: seasonsLoading } = useSWR(
-    clubId ? `/api/seasons?clubId=${clubId}` : null,
+  const { data: seasonsResponse, isLoading: seasonsLoading } = useSWR<{ data: Array<{ id: string; name: string; status: string; startDate: string; endDate: string; _count?: { matches: number }; league: { id: string; name: string; organization?: { name: string } } }> }>(
+    clubId ? `/api/seasons?clubId=${clubId}&limit=100` : null,
     authFetcher
   );
+  const seasons = seasonsResponse?.data ?? [];
 
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
 
   // Fetch fixtures for selected season
-  const { data: fixtures, isLoading: fixturesLoading } = useSWR(
-    selectedSeasonId ? `/api/matches?seasonId=${selectedSeasonId}` : null,
+  const { data: fixturesResponse, isLoading: fixturesLoading } = useSWR<{ data: Array<{ id: string; matchDate: string; roundNumber: number | null; status: string; homeScore: number | null; awayScore: number | null; homeClub: { name: string }; awayClub: { name: string }; stadium: { name: string } | null }> }>(
+    selectedSeasonId ? `/api/matches?seasonId=${selectedSeasonId}&limit=200` : null,
     authFetcher
   );
+  const fixtures = fixturesResponse?.data ?? [];
 
   const formatDate = (d: string) =>
     new Date(d).toLocaleString(undefined, {
@@ -622,7 +624,7 @@ function ClubAdminLeaguesView() {
       hour: "2-digit", minute: "2-digit",
     });
 
-  const selectedSeason = (seasons ?? []).find((s: { id: string }) => s.id === selectedSeasonId);
+  const selectedSeason = seasons.find((s) => s.id === selectedSeasonId);
 
   return (
     <div className="flex flex-col gap-6">
@@ -632,7 +634,7 @@ function ClubAdminLeaguesView() {
         <div className="flex flex-col gap-3">
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
         </div>
-      ) : !seasons || seasons.length === 0 ? (
+      ) : seasons.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
           <Layers className="mb-3 h-10 w-10 text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">Your club is not registered in any season yet.</p>
@@ -696,7 +698,7 @@ function ClubAdminLeaguesView() {
                 <div className="flex flex-col gap-2">
                   {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}
                 </div>
-              ) : !fixtures || fixtures.length === 0 ? (
+              ) : fixtures.length === 0 ? (
                 <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-10 text-center">
                   <Calendar className="mb-2 h-8 w-8 text-muted-foreground/40" />
                   <p className="text-sm text-muted-foreground">No fixtures generated for this season yet.</p>

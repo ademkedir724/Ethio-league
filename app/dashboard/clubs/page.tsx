@@ -727,12 +727,28 @@ function ClubAdminReadOnlyView() {
 
   const [search, setSearch] = useState("");
 
-  // Club admin sees all clubs in their league (for context), but primarily their own
+  // Step 1: find the active (or most recent) season this club participates in
+  const { data: seasonsResponse } = useSWR<{ data: Array<{ id: string; name: string; status: string; league: { id: string; name: string } }> }>(
+    clubId ? `/api/seasons?clubId=${clubId}&limit=50` : null,
+    authFetcher
+  );
+  const mySeasons = seasonsResponse?.data ?? [];
+
+  // Prefer the active season; fall back to the most recent one
+  const activeSeason =
+    mySeasons.find((s) => s.status === "active") ??
+    mySeasons[0] ??
+    null;
+
+  // Step 2: fetch all active clubs in that season
   const { items: clubs, pagination, setPage, setLimit, isLoading, error } = usePaginated<Club>(
-    "/api/clubs",
+    activeSeason ? "/api/clubs" : null,
     {
-      defaultLimit: 20,
-      extraParams: { search: search || undefined },
+      defaultLimit: 50,
+      extraParams: {
+        seasonId: activeSeason?.id,
+        search: search || undefined,
+      },
     }
   );
 
@@ -771,12 +787,6 @@ function ClubAdminReadOnlyView() {
       ) : <span className="text-sm text-muted-foreground">—</span>,
     },
     {
-      key: "league",
-      header: "League",
-      className: "hidden lg:table-cell",
-      render: (c) => <span className="text-sm text-muted-foreground">{(c as Club & { league?: { name: string } | null }).league?.name ?? "—"}</span>,
-    },
-    {
       key: "status",
       header: "Status",
       render: (c) => <StatusBadge status={c.status} />,
@@ -796,29 +806,48 @@ function ClubAdminReadOnlyView() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Clubs" description="View all clubs in your league." />
+      <PageHeader
+        title="Clubs"
+        description={
+          activeSeason
+            ? `Active clubs in ${activeSeason.name} · ${activeSeason.league?.name ?? ""}`
+            : "Your club is not registered in any season yet."
+        }
+      />
+
       {error && (
         <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           Failed to load clubs.
         </div>
       )}
-      <DataTable
-        columns={columns}
-        data={clubs}
-        isLoading={isLoading}
-        searchValue={search}
-        onSearchChange={(v) => { setSearch(v); setPage(1); }}
-        searchPlaceholder="Search clubs..."
-        emptyMessage="No clubs found in your league."
-      />
-      <Pagination
-        page={pagination.page}
-        totalPages={pagination.totalPages}
-        total={pagination.total}
-        limit={pagination.limit}
-        onPageChange={setPage}
-        onLimitChange={setLimit}
-      />
+
+      {!activeSeason && !isLoading ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
+          <Shield className="mb-3 h-10 w-10 text-muted-foreground/40" />
+          <p className="text-sm font-medium text-muted-foreground">No active season found for your club.</p>
+          <p className="text-xs text-muted-foreground mt-1">Once your club is assigned to a season, you&apos;ll see the other clubs here.</p>
+        </div>
+      ) : (
+        <>
+          <DataTable
+            columns={columns}
+            data={clubs}
+            isLoading={isLoading || !activeSeason}
+            searchValue={search}
+            onSearchChange={(v) => { setSearch(v); setPage(1); }}
+            searchPlaceholder="Search clubs..."
+            emptyMessage="No active clubs found in this season."
+          />
+          <Pagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            total={pagination.total}
+            limit={pagination.limit}
+            onPageChange={setPage}
+            onLimitChange={setLimit}
+          />
+        </>
+      )}
     </div>
   );
 }
