@@ -410,22 +410,28 @@ function ClubAdminPlayersView() {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-2">
             <Label htmlFor="p-first">First Name *</Label>
-            <Input id="p-first" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="Abebe" />
+            <Input id="p-first" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="Abebe" required minLength={2} maxLength={50} />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="p-last">Last Name *</Label>
-            <Input id="p-last" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Bikila" />
+            <Input id="p-last" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Bikila" required minLength={2} maxLength={50} />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="p-dob">Date of Birth</Label>
-            <Input id="p-dob" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} />
+            <Label htmlFor="p-dob">
+              Date of Birth <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input id="p-dob" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} max={new Date().toISOString().split("T")[0]} />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="p-nat">Nationality</Label>
-            <Input id="p-nat" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} placeholder="Ethiopian" />
+            <Label htmlFor="p-nat">
+              Nationality <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input id="p-nat" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} placeholder="Ethiopian" maxLength={60} />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="p-foot">Preferred Foot</Label>
+            <Label htmlFor="p-foot">
+              Preferred Foot <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
             <Select value={form.preferredFoot || "none"} onValueChange={(v) => setForm({ ...form, preferredFoot: v === "none" ? "" : v })}>
               <SelectTrigger id="p-foot"><SelectValue placeholder="Select foot" /></SelectTrigger>
               <SelectContent>
@@ -437,12 +443,16 @@ function ClubAdminPlayersView() {
             </Select>
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="p-height">Height (cm)</Label>
-            <Input id="p-height" type="number" value={form.heightCm} onChange={(e) => setForm({ ...form, heightCm: e.target.value })} placeholder="178" />
+            <Label htmlFor="p-height">
+              Height (cm) <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input id="p-height" type="number" value={form.heightCm} onChange={(e) => setForm({ ...form, heightCm: e.target.value })} placeholder="178" min={100} max={250} />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="p-weight">Weight (kg)</Label>
-            <Input id="p-weight" type="number" value={form.weightKg} onChange={(e) => setForm({ ...form, weightKg: e.target.value })} placeholder="72" />
+            <Label htmlFor="p-weight">
+              Weight (kg) <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input id="p-weight" type="number" value={form.weightKg} onChange={(e) => setForm({ ...form, weightKg: e.target.value })} placeholder="72" min={30} max={200} />
           </div>
         </div>
         {editingPlayer && (

@@ -609,23 +609,29 @@ export default function CoachesPage() {
           >
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="coach-first">First Name</Label>
-                <Input id="coach-first" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="Wubetu" />
+                <Label htmlFor="coach-first">First Name *</Label>
+                <Input id="coach-first" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="Wubetu" required minLength={2} maxLength={50} />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="coach-last">Last Name</Label>
-                <Input id="coach-last" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Abate" />
+                <Label htmlFor="coach-last">Last Name *</Label>
+                <Input id="coach-last" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Abate" required minLength={2} maxLength={50} />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="coach-dob">Date of Birth</Label>
-                <Input id="coach-dob" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} />
+                <Label htmlFor="coach-dob">
+                  Date of Birth <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <Input id="coach-dob" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} max={new Date().toISOString().split("T")[0]} />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="coach-nat">Nationality</Label>
-                <Input id="coach-nat" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} placeholder="Ethiopian" />
+                <Label htmlFor="coach-nat">
+                  Nationality <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <Input id="coach-nat" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} placeholder="Ethiopian" maxLength={60} />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="coach-license">License Level</Label>
+                <Label htmlFor="coach-license">
+                  License Level <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
                 <Select value={form.licenseLevel} onValueChange={(val) => setForm({ ...form, licenseLevel: val })}>
                   <SelectTrigger id="coach-license">
                     <SelectValue placeholder="Select license" />
@@ -640,11 +646,15 @@ export default function CoachesPage() {
                 </Select>
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="coach-exp">Experience (Years)</Label>
-                <Input id="coach-exp" type="number" value={form.experienceYears} onChange={(e) => setForm({ ...form, experienceYears: e.target.value })} placeholder="10" />
+                <Label htmlFor="coach-exp">
+                  Experience (Years) <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <Input id="coach-exp" type="number" value={form.experienceYears} onChange={(e) => setForm({ ...form, experienceYears: e.target.value })} placeholder="10" min={0} max={60} />
               </div>
               <div className="flex flex-col gap-2 sm:col-span-2">
-                <Label htmlFor="coach-role">Coaching Role</Label>
+                <Label htmlFor="coach-role">
+                  Coaching Role <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
                 <Select value={form.role} onValueChange={(val) => setForm({ ...form, role: val })}>
                   <SelectTrigger id="coach-role">
                     <SelectValue placeholder="Select role" />

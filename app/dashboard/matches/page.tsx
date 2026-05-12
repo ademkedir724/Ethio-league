@@ -543,28 +543,32 @@ export default function MatchesPage() {
           >
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="match-home">Home Club</Label>
-                <Input id="match-home" value={form.homeClub} onChange={(e) => setForm({ ...form, homeClub: e.target.value })} placeholder="St. George FC" />
+                <Label htmlFor="match-home">Home Club *</Label>
+                <Input id="match-home" value={form.homeClub} onChange={(e) => setForm({ ...form, homeClub: e.target.value })} placeholder="St. George FC" required />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="match-away">Away Club</Label>
-                <Input id="match-away" value={form.awayClub} onChange={(e) => setForm({ ...form, awayClub: e.target.value })} placeholder="Ethio Electric SC" />
+                <Label htmlFor="match-away">Away Club *</Label>
+                <Input id="match-away" value={form.awayClub} onChange={(e) => setForm({ ...form, awayClub: e.target.value })} placeholder="Ethio Electric SC" required />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="match-date">Match Date & Time</Label>
-                <Input id="match-date" type="datetime-local" value={form.matchDate} onChange={(e) => setForm({ ...form, matchDate: e.target.value })} />
+                <Label htmlFor="match-date">Match Date & Time *</Label>
+                <Input id="match-date" type="datetime-local" value={form.matchDate} onChange={(e) => setForm({ ...form, matchDate: e.target.value })} required />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="match-round">Round Number</Label>
-                <Input id="match-round" type="number" value={form.roundNumber} onChange={(e) => setForm({ ...form, roundNumber: e.target.value })} placeholder="1" />
+                <Label htmlFor="match-round">
+                  Round Number <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <Input id="match-round" type="number" value={form.roundNumber} onChange={(e) => setForm({ ...form, roundNumber: e.target.value })} placeholder="1" min={1} max={100} />
               </div>
               <div className="flex flex-col gap-2 sm:col-span-2">
-                <Label htmlFor="match-stadium">Stadium</Label>
+                <Label htmlFor="match-stadium">
+                  Stadium <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
                 <Input id="match-stadium" value={form.stadium} onChange={(e) => setForm({ ...form, stadium: e.target.value })} placeholder="Addis Ababa Stadium" />
               </div>
               <div className="flex flex-col gap-2 sm:col-span-2">
-                <Label htmlFor="match-season">Season</Label>
-                <Input id="match-season" value={form.season} onChange={(e) => setForm({ ...form, season: e.target.value })} placeholder="2025/26 Season" />
+                <Label htmlFor="match-season">Season *</Label>
+                <Input id="match-season" value={form.season} onChange={(e) => setForm({ ...form, season: e.target.value })} placeholder="2025/26 Season" required />
               </div>
             </div>
           </FormDialog>

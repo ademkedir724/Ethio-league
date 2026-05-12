@@ -509,23 +509,27 @@ export default function RefereesPage() {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="ref-first">First Name</Label>
-            <Input id="ref-first" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="Bamlak" />
+            <Label htmlFor="ref-first">First Name *</Label>
+            <Input id="ref-first" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="Bamlak" required minLength={2} maxLength={50} />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="ref-last">Last Name</Label>
-            <Input id="ref-last" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Tessema" />
+            <Label htmlFor="ref-last">Last Name *</Label>
+            <Input id="ref-last" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Tessema" required minLength={2} maxLength={50} />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="ref-dob">Date of Birth</Label>
-            <Input id="ref-dob" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} />
+            <Label htmlFor="ref-dob">
+              Date of Birth <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input id="ref-dob" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} max={new Date().toISOString().split("T")[0]} />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="ref-nat">Nationality</Label>
-            <Input id="ref-nat" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} placeholder="Ethiopian" />
+            <Label htmlFor="ref-nat">
+              Nationality <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input id="ref-nat" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} placeholder="Ethiopian" maxLength={60} />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="ref-license">License Level</Label>
+            <Label htmlFor="ref-license">License Level *</Label>
             <Select value={form.licenseLevel} onValueChange={(val) => setForm({ ...form, licenseLevel: val })}>
               <SelectTrigger id="ref-license">
                 <SelectValue placeholder="Select license" />
@@ -540,12 +544,16 @@ export default function RefereesPage() {
             </Select>
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="ref-exp">Experience (Years)</Label>
-            <Input id="ref-exp" type="number" value={form.experienceYears} onChange={(e) => setForm({ ...form, experienceYears: e.target.value })} placeholder="10" />
+            <Label htmlFor="ref-exp">
+              Experience (Years) <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input id="ref-exp" type="number" value={form.experienceYears} onChange={(e) => setForm({ ...form, experienceYears: e.target.value })} placeholder="10" min={0} max={60} />
           </div>
           <div className="flex flex-col gap-2 sm:col-span-2">
-            <Label htmlFor="ref-region">Region</Label>
-            <Input id="ref-region" value={form.region} onChange={(e) => setForm({ ...form, region: e.target.value })} placeholder="Addis Ababa" />
+            <Label htmlFor="ref-region">
+              Region <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input id="ref-region" value={form.region} onChange={(e) => setForm({ ...form, region: e.target.value })} placeholder="Addis Ababa" maxLength={80} />
           </div>
         </div>
       </FormDialog>

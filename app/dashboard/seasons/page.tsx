@@ -419,6 +419,9 @@ export default function SeasonsPage() {
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="2025/26 Season"
+              required
+              minLength={2}
+              maxLength={100}
             />
           </div>
 
@@ -454,6 +457,7 @@ export default function SeasonsPage() {
               type="date"
               value={form.startDate}
               onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+              required
             />
           </div>
           <div className="flex flex-col gap-2">
@@ -463,6 +467,8 @@ export default function SeasonsPage() {
               type="date"
               value={form.endDate}
               onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+              required
+              min={form.startDate || undefined}
             />
           </div>
           <div className="flex flex-col gap-2">
@@ -472,6 +478,8 @@ export default function SeasonsPage() {
               type="number"
               value={form.pointsWin}
               onChange={(e) => setForm({ ...form, pointsWin: e.target.value })}
+              min={0}
+              max={10}
             />
           </div>
           <div className="flex flex-col gap-2">
@@ -481,6 +489,8 @@ export default function SeasonsPage() {
               type="number"
               value={form.pointsDraw}
               onChange={(e) => setForm({ ...form, pointsDraw: e.target.value })}
+              min={0}
+              max={10}
             />
           </div>
           <div className="flex flex-col gap-2">
@@ -489,6 +499,7 @@ export default function SeasonsPage() {
               id="season-squad"
               type="number"
               min={1}
+              max={50}
               value={form.minSquadSize}
               onChange={(e) => setForm({ ...form, minSquadSize: e.target.value })}
             />
@@ -499,6 +510,7 @@ export default function SeasonsPage() {
               id="season-starters"
               type="number"
               min={1}
+              max={25}
               value={form.minStartingPlayers}
               onChange={(e) => setForm({ ...form, minStartingPlayers: e.target.value })}
             />
@@ -509,15 +521,19 @@ export default function SeasonsPage() {
               id="season-bench"
               type="number"
               min={0}
+              max={20}
               value={form.maxBenchPlayers}
               onChange={(e) => setForm({ ...form, maxBenchPlayers: e.target.value })}
             />
           </div>
           <div className="flex flex-col gap-2 sm:col-span-2">
-            <Label htmlFor="season-rules">League Rules</Label>
+            <Label htmlFor="season-rules">
+              League Rules <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
             <textarea
               id="season-rules"
               rows={3}
+              maxLength={1000}
               className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               placeholder="e.g. Max 3 foreign players per lineup. Yellow card accumulation: 3 cards = 1 match ban."
               value={form.rules}

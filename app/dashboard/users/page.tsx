@@ -474,33 +474,45 @@ function OrgAdminUsersView() {
       >
         <div className="grid gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="me-name">Full Name</Label>
+            <Label htmlFor="me-name">Full Name *</Label>
             <Input
               id="me-name"
               value={form.fullName}
               onChange={(e) => setForm({ ...form, fullName: e.target.value })}
               placeholder="Abebe Kebede"
+              required
+              minLength={2}
+              maxLength={80}
+              autoComplete="name"
             />
           </div>
           {!editingUser && (
             <div className="flex flex-col gap-2">
-              <Label htmlFor="me-email">Email</Label>
+              <Label htmlFor="me-email">Email *</Label>
               <Input
                 id="me-email"
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="abebe@ethioleague.com"
+                required
+                autoComplete="email"
               />
             </div>
           )}
           <div className="flex flex-col gap-2">
-            <Label htmlFor="me-phone">Phone</Label>
+            <Label htmlFor="me-phone">
+              Phone <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
             <Input
               id="me-phone"
+              type="tel"
               value={form.phone}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
               placeholder="+251 911 234 567"
+              pattern="^\+?[\d\s\-().]{7,20}$"
+              title="Enter a valid phone number (e.g. +251 911 234 567)"
+              autoComplete="tel"
             />
           </div>
           {!editingUser && (
@@ -908,21 +920,23 @@ function SuperAdminUsersView() {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-2 sm:col-span-2">
-            <Label htmlFor="user-name">Full Name</Label>
-            <Input id="user-name" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} placeholder="Abebe Kebede" />
+            <Label htmlFor="user-name">Full Name *</Label>
+            <Input id="user-name" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} placeholder="Abebe Kebede" required minLength={2} maxLength={80} autoComplete="name" />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="user-email">Email</Label>
-            <Input id="user-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="abebe@ethioleague.com" />
+            <Label htmlFor="user-email">Email *</Label>
+            <Input id="user-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="abebe@ethioleague.com" required autoComplete="email" />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="user-phone">Phone</Label>
-            <Input id="user-phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+251 911 234 567" />
+            <Label htmlFor="user-phone">
+              Phone <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input id="user-phone" type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+251 911 234 567" pattern="^\+?[\d\s\-().]{7,20}$" title="Enter a valid phone number" autoComplete="tel" />
           </div>
           {!editingUser && (
             <div className="flex flex-col gap-2 sm:col-span-2">
-              <Label htmlFor="user-pass">Password</Label>
-              <Input id="user-pass" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Minimum 8 characters" />
+              <Label htmlFor="user-pass">Password *</Label>
+              <Input id="user-pass" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Minimum 8 characters" required minLength={8} autoComplete="new-password" />
             </div>
           )}
           <div className="flex flex-col gap-2 sm:col-span-2">

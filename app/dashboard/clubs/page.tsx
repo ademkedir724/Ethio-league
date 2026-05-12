@@ -300,6 +300,9 @@ function LeagueAdminClubsView() {
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="St. George FC"
+                required
+                minLength={2}
+                maxLength={120}
               />
             </div>
 
@@ -319,6 +322,10 @@ function LeagueAdminClubsView() {
                 value={form.adminFullName}
                 onChange={(e) => setForm({ ...form, adminFullName: e.target.value })}
                 placeholder="Abebe Kebede"
+                required
+                minLength={2}
+                maxLength={80}
+                autoComplete="name"
               />
             </div>
 
@@ -331,15 +338,23 @@ function LeagueAdminClubsView() {
                   value={form.adminEmail}
                   onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
                   placeholder="admin@club.com"
+                  required
+                  autoComplete="email"
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="admin-phone">Phone</Label>
+                <Label htmlFor="admin-phone">
+                  Phone <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
                 <Input
                   id="admin-phone"
+                  type="tel"
                   value={form.adminPhone}
                   onChange={(e) => setForm({ ...form, adminPhone: e.target.value })}
                   placeholder="+251 911 234 567"
+                  pattern="^\+?[\d\s\-().]{7,20}$"
+                  title="Enter a valid phone number (e.g. +251 911 234 567)"
+                  autoComplete="tel"
                 />
               </div>
             </div>

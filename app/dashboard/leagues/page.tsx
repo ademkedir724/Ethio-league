@@ -347,6 +347,9 @@ export default function LeaguesPage() {
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="Ethiopian Premier League"
+                required
+                minLength={2}
+                maxLength={120}
               />
             </div>
 
@@ -458,7 +461,9 @@ export default function LeaguesPage() {
 
             {/* Description */}
             <div className="flex flex-col gap-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">
+                Description <span className="text-muted-foreground font-normal">(optional)</span>
+              </Label>
               <Textarea
                 id="description"
                 value={form.description}
@@ -485,6 +490,10 @@ export default function LeaguesPage() {
                     value={form.adminFullName}
                     onChange={(e) => setForm({ ...form, adminFullName: e.target.value })}
                     placeholder="Abebe Kebede"
+                    required
+                    minLength={2}
+                    maxLength={80}
+                    autoComplete="name"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -496,15 +505,23 @@ export default function LeaguesPage() {
                       value={form.adminEmail}
                       onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
                       placeholder="admin@example.com"
+                      required
+                      autoComplete="email"
                     />
                   </div>
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="admin-phone">Phone</Label>
+                    <Label htmlFor="admin-phone">
+                      Phone <span className="text-muted-foreground font-normal">(optional)</span>
+                    </Label>
                     <Input
                       id="admin-phone"
+                      type="tel"
                       value={form.adminPhone}
                       onChange={(e) => setForm({ ...form, adminPhone: e.target.value })}
                       placeholder="+251 911 234 567"
+                      pattern="^\+?[\d\s\-().]{7,20}$"
+                      title="Enter a valid phone number (e.g. +251 911 234 567)"
+                      autoComplete="tel"
                     />
                   </div>
                 </div>
