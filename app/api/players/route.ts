@@ -111,6 +111,14 @@ export async function POST(req: NextRequest) {
       ? (auth.roles.find((r) => r.roleName === "club_admin")?.clubId ?? null)
       : null;
 
+    // Guard: pending clubs cannot create players
+    if (isClubAdmin && originClubId) {
+      const club = await prisma.club.findUnique({ where: { id: originClubId }, select: { status: true, name: true } });
+      if (club && club.status !== "active") {
+        return forbidden(`Your club "${club.name}" is not active (status: ${club.status}). Players can only be created by active clubs.`);
+      }
+    }
+
     const player = await prisma.player.create({
       data: {
         firstName,

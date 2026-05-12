@@ -59,6 +59,13 @@ export async function POST(
         const clubId = clubIds[0] as string;
         if (!assertClubScope(auth, clubId)) return forbidden();
 
+        // Guard: club must be active before submitting squad requests
+        const club = await prisma.club.findUnique({ where: { id: clubId }, select: { status: true, name: true } });
+        if (!club) return badRequest("Club not found");
+        if (club.status !== "active") {
+            return forbidden(`Club "${club.name}" is not active (status: ${club.status}). Squad requests can only be submitted by active clubs.`);
+        }
+
         // Upsert all SeasonClubCoach records with requestStatus = 'pending'
         const results = await prisma.$transaction(
             coaches.map((c) =>
