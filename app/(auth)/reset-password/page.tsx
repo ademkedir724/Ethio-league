@@ -80,6 +80,7 @@ function ResetPasswordForm() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
+                        minLength={8}
                         autoComplete="new-password"
                         className="pr-10"
                     />
@@ -103,6 +104,7 @@ function ResetPasswordForm() {
                         value={confirm}
                         onChange={(e) => setConfirm(e.target.value)}
                         required
+                        minLength={8}
                         autoComplete="new-password"
                         className="pr-10"
                     />
