@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { success, badRequest, notFound } from "@/lib/api-helpers";
+import { success, badRequest, notFound, serverError } from "@/lib/api-helpers";
 import { sendPasswordSetupEmail, getAppUrl } from "@/lib/email";
 import { logAudit } from "@/lib/audit";
 
