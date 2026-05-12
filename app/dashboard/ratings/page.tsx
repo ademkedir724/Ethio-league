@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import { useAuth } from "@/lib/auth-context";
-import { authFetcher } from "@/lib/fetch-client";
+import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -345,7 +345,7 @@ function OrgAdminOrganizationsView() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="name">Organization Name</Label>
+              <Label htmlFor="name">Organization Name *</Label>
               <Input
                 id="name"
                 value={editForm.name}
@@ -353,11 +353,16 @@ function OrgAdminOrganizationsView() {
                   setEditForm({ ...editForm, name: e.target.value })
                 }
                 placeholder="Enter organization name"
+                required
+                minLength={2}
+                maxLength={120}
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="country">Country</Label>
+                <Label htmlFor="country">
+                  Country <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
                 <Input
                   id="country"
                   value={editForm.country}
@@ -365,10 +370,13 @@ function OrgAdminOrganizationsView() {
                     setEditForm({ ...editForm, country: e.target.value })
                   }
                   placeholder="Country"
+                  maxLength={80}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="city">City</Label>
+                <Label htmlFor="city">
+                  City <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
                 <Input
                   id="city"
                   value={editForm.city}
@@ -376,11 +384,14 @@ function OrgAdminOrganizationsView() {
                     setEditForm({ ...editForm, city: e.target.value })
                   }
                   placeholder="City"
+                  maxLength={80}
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">
+                Description <span className="text-muted-foreground font-normal">(optional)</span>
+              </Label>
               <Textarea
                 id="description"
                 value={editForm.description}

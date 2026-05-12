@@ -84,7 +84,7 @@ export async function POST(
     }
 
     // Bulk create — run sequentially to avoid interactive transaction timeout on remote DB
-    const created_records = [];
+    const created_records: Awaited<ReturnType<typeof prisma.seasonClub.create>>[] = [];
     for (const clubId of toAdd) {
       const record = await prisma.seasonClub.create({
         data: { seasonId, clubId },

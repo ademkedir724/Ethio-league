@@ -169,7 +169,9 @@ export default function RequestOrganizationPage() {
                 </div>
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="description">
+                  Description <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
                 <Textarea
                   id="description"
                   name="description"
@@ -177,6 +179,7 @@ export default function RequestOrganizationPage() {
                   onChange={handleChange}
                   placeholder="Brief description of your organization..."
                   rows={3}
+                  maxLength={500}
                   className="bg-input border-border resize-none"
                 />
               </div>
@@ -224,6 +227,8 @@ export default function RequestOrganizationPage() {
                   onChange={handleChange}
                   placeholder="+251 911 234 567"
                   required
+                  pattern="^\+?[\d\s\-().]{7,20}$"
+                  title="Enter a valid phone number (e.g. +251 911 234 567)"
                   className="bg-input border-border"
                 />
               </div>

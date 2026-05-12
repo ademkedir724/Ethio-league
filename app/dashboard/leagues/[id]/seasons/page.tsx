@@ -449,6 +449,9 @@ function SeasonFormFields({
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                     placeholder="2024/25 Season"
+                    required
+                    minLength={2}
+                    maxLength={100}
                 />
             </div>
 
@@ -460,6 +463,7 @@ function SeasonFormFields({
                         type="date"
                         value={form.startDate}
                         onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                        required
                     />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -469,17 +473,22 @@ function SeasonFormFields({
                         type="date"
                         value={form.endDate}
                         onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                        required
+                        min={form.startDate || undefined}
                     />
                 </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
-                    <Label htmlFor="required-clubs">Required Clubs</Label>
+                    <Label htmlFor="required-clubs">
+                        Required Clubs <span className="text-muted-foreground font-normal">(optional)</span>
+                    </Label>
                     <Input
                         id="required-clubs"
                         type="number"
                         min={2}
+                        max={50}
                         value={form.requiredClubs}
                         onChange={(e) => setForm({ ...form, requiredClubs: e.target.value })}
                         placeholder="e.g. 10"
@@ -515,11 +524,14 @@ function SeasonFormFields({
             )}
 
             <div className="flex flex-col gap-2">
-                <Label htmlFor="days-between">Days Between Rounds</Label>
+                <Label htmlFor="days-between">
+                    Days Between Rounds <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
                 <Input
                     id="days-between"
                     type="number"
                     min={1}
+                    max={365}
                     value={form.daysBetweenRounds}
                     onChange={(e) => setForm({ ...form, daysBetweenRounds: e.target.value })}
                     placeholder={recommendation ? `Recommended: ${recommendation.recommended}` : "e.g. 7"}
@@ -567,6 +579,7 @@ function SeasonFormFields({
                             id="min-squad"
                             type="number"
                             min={1}
+                            max={50}
                             value={form.minSquadSize}
                             onChange={(e) => setForm({ ...form, minSquadSize: e.target.value })}
                             placeholder="14"
@@ -579,6 +592,7 @@ function SeasonFormFields({
                             id="min-starters"
                             type="number"
                             min={1}
+                            max={25}
                             value={form.minStartingPlayers}
                             onChange={(e) => setForm({ ...form, minStartingPlayers: e.target.value })}
                             placeholder="11"
@@ -591,6 +605,7 @@ function SeasonFormFields({
                             id="max-bench"
                             type="number"
                             min={0}
+                            max={20}
                             value={form.maxBenchPlayers}
                             onChange={(e) => setForm({ ...form, maxBenchPlayers: e.target.value })}
                             placeholder="7"

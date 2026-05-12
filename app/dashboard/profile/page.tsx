@@ -138,6 +138,14 @@ export default function ProfilePage() {
     }
 
     async function handleEditSave() {
+        if (!editFullName.trim() || editFullName.trim().length < 2) {
+            toast.error("Full name must be at least 2 characters");
+            return;
+        }
+        if (editPhone.trim() && !/^\+?[\d\s\-().]{7,20}$/.test(editPhone.trim())) {
+            toast.error("Enter a valid phone number (e.g. +251 911 234 567)");
+            return;
+        }
         setEditSaving(true);
         try {
             const res = await fetchWithAuth("/api/users/me", {
@@ -307,6 +315,7 @@ export default function ProfilePage() {
                                             type={showCurrentPassword ? "text" : "password"}
                                             value={currentPassword}
                                             onChange={(e) => setCurrentPassword(e.target.value)}
+                                            required
                                             autoComplete="current-password"
                                             className="pr-10"
                                         />
@@ -331,6 +340,9 @@ export default function ProfilePage() {
                                             type={showNewPassword ? "text" : "password"}
                                             value={newPassword}
                                             onChange={(e) => setNewPassword(e.target.value)}
+                                            required
+                                            minLength={8}
+                                            placeholder="Minimum 8 characters"
                                             autoComplete="new-password"
                                             className="pr-10"
                                         />
@@ -355,6 +367,9 @@ export default function ProfilePage() {
                                             type={showConfirmPassword ? "text" : "password"}
                                             value={confirmPassword}
                                             onChange={(e) => setConfirmPassword(e.target.value)}
+                                            required
+                                            minLength={8}
+                                            placeholder="Repeat new password"
                                             autoComplete="new-password"
                                             className="pr-10"
                                         />
@@ -388,20 +403,31 @@ export default function ProfilePage() {
                     </DialogHeader>
                     <div className="flex flex-col gap-4 py-2">
                         <div className="flex flex-col gap-2">
-                            <Label htmlFor="editFullName">Full Name</Label>
+                            <Label htmlFor="editFullName">Full Name *</Label>
                             <Input
                                 id="editFullName"
                                 value={editFullName}
                                 onChange={(e) => setEditFullName(e.target.value)}
+                                required
+                                minLength={2}
+                                maxLength={80}
+                                placeholder="Abebe Kebede"
+                                autoComplete="name"
                             />
                         </div>
                         <div className="flex flex-col gap-2">
-                            <Label htmlFor="editPhone">Phone</Label>
+                            <Label htmlFor="editPhone">
+                                Phone <span className="text-muted-foreground font-normal">(optional)</span>
+                            </Label>
                             <Input
                                 id="editPhone"
+                                type="tel"
                                 value={editPhone}
                                 onChange={(e) => setEditPhone(e.target.value)}
-                                placeholder="Optional"
+                                placeholder="+251 911 234 567"
+                                pattern="^\+?[\d\s\-().]{7,20}$"
+                                title="Enter a valid phone number (e.g. +251 911 234 567)"
+                                autoComplete="tel"
                             />
                         </div>
                     </div>
