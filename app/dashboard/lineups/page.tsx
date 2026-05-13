@@ -80,6 +80,7 @@ export default function LineupsPage() {
     const [captainId, setCaptainId] = useState<string>("");
     const [submitting, setSubmitting] = useState(false);
     const [apiErrors, setApiErrors] = useState<string[]>([]);
+    const [lineupErrors, setLineupErrors] = useState<{ starters?: string; substitutes?: string; captain?: string }>({});
 
     // Fetch all seasons for this club
     const { data: seasonsRaw } = useSWR(
@@ -136,12 +137,30 @@ export default function LineupsPage() {
         setPositions({});
         setCaptainId("");
         setApiErrors([]);
+        setLineupErrors({});
     };
 
     const closeDialog = () => {
         setSelectedMatch(null);
         setApiErrors([]);
+        setLineupErrors({});
     };
+
+    function validateLineup() {
+        const errors: { starters?: string; substitutes?: string; captain?: string } = {};
+        if (starters.size !== 11) {
+            errors.starters = "Exactly 11 starters must be selected";
+        }
+        if (substitutes.size > 7) {
+            errors.substitutes = "Maximum 7 substitutes allowed";
+        }
+        if (starters.size > 0 && !captainId) {
+            errors.captain = "Captain must be selected from the starting lineup";
+        } else if (captainId && !starters.has(captainId)) {
+            errors.captain = "Captain must be one of the selected starters";
+        }
+        return errors;
+    }
 
     const toggleStarter = (scpId: string) => {
         setStarters((prev) => {
@@ -173,6 +192,11 @@ export default function LineupsPage() {
 
     const handleSubmit = async () => {
         if (!selectedMatch || !clubId) return;
+
+        const errors = validateLineup();
+        setLineupErrors(errors);
+        if (Object.keys(errors).length > 0) return;
+
         setApiErrors([]);
 
         const lineups: LineupEntry[] = [
@@ -371,6 +395,16 @@ export default function LineupsPage() {
                                             );
                                         })}
                                     </div>
+                                    {lineupErrors.starters && (
+                                        <p id="starters-error" role="alert" className="mt-1 text-xs text-destructive">
+                                            {lineupErrors.starters}
+                                        </p>
+                                    )}
+                                    {lineupErrors.substitutes && (
+                                        <p id="substitutes-error" role="alert" className="mt-1 text-xs text-destructive">
+                                            {lineupErrors.substitutes}
+                                        </p>
+                                    )}
                                 </div>
 
                                 {/* Substitutes */}
@@ -412,6 +446,11 @@ export default function LineupsPage() {
                                                 ))}
                                             </SelectContent>
                                         </Select>
+                                        {lineupErrors.captain && (
+                                            <p id="captain-error" role="alert" className="mt-1 text-xs text-destructive">
+                                                {lineupErrors.captain}
+                                            </p>
+                                        )}
                                     </div>
                                 )}
 

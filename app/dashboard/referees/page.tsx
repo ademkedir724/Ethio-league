@@ -4,6 +4,8 @@ import { useState, useMemo } from "react";
 import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
+import { useFormValidation } from "@/lib/use-form-validation";
+import { validateRequired, validateLength, validateDateNotFuture, validateInteger } from "@/lib/validation";
 import { useAuth } from "@/lib/auth-context";
 import { useOrganization } from "@/lib/org-context";
 import { usePermissions } from "@/lib/use-permissions";
@@ -87,6 +89,18 @@ const emptyForm = {
   region: "",
 };
 
+function validateRefereeForm(values: typeof emptyForm): Partial<Record<keyof typeof emptyForm, string>> {
+  return {
+    firstName: validateRequired(values.firstName, "First name") ?? validateLength(values.firstName, 2, 50, "First name") ?? undefined,
+    lastName: validateRequired(values.lastName, "Last name") ?? validateLength(values.lastName, 2, 50, "Last name") ?? undefined,
+    dateOfBirth: validateDateNotFuture(values.dateOfBirth, "Date of birth") ?? undefined,
+    nationality: validateLength(values.nationality, 0, 60, "Nationality") ?? undefined,
+    licenseLevel: validateRequired(values.licenseLevel, "License level") ?? undefined,
+    experienceYears: validateInteger(values.experienceYears, 0, 60, "Experience") ?? undefined,
+    region: validateLength(values.region, 0, 80, "Region") ?? undefined,
+  };
+}
+
 function RefereeDetailDialog({ refereeId, open, onClose }: { refereeId: string | null; open: boolean; onClose: () => void }) {
   const { data: referee, isLoading } = useSWR(
     open && refereeId ? `/api/referees/${refereeId}` : null,
@@ -163,6 +177,8 @@ export default function RefereesPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [detailRefId, setDetailRefId] = useState<string | null>(null);
 
+  const { errors, handleBlur, validateAll, resetValidation } = useFormValidation(validateRefereeForm, emptyForm);
+
   const filtered = useMemo(() => {
     return referees.filter((r) => {
       const matchesLicense = licenseFilter === "all" || r.licenseLevel === licenseFilter;
@@ -182,6 +198,7 @@ export default function RefereesPage() {
   const openCreate = () => {
     setEditingRef(null);
     setForm(emptyForm);
+    resetValidation();
     setFormOpen(true);
   };
 
@@ -196,11 +213,15 @@ export default function RefereesPage() {
       experienceYears: ref.experienceYears.toString(),
       region: ref.region,
     });
+    resetValidation();
     setFormOpen(true);
   };
 
   const handleSubmit = async () => {
     if (!orgId) return;
+
+    const isValid = validateAll(form);
+    if (!isValid) return;
 
     setIsSaving(true);
     try {
@@ -247,6 +268,7 @@ export default function RefereesPage() {
         toast.success("Referee created successfully");
       }
 
+      resetValidation();
       setFormOpen(false);
       mutateReferees();
     } catch (error) {
@@ -501,7 +523,10 @@ export default function RefereesPage() {
       {/* Create / Edit Dialog */}
       <FormDialog
         open={formOpen}
-        onOpenChange={setFormOpen}
+        onOpenChange={(open) => {
+          setFormOpen(open);
+          if (!open) resetValidation();
+        }}
         title={editingRef ? "Edit Referee" : "Add Referee"}
         description={editingRef ? "Update referee details." : "Register a new match official for your organization."}
         submitLabel={isSaving ? "Saving..." : editingRef ? "Update" : "Create"}
@@ -510,28 +535,92 @@ export default function RefereesPage() {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-2">
             <Label htmlFor="ref-first">First Name *</Label>
-            <Input id="ref-first" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="Bamlak" required minLength={2} maxLength={50} />
+            <Input
+              id="ref-first"
+              value={form.firstName}
+              onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+              onBlur={() => handleBlur('firstName', form)}
+              aria-invalid={!!errors.firstName}
+              aria-describedby={errors.firstName ? 'firstName-error' : undefined}
+              placeholder="Bamlak"
+              required
+              minLength={2}
+              maxLength={50}
+            />
+            {errors.firstName && (
+              <p id="firstName-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.firstName}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="ref-last">Last Name *</Label>
-            <Input id="ref-last" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Tessema" required minLength={2} maxLength={50} />
+            <Input
+              id="ref-last"
+              value={form.lastName}
+              onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+              onBlur={() => handleBlur('lastName', form)}
+              aria-invalid={!!errors.lastName}
+              aria-describedby={errors.lastName ? 'lastName-error' : undefined}
+              placeholder="Tessema"
+              required
+              minLength={2}
+              maxLength={50}
+            />
+            {errors.lastName && (
+              <p id="lastName-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.lastName}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="ref-dob">
               Date of Birth <span className="text-muted-foreground font-normal">(optional)</span>
             </Label>
-            <Input id="ref-dob" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} max={new Date().toISOString().split("T")[0]} />
+            <Input
+              id="ref-dob"
+              type="date"
+              value={form.dateOfBirth}
+              onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
+              onBlur={() => handleBlur('dateOfBirth', form)}
+              aria-invalid={!!errors.dateOfBirth}
+              aria-describedby={errors.dateOfBirth ? 'dateOfBirth-error' : undefined}
+              max={new Date().toISOString().split("T")[0]}
+            />
+            {errors.dateOfBirth && (
+              <p id="dateOfBirth-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.dateOfBirth}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="ref-nat">
               Nationality <span className="text-muted-foreground font-normal">(optional)</span>
             </Label>
-            <Input id="ref-nat" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} placeholder="Ethiopian" maxLength={60} />
+            <Input
+              id="ref-nat"
+              value={form.nationality}
+              onChange={(e) => setForm({ ...form, nationality: e.target.value })}
+              onBlur={() => handleBlur('nationality', form)}
+              aria-invalid={!!errors.nationality}
+              aria-describedby={errors.nationality ? 'nationality-error' : undefined}
+              placeholder="Ethiopian"
+              maxLength={60}
+            />
+            {errors.nationality && (
+              <p id="nationality-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.nationality}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="ref-license">License Level *</Label>
             <Select value={form.licenseLevel} onValueChange={(val) => setForm({ ...form, licenseLevel: val })}>
-              <SelectTrigger id="ref-license">
+              <SelectTrigger
+                id="ref-license"
+                aria-invalid={!!errors.licenseLevel}
+                aria-describedby={errors.licenseLevel ? "licenseLevel-error" : undefined}
+              >
                 <SelectValue placeholder="Select license" />
               </SelectTrigger>
               <SelectContent>
@@ -542,18 +631,53 @@ export default function RefereesPage() {
                 <SelectItem value="National">National</SelectItem>
               </SelectContent>
             </Select>
+            {errors.licenseLevel && (
+              <p id="licenseLevel-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.licenseLevel}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="ref-exp">
               Experience (Years) <span className="text-muted-foreground font-normal">(optional)</span>
             </Label>
-            <Input id="ref-exp" type="number" value={form.experienceYears} onChange={(e) => setForm({ ...form, experienceYears: e.target.value })} placeholder="10" min={0} max={60} />
+            <Input
+              id="ref-exp"
+              type="number"
+              value={form.experienceYears}
+              onChange={(e) => setForm({ ...form, experienceYears: e.target.value })}
+              onBlur={() => handleBlur('experienceYears', form)}
+              aria-invalid={!!errors.experienceYears}
+              aria-describedby={errors.experienceYears ? 'experienceYears-error' : undefined}
+              placeholder="10"
+              min={0}
+              max={60}
+            />
+            {errors.experienceYears && (
+              <p id="experienceYears-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.experienceYears}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2 sm:col-span-2">
             <Label htmlFor="ref-region">
               Region <span className="text-muted-foreground font-normal">(optional)</span>
             </Label>
-            <Input id="ref-region" value={form.region} onChange={(e) => setForm({ ...form, region: e.target.value })} placeholder="Addis Ababa" maxLength={80} />
+            <Input
+              id="ref-region"
+              value={form.region}
+              onChange={(e) => setForm({ ...form, region: e.target.value })}
+              onBlur={() => handleBlur('region', form)}
+              aria-invalid={!!errors.region}
+              aria-describedby={errors.region ? 'region-error' : undefined}
+              placeholder="Addis Ababa"
+              maxLength={80}
+            />
+            {errors.region && (
+              <p id="region-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.region}
+              </p>
+            )}
           </div>
         </div>
       </FormDialog>
