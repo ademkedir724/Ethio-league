@@ -16,8 +16,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useFormValidation } from "@/lib/use-form-validation";
+import {
+  validateRequired,
+  validateLength,
+  validateEmail,
+  validatePhone,
+} from "@/lib/validation";
 
-interface FormData {
+interface OrgRequestForm {
   organizationName: string;
   country: string;
   city: string;
@@ -25,9 +32,10 @@ interface FormData {
   applicantFullName: string;
   email: string;
   phone: string;
+  [key: string]: string;
 }
 
-const initialForm: FormData = {
+const initialForm: OrgRequestForm = {
   organizationName: "",
   country: "",
   city: "",
@@ -38,10 +46,41 @@ const initialForm: FormData = {
 };
 
 export default function RequestOrganizationPage() {
-  const [form, setForm] = useState<FormData>(initialForm);
+  const [form, setForm] = useState<OrgRequestForm>(initialForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const router = useRouter();
+
+  const { errors, handleBlur, validateAll, resetValidation } =
+    useFormValidation(
+      (values) => ({
+        organizationName:
+          validateRequired(values.organizationName, "Organization name") ??
+          validateLength(values.organizationName, 2, 120, "Organization name") ??
+          undefined,
+        country:
+          validateRequired(values.country, "Country") ??
+          validateLength(values.country, 2, 80, "Country") ??
+          undefined,
+        city:
+          validateRequired(values.city, "City") ??
+          validateLength(values.city, 2, 80, "City") ??
+          undefined,
+        description:
+          validateLength(values.description, 0, 500, "Description") ??
+          undefined,
+        applicantFullName:
+          validateRequired(values.applicantFullName, "Full name") ??
+          validateLength(values.applicantFullName, 2, 80, "Full name") ??
+          undefined,
+        email:
+          validateRequired(values.email, "Email") ??
+          validateEmail(values.email) ??
+          undefined,
+        phone: validatePhone(values.phone, true) ?? undefined,
+      }),
+      initialForm
+    );
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -52,6 +91,9 @@ export default function RequestOrganizationPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!validateAll(form)) return;
+
     setIsSubmitting(true);
 
     try {
@@ -67,6 +109,7 @@ export default function RequestOrganizationPage() {
         throw new Error(data.error || "Failed to submit request");
       }
 
+      resetValidation();
       setIsSuccess(true);
       toast.success("Organization request submitted successfully");
     } catch (error) {
@@ -137,10 +180,18 @@ export default function RequestOrganizationPage() {
                   name="organizationName"
                   value={form.organizationName}
                   onChange={handleChange}
+                  onBlur={() => handleBlur("organizationName", form)}
                   placeholder="Ethiopian Football Federation"
                   required
+                  aria-invalid={!!errors.organizationName}
+                  aria-describedby={errors.organizationName ? "organizationName-error" : undefined}
                   className="bg-input border-border"
                 />
+                {errors.organizationName && (
+                  <p id="organizationName-error" role="alert" className="text-xs text-destructive mt-1">
+                    {errors.organizationName}
+                  </p>
+                )}
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-2">
@@ -150,10 +201,18 @@ export default function RequestOrganizationPage() {
                     name="country"
                     value={form.country}
                     onChange={handleChange}
+                    onBlur={() => handleBlur("country", form)}
                     placeholder="Ethiopia"
                     required
+                    aria-invalid={!!errors.country}
+                    aria-describedby={errors.country ? "country-error" : undefined}
                     className="bg-input border-border"
                   />
+                  {errors.country && (
+                    <p id="country-error" role="alert" className="text-xs text-destructive mt-1">
+                      {errors.country}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="city">City *</Label>
@@ -162,10 +221,18 @@ export default function RequestOrganizationPage() {
                     name="city"
                     value={form.city}
                     onChange={handleChange}
+                    onBlur={() => handleBlur("city", form)}
                     placeholder="Addis Ababa"
                     required
+                    aria-invalid={!!errors.city}
+                    aria-describedby={errors.city ? "city-error" : undefined}
                     className="bg-input border-border"
                   />
+                  {errors.city && (
+                    <p id="city-error" role="alert" className="text-xs text-destructive mt-1">
+                      {errors.city}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="flex flex-col gap-2">
@@ -177,11 +244,19 @@ export default function RequestOrganizationPage() {
                   name="description"
                   value={form.description}
                   onChange={handleChange}
+                  onBlur={() => handleBlur("description", form)}
                   placeholder="Brief description of your organization..."
                   rows={3}
                   maxLength={500}
+                  aria-invalid={!!errors.description}
+                  aria-describedby={errors.description ? "description-error" : undefined}
                   className="bg-input border-border resize-none"
                 />
+                {errors.description && (
+                  <p id="description-error" role="alert" className="text-xs text-destructive mt-1">
+                    {errors.description}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -199,10 +274,18 @@ export default function RequestOrganizationPage() {
                   name="applicantFullName"
                   value={form.applicantFullName}
                   onChange={handleChange}
+                  onBlur={() => handleBlur("applicantFullName", form)}
                   placeholder="Abebe Kebede"
                   required
+                  aria-invalid={!!errors.applicantFullName}
+                  aria-describedby={errors.applicantFullName ? "applicantFullName-error" : undefined}
                   className="bg-input border-border"
                 />
+                {errors.applicantFullName && (
+                  <p id="applicantFullName-error" role="alert" className="text-xs text-destructive mt-1">
+                    {errors.applicantFullName}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="email">Email *</Label>
@@ -212,10 +295,18 @@ export default function RequestOrganizationPage() {
                   type="email"
                   value={form.email}
                   onChange={handleChange}
+                  onBlur={() => handleBlur("email", form)}
                   placeholder="abebe@organization.com"
                   required
+                  aria-invalid={!!errors.email}
+                  aria-describedby={errors.email ? "email-error" : undefined}
                   className="bg-input border-border"
                 />
+                {errors.email && (
+                  <p id="email-error" role="alert" className="text-xs text-destructive mt-1">
+                    {errors.email}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="phone">Phone Number *</Label>
@@ -225,12 +316,18 @@ export default function RequestOrganizationPage() {
                   type="tel"
                   value={form.phone}
                   onChange={handleChange}
+                  onBlur={() => handleBlur("phone", form)}
                   placeholder="+251 911 234 567"
                   required
-                  pattern="^\+?[\d\s\-().]{7,20}$"
-                  title="Enter a valid phone number (e.g. +251 911 234 567)"
+                  aria-invalid={!!errors.phone}
+                  aria-describedby={errors.phone ? "phone-error" : undefined}
                   className="bg-input border-border"
                 />
+                {errors.phone && (
+                  <p id="phone-error" role="alert" className="text-xs text-destructive mt-1">
+                    {errors.phone}
+                  </p>
+                )}
               </div>
             </div>
           </div>

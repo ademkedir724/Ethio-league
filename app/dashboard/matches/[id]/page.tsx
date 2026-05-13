@@ -6,6 +6,8 @@ import useSWR from "swr";
 import { toast } from "sonner";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
+import { useFormValidation } from "@/lib/use-form-validation";
+import { validateRequired, validateInteger, validateLength } from "@/lib/validation";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -116,6 +118,29 @@ const emptyEventForm = {
     relatedPlayerId: "",
 };
 
+// ─── Validation functions ──────────────────────────────────────────────────────
+
+function validateEventForm(values: typeof emptyEventForm, eventCategory: string) {
+    const errors: Partial<Record<keyof typeof emptyEventForm, string>> = {};
+    errors.eventTypeId = validateRequired(values.eventTypeId, "Event type") ?? undefined;
+    errors.clubSide = validateRequired(values.clubSide, "Club side") ?? undefined;
+    errors.playerId = validateRequired(values.playerId, "Player") ?? undefined;
+    errors.minute = validateInteger(values.minute, 0, 150, "Minute") ?? undefined;
+    errors.extraTime = validateInteger(values.extraTime, 0, 30, "Extra time") ?? undefined;
+    errors.description = validateLength(values.description, 0, 255, "Description") ?? undefined;
+    if (eventCategory === "substitution") {
+        errors.relatedPlayerId = validateRequired(values.relatedPlayerId, "Substitute player") ?? undefined;
+    }
+    return errors;
+}
+
+function validateScoreForm(values: { homeScore: string; awayScore: string }) {
+    return {
+        homeScore: validateRequired(values.homeScore, "Home score") ?? validateInteger(values.homeScore, 0, 99, "Home score") ?? undefined,
+        awayScore: validateRequired(values.awayScore, "Away score") ?? validateInteger(values.awayScore, 0, 99, "Away score") ?? undefined,
+    };
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MatchDetailPage() {
@@ -215,6 +240,13 @@ export default function MatchDetailPage() {
     const editEventType = eventTypes.find((et) => et.id === editForm.eventTypeId);
     const editEventCategory = editEventType ? getEventCategory(editEventType.name) : "simple";
 
+    // ── Validation hooks ───────────────────────────────────────────────────────
+    const { errors: eventErrors, handleBlur: eventHandleBlur, validateAll: eventValidateAll, resetValidation: eventResetValidation } = useFormValidation(
+        (values) => validateEventForm(values, eventCategory),
+        emptyEventForm
+    );
+    const { errors: scoreErrors, handleBlur: scoreHandleBlur, validateAll: scoreValidateAll, resetValidation: scoreResetValidation } = useFormValidation(validateScoreForm, { homeScore: "", awayScore: "" });
+
     // ── Handlers ───────────────────────────────────────────────────────────────
     const handleApprove = async () => {
         setApproving(true);
@@ -236,6 +268,7 @@ export default function MatchDetailPage() {
 
     const handleLogEvent = async () => {
         if (!match) return;
+        if (!eventValidateAll(eventForm)) return;
         setSubmittingEvent(true);
         try {
             const clubId =
@@ -286,6 +319,7 @@ export default function MatchDetailPage() {
 
             toast.success(eventsToLog.length > 1 ? "Goal + assist logged" : "Event logged");
             setEventForm({ ...emptyEventForm });
+            eventResetValidation();
             mutateEvents();
             mutateMatch();
         } catch {
@@ -405,6 +439,7 @@ export default function MatchDetailPage() {
     };
 
     const handleSaveScore = async () => {
+        if (!scoreValidateAll(scoreForm)) return;
         setSavingScore(true);
         try {
             const res = await fetchWithAuth(`/api/matches/${matchId}`, {
@@ -421,6 +456,7 @@ export default function MatchDetailPage() {
             }
             toast.success("Score updated");
             setEditingScore(false);
+            scoreResetValidation();
             mutateMatch();
         } catch {
             toast.error("Failed to update score");
@@ -533,25 +569,47 @@ export default function MatchDetailPage() {
                             )}
                             {editingScore && (
                                 <div className="flex items-center gap-2 mt-1">
-                                    <Input
-                                        type="number"
-                                        min={0}
-                                        className="h-8 w-14 text-center font-mono text-sm"
-                                        value={scoreForm.homeScore}
-                                        onChange={(e) => setScoreForm({ ...scoreForm, homeScore: e.target.value })}
-                                    />
+                                    <div className="flex flex-col gap-1">
+                                        <Input
+                                            id="score-home"
+                                            type="number"
+                                            min={0}
+                                            className="h-8 w-14 text-center font-mono text-sm"
+                                            value={scoreForm.homeScore}
+                                            onChange={(e) => setScoreForm({ ...scoreForm, homeScore: e.target.value })}
+                                            onBlur={() => scoreHandleBlur("homeScore", scoreForm)}
+                                            aria-invalid={!!scoreErrors.homeScore}
+                                            aria-describedby={scoreErrors.homeScore ? "score-home-error" : undefined}
+                                        />
+                                        {scoreErrors.homeScore && (
+                                            <p id="score-home-error" role="alert" className="text-xs text-destructive mt-1">
+                                                {scoreErrors.homeScore}
+                                            </p>
+                                        )}
+                                    </div>
                                     <span className="text-muted-foreground font-bold">–</span>
-                                    <Input
-                                        type="number"
-                                        min={0}
-                                        className="h-8 w-14 text-center font-mono text-sm"
-                                        value={scoreForm.awayScore}
-                                        onChange={(e) => setScoreForm({ ...scoreForm, awayScore: e.target.value })}
-                                    />
+                                    <div className="flex flex-col gap-1">
+                                        <Input
+                                            id="score-away"
+                                            type="number"
+                                            min={0}
+                                            className="h-8 w-14 text-center font-mono text-sm"
+                                            value={scoreForm.awayScore}
+                                            onChange={(e) => setScoreForm({ ...scoreForm, awayScore: e.target.value })}
+                                            onBlur={() => scoreHandleBlur("awayScore", scoreForm)}
+                                            aria-invalid={!!scoreErrors.awayScore}
+                                            aria-describedby={scoreErrors.awayScore ? "score-away-error" : undefined}
+                                        />
+                                        {scoreErrors.awayScore && (
+                                            <p id="score-away-error" role="alert" className="text-xs text-destructive mt-1">
+                                                {scoreErrors.awayScore}
+                                            </p>
+                                        )}
+                                    </div>
                                     <Button size="sm" className="h-8" onClick={handleSaveScore} disabled={savingScore}>
                                         {savingScore ? "..." : "Save"}
                                     </Button>
-                                    <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingScore(false)}>
+                                    <Button size="sm" variant="ghost" className="h-8" onClick={() => { setEditingScore(false); scoreResetValidation(); }}>
                                         <X className="h-3.5 w-3.5" />
                                     </Button>
                                 </div>
@@ -710,6 +768,11 @@ export default function MatchDetailPage() {
                                         ))}
                                     </SelectContent>
                                 </Select>
+                                {eventErrors.eventTypeId && (
+                                    <p id="evt-type-error" role="alert" className="text-xs text-destructive mt-1">
+                                        {eventErrors.eventTypeId}
+                                    </p>
+                                )}
                             </div>
 
                             {/* Club side */}
@@ -725,6 +788,11 @@ export default function MatchDetailPage() {
                                         <SelectItem value="away">{match.awayClub?.name} (Away)</SelectItem>
                                     </SelectContent>
                                 </Select>
+                                {eventErrors.clubSide && (
+                                    <p id="evt-club-error" role="alert" className="text-xs text-destructive mt-1">
+                                        {eventErrors.clubSide}
+                                    </p>
+                                )}
                             </div>
 
                             {/* Feature 3: Player from lineup */}
@@ -750,6 +818,11 @@ export default function MatchDetailPage() {
                                         ))}
                                     </SelectContent>
                                 </Select>
+                                {eventErrors.playerId && (
+                                    <p id="evt-player-error" role="alert" className="text-xs text-destructive mt-1">
+                                        {eventErrors.playerId}
+                                    </p>
+                                )}
                             </div>
 
                             {/* Feature 2: Smart related player field */}
@@ -795,6 +868,11 @@ export default function MatchDetailPage() {
                                                 ))}
                                         </SelectContent>
                                     </Select>
+                                    {eventErrors.relatedPlayerId && (
+                                        <p id="evt-in-error" role="alert" className="text-xs text-destructive mt-1">
+                                            {eventErrors.relatedPlayerId}
+                                        </p>
+                                    )}
                                 </div>
                             )}
 
@@ -805,10 +883,18 @@ export default function MatchDetailPage() {
                                     id="evt-minute"
                                     type="number"
                                     min={1}
-                                    max={120}
+                                    max={150}
                                     value={eventForm.minute !== "" ? eventForm.minute : String(elapsedMinutes)}
                                     onChange={(e) => setEventForm({ ...eventForm, minute: e.target.value })}
+                                    onBlur={() => eventHandleBlur("minute", eventForm)}
+                                    aria-invalid={!!eventErrors.minute}
+                                    aria-describedby={eventErrors.minute ? "evt-minute-error" : undefined}
                                 />
+                                {eventErrors.minute && (
+                                    <p id="evt-minute-error" role="alert" className="text-xs text-destructive mt-1">
+                                        {eventErrors.minute}
+                                    </p>
+                                )}
                             </div>
 
                             <div className="flex flex-col gap-2">
@@ -819,8 +905,16 @@ export default function MatchDetailPage() {
                                     min={0}
                                     value={eventForm.extraTime}
                                     onChange={(e) => setEventForm({ ...eventForm, extraTime: e.target.value })}
+                                    onBlur={() => eventHandleBlur("extraTime", eventForm)}
+                                    aria-invalid={!!eventErrors.extraTime}
+                                    aria-describedby={eventErrors.extraTime ? "evt-extra-error" : undefined}
                                     placeholder="0"
                                 />
+                                {eventErrors.extraTime && (
+                                    <p id="evt-extra-error" role="alert" className="text-xs text-destructive mt-1">
+                                        {eventErrors.extraTime}
+                                    </p>
+                                )}
                             </div>
 
                             <div className="flex flex-col gap-2 sm:col-span-2">
@@ -829,21 +923,23 @@ export default function MatchDetailPage() {
                                     id="evt-desc"
                                     value={eventForm.description}
                                     onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
+                                    onBlur={() => eventHandleBlur("description", eventForm)}
+                                    aria-invalid={!!eventErrors.description}
+                                    aria-describedby={eventErrors.description ? "evt-desc-error" : undefined}
                                     placeholder="Additional notes..."
                                 />
+                                {eventErrors.description && (
+                                    <p id="evt-desc-error" role="alert" className="text-xs text-destructive mt-1">
+                                        {eventErrors.description}
+                                    </p>
+                                )}
                             </div>
                         </div>
 
                         <div className="mt-4 flex justify-end">
                             <Button
                                 onClick={handleLogEvent}
-                                disabled={
-                                    submittingEvent ||
-                                    !eventForm.eventTypeId ||
-                                    !eventForm.playerId ||
-                                    !eventForm.minute ||
-                                    (eventCategory === "substitution" && !eventForm.relatedPlayerId)
-                                }
+                                disabled={submittingEvent}
                             >
                                 {submittingEvent ? "Logging..." : "Log Event"}
                             </Button>

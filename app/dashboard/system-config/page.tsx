@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/table";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useFormValidation } from "@/lib/use-form-validation";
+import { validateRequired, validateLength, validatePositionCode } from "@/lib/validation";
 
 const LT_URL = "/api/seasons/league-types";
 const ET_URL = "/api/match-events/event-types";
@@ -25,16 +27,27 @@ const POS_URL = "/api/players/positions";
 interface NamedItem { id: string; name: string; description?: string | null }
 interface Position { id: string; code: string; name: string; description?: string | null }
 
+type NamedItemForm = { name: string; description: string };
+
+function validateNamedItemForm(values: NamedItemForm): Partial<Record<keyof NamedItemForm, string>> {
+  return {
+    name: validateRequired(values.name, "Name") ?? validateLength(values.name, 1, 100, "Name") ?? undefined,
+    description: validateLength(values.description, 0, 255, "Description") ?? undefined,
+  };
+}
+
 function NamedItemTab({ url, label }: { url: string; label: string }) {
   const { data, isLoading, error } = useSWR<NamedItem[]>(url, authFetcher);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<NamedItem | null>(null);
-  const [form, setForm] = useState({ name: "", description: "" });
+  const [form, setForm] = useState<NamedItemForm>({ name: "", description: "" });
+  const { errors, handleBlur, validateAll, resetValidation } = useFormValidation(validateNamedItemForm, { name: "", description: "" });
 
-  const openCreate = () => { setEditing(null); setForm({ name: "", description: "" }); setOpen(true); };
-  const openEdit = (item: NamedItem) => { setEditing(item); setForm({ name: item.name, description: item.description ?? "" }); setOpen(true); };
+  const openCreate = () => { setEditing(null); setForm({ name: "", description: "" }); resetValidation(); setOpen(true); };
+  const openEdit = (item: NamedItem) => { setEditing(item); setForm({ name: item.name, description: item.description ?? "" }); resetValidation(); setOpen(true); };
 
   const handleSubmit = async () => {
+    if (!validateAll(form)) return;
     const body = JSON.stringify({ name: form.name, description: form.description || undefined });
     const res = editing
       ? await fetchWithAuth(`${url}/${editing.id}`, { method: "PATCH", body })
@@ -99,15 +112,38 @@ function NamedItemTab({ url, label }: { url: string; label: string }) {
           </Table>
         </div>
       )}
-      <FormDialog open={open} onOpenChange={setOpen} title={editing ? `Edit ${label}` : `Add ${label}`} submitLabel={editing ? "Update" : "Create"} onSubmit={handleSubmit}>
+      <FormDialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetValidation(); }} title={editing ? `Edit ${label}` : `Add ${label}`} submitLabel={editing ? "Update" : "Create"} onSubmit={handleSubmit}>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="ni-name">Name *</Label>
-            <Input id="ni-name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={`e.g. ${label}`} />
+            <Input
+              id="ni-name"
+              required
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              onBlur={() => handleBlur("name", form)}
+              aria-invalid={!!errors.name}
+              aria-describedby={errors.name ? "ni-name-error" : undefined}
+              placeholder={`e.g. ${label}`}
+            />
+            {errors.name && (
+              <p id="ni-name-error" role="alert" className="text-xs text-destructive mt-1">{errors.name}</p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="ni-desc">Description</Label>
-            <Input id="ni-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Optional description" />
+            <Input
+              id="ni-desc"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              onBlur={() => handleBlur("description", form)}
+              aria-invalid={!!errors.description}
+              aria-describedby={errors.description ? "ni-desc-error" : undefined}
+              placeholder="Optional description"
+            />
+            {errors.description && (
+              <p id="ni-desc-error" role="alert" className="text-xs text-destructive mt-1">{errors.description}</p>
+            )}
           </div>
         </div>
       </FormDialog>
@@ -115,16 +151,28 @@ function NamedItemTab({ url, label }: { url: string; label: string }) {
   );
 }
 
+type PositionForm = { code: string; name: string; description: string };
+
+function validatePositionForm(values: PositionForm): Partial<Record<keyof PositionForm, string>> {
+  return {
+    code: validateRequired(values.code, "Code") ?? validatePositionCode(values.code) ?? undefined,
+    name: validateRequired(values.name, "Name") ?? validateLength(values.name, 1, 50, "Name") ?? undefined,
+    description: validateLength(values.description, 0, 255, "Description") ?? undefined,
+  };
+}
+
 function PositionsTab() {
   const { data, isLoading, error } = useSWR<Position[]>(POS_URL, authFetcher);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Position | null>(null);
-  const [form, setForm] = useState({ code: "", name: "", description: "" });
+  const [form, setForm] = useState<PositionForm>({ code: "", name: "", description: "" });
+  const { errors, handleBlur, validateAll, resetValidation } = useFormValidation(validatePositionForm, { code: "", name: "", description: "" });
 
-  const openCreate = () => { setEditing(null); setForm({ code: "", name: "", description: "" }); setOpen(true); };
-  const openEdit = (item: Position) => { setEditing(item); setForm({ code: item.code, name: item.name, description: item.description ?? "" }); setOpen(true); };
+  const openCreate = () => { setEditing(null); setForm({ code: "", name: "", description: "" }); resetValidation(); setOpen(true); };
+  const openEdit = (item: Position) => { setEditing(item); setForm({ code: item.code, name: item.name, description: item.description ?? "" }); resetValidation(); setOpen(true); };
 
   const handleSubmit = async () => {
+    if (!validateAll(form)) return;
     const body = JSON.stringify({ code: form.code, name: form.name, description: form.description || undefined });
     const res = editing
       ? await fetchWithAuth(`${POS_URL}/${editing.id}`, { method: "PATCH", body })
@@ -191,19 +239,54 @@ function PositionsTab() {
           </Table>
         </div>
       )}
-      <FormDialog open={open} onOpenChange={setOpen} title={editing ? "Edit Position" : "Add Position"} submitLabel={editing ? "Update" : "Create"} onSubmit={handleSubmit}>
+      <FormDialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetValidation(); }} title={editing ? "Edit Position" : "Add Position"} submitLabel={editing ? "Update" : "Create"} onSubmit={handleSubmit}>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="pos-code">Code *</Label>
-            <Input id="pos-code" required value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. GK" />
+            <Input
+              id="pos-code"
+              required
+              value={form.code}
+              onChange={(e) => setForm({ ...form, code: e.target.value })}
+              onBlur={() => handleBlur("code", form)}
+              aria-invalid={!!errors.code}
+              aria-describedby={errors.code ? "pos-code-error" : undefined}
+              placeholder="e.g. GK"
+            />
+            {errors.code && (
+              <p id="pos-code-error" role="alert" className="text-xs text-destructive mt-1">{errors.code}</p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="pos-name">Name *</Label>
-            <Input id="pos-name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Goalkeeper" />
+            <Input
+              id="pos-name"
+              required
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              onBlur={() => handleBlur("name", form)}
+              aria-invalid={!!errors.name}
+              aria-describedby={errors.name ? "pos-name-error" : undefined}
+              placeholder="e.g. Goalkeeper"
+            />
+            {errors.name && (
+              <p id="pos-name-error" role="alert" className="text-xs text-destructive mt-1">{errors.name}</p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="pos-desc">Description</Label>
-            <Input id="pos-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Optional description" />
+            <Input
+              id="pos-desc"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              onBlur={() => handleBlur("description", form)}
+              aria-invalid={!!errors.description}
+              aria-describedby={errors.description ? "pos-desc-error" : undefined}
+              placeholder="Optional description"
+            />
+            {errors.description && (
+              <p id="pos-desc-error" role="alert" className="text-xs text-destructive mt-1">{errors.description}</p>
+            )}
           </div>
         </div>
       </FormDialog>

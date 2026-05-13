@@ -15,6 +15,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useFormValidation } from "@/lib/use-form-validation";
+import { validatePassword, validatePasswordMatch } from "@/lib/validation";
+
+const initialValues = { password: "", confirmPassword: "" };
 
 function SetPasswordForm() {
   const searchParams = useSearchParams();
@@ -30,6 +34,17 @@ function SetPasswordForm() {
   const [isValid, setIsValid] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  const { errors, handleBlur, validateAll, resetValidation } =
+    useFormValidation(
+      (values) => ({
+        password: validatePassword(values.password) ?? undefined,
+        confirmPassword:
+          validatePasswordMatch(values.password, values.confirmPassword) ??
+          undefined,
+      }),
+      initialValues
+    );
 
   // Validate token on mount
   useEffect(() => {
@@ -65,24 +80,11 @@ function SetPasswordForm() {
     validateToken();
   }, [token]);
 
-  const validatePassword = () => {
-    if (password.length < 8) {
-      return "Password must be at least 8 characters long";
-    }
-    if (password !== confirmPassword) {
-      return "Passwords do not match";
-    }
-    return null;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const validationError = validatePassword();
-    if (validationError) {
-      toast.error(validationError);
-      return;
-    }
+    const formValues = { password, confirmPassword };
+    if (!validateAll(formValues)) return;
 
     setIsSubmitting(true);
 
@@ -99,6 +101,7 @@ function SetPasswordForm() {
         throw new Error(data.error || "Failed to set password");
       }
 
+      resetValidation();
       setIsSuccess(true);
       toast.success("Password set successfully");
     } catch (error) {
@@ -193,9 +196,12 @@ function SetPasswordForm() {
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onBlur={() => handleBlur("password", { password, confirmPassword })}
                 placeholder="Enter your password"
                 required
                 minLength={8}
+                aria-invalid={!!errors.password}
+                aria-describedby={errors.password ? "password-error" : undefined}
                 className="bg-input border-border pr-10"
               />
               <Button
@@ -215,9 +221,15 @@ function SetPasswordForm() {
                 </span>
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Must be at least 8 characters long
-            </p>
+            {errors.password ? (
+              <p id="password-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.password}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Must be at least 8 characters long
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-2">
@@ -228,9 +240,12 @@ function SetPasswordForm() {
                 type={showConfirmPassword ? "text" : "password"}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
+                onBlur={() => handleBlur("confirmPassword", { password, confirmPassword })}
                 placeholder="Confirm your password"
                 required
                 minLength={8}
+                aria-invalid={!!errors.confirmPassword}
+                aria-describedby={errors.confirmPassword ? "confirmPassword-error" : undefined}
                 className="bg-input border-border pr-10"
               />
               <Button
@@ -250,15 +265,17 @@ function SetPasswordForm() {
                 </span>
               </Button>
             </div>
-            {confirmPassword && password !== confirmPassword && (
-              <p className="text-xs text-destructive">Passwords do not match</p>
+            {errors.confirmPassword && (
+              <p id="confirmPassword-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.confirmPassword}
+              </p>
             )}
           </div>
 
           <Button
             type="submit"
             className="mt-2 w-full"
-            disabled={isSubmitting || password !== confirmPassword}
+            disabled={isSubmitting}
           >
             {isSubmitting ? "Setting Password..." : "Set Password"}
           </Button>

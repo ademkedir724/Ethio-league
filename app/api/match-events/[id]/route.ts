@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { assertMEASeasonScope } from "@/lib/scope-guard";
 import { logAudit } from "@/lib/audit";
 import { computeAndPersistPlayerRating, computeAndPersistClubRating } from "@/lib/ratings";
+import { broadcastMatchEvent, PUSHER_EVENTS } from "@/lib/pusher";
 
 const TEN_MINUTES_MS = 10 * 60 * 1000;
 
@@ -67,15 +68,31 @@ export async function PATCH(
       include: {
         eventType: true,
         player: { select: { id: true, firstName: true, lastName: true } },
+        relatedPlayer: { select: { id: true, firstName: true, lastName: true } },
+        club: { select: { id: true, name: true } },
       },
+    });
+
+    // Broadcast update to fan site
+    broadcastMatchEvent(PUSHER_EVENTS.EVENT_UPDATED, updated.matchId, {
+      id: updated.id,
+      matchId: updated.matchId,
+      minute: updated.minute,
+      extraTime: updated.extraTime,
+      description: updated.description,
+      eventType: { id: String(updated.eventType.id), name: updated.eventType.name },
+      player: updated.player ?? null,
+      relatedPlayer: updated.relatedPlayer ?? null,
+      club: updated.club ?? null,
+      createdAt: updated.createdAt?.toISOString(),
     });
 
     await logAudit({
       userId: auth.userId,
-      actionType: 'match_event_edited',
+      actionType: "match_event_edited",
       targetId: id,
-      targetType: 'match_event',
-      description: 'Match event edited',
+      targetType: "match_event",
+      description: "Match event edited",
     });
 
     return success(updated);
@@ -112,11 +129,11 @@ export async function DELETE(
     const isOwnGoal = typeName === "own_goal";
 
     if (isGoal || isOwnGoal) {
-      const match = await prisma.match.findUnique({
+      const matchForScore = await prisma.match.findUnique({
         where: { id: event.matchId },
         select: { id: true, homeClubId: true, awayClubId: true },
       });
-      if (match) {
+      if (matchForScore) {
         // Recount all remaining goal events for this match
         const remainingGoals = await prisma.matchEvent.findMany({
           where: {
@@ -131,18 +148,38 @@ export async function DELETE(
         for (const g of remainingGoals) {
           const gType = g.eventType.name.toLowerCase();
           const scoringClubId = gType === "own_goal"
-            ? (g.clubId === match.homeClubId ? match.awayClubId : match.homeClubId)
+            ? (g.clubId === matchForScore.homeClubId ? matchForScore.awayClubId : matchForScore.homeClubId)
             : g.clubId;
-          if (scoringClubId === match.homeClubId) homeScore++;
-          else if (scoringClubId === match.awayClubId) awayScore++;
+          if (scoringClubId === matchForScore.homeClubId) homeScore++;
+          else if (scoringClubId === matchForScore.awayClubId) awayScore++;
         }
 
         await prisma.match.update({
           where: { id: event.matchId },
           data: { homeScore, awayScore },
         });
+
+        // Broadcast updated score to fan site
+        broadcastMatchEvent(PUSHER_EVENTS.SCORE_UPDATED, event.matchId, {
+          matchId: event.matchId,
+          homeScore,
+          awayScore,
+        });
       }
     }
+
+    // Broadcast event deletion to fan site
+    broadcastMatchEvent(PUSHER_EVENTS.EVENT_DELETED, event.matchId, {
+      id: event.id,
+      matchId: event.matchId,
+      minute: event.minute,
+      extraTime: event.extraTime,
+      description: event.description,
+      eventType: { id: String(event.eventType.id), name: event.eventType.name },
+      player: null,
+      relatedPlayer: null,
+      club: null,
+    });
 
     // Fire-and-forget rating recompute for affected player and club
     computeAndPersistPlayerRating(event.playerId, prisma).catch((err) =>

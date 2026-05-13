@@ -27,6 +27,14 @@ import {
     DialogTitle,
     DialogFooter,
 } from "@/components/ui/dialog";
+import { useFormValidation } from "@/lib/use-form-validation";
+import {
+    validateRequired,
+    validateLength,
+    validatePhone,
+    validatePassword,
+    validatePasswordMatch,
+} from "@/lib/validation";
 
 interface RoleScope {
     id: string;
@@ -48,6 +56,46 @@ interface UserProfile {
     status: string;
     roles: RoleScope[];
 }
+
+// ---------------------------------------------------------------------------
+// Validation functions
+// ---------------------------------------------------------------------------
+
+type EditProfileValues = { editFullName: string; editPhone: string };
+type ChangePasswordValues = {
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+};
+
+function validateEditProfile(
+    values: EditProfileValues
+): Partial<Record<keyof EditProfileValues, string>> {
+    return {
+        editFullName:
+            validateRequired(values.editFullName, "Full name") ??
+            validateLength(values.editFullName, 2, 80, "Full name") ??
+            undefined,
+        editPhone: validatePhone(values.editPhone, false) ?? undefined,
+    };
+}
+
+function validateChangePassword(
+    values: ChangePasswordValues
+): Partial<Record<keyof ChangePasswordValues, string>> {
+    return {
+        currentPassword:
+            validateRequired(values.currentPassword, "Current password") ?? undefined,
+        newPassword: validatePassword(values.newPassword) ?? undefined,
+        confirmPassword:
+            validatePasswordMatch(values.newPassword, values.confirmPassword) ??
+            undefined,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton
+// ---------------------------------------------------------------------------
 
 function ProfileSkeleton() {
     return (
@@ -127,8 +175,36 @@ export default function ProfilePage() {
     const [showCurrentPassword, setShowCurrentPassword] = useState(false);
     const [showNewPassword, setShowNewPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-    const [pwErrors, setPwErrors] = useState<Record<string, string>>({});
     const [pwSaving, setPwSaving] = useState(false);
+
+    // ---------------------------------------------------------------------------
+    // Validation hooks — two separate instances, one per form
+    // ---------------------------------------------------------------------------
+
+    const {
+        errors: editErrors,
+        handleBlur: editHandleBlur,
+        validateAll: editValidateAll,
+        resetValidation: editResetValidation,
+    } = useFormValidation<EditProfileValues>(validateEditProfile, {
+        editFullName: "",
+        editPhone: "",
+    });
+
+    const {
+        errors: pwErrors,
+        handleBlur: pwHandleBlur,
+        validateAll: pwValidateAll,
+        resetValidation: pwResetValidation,
+    } = useFormValidation<ChangePasswordValues>(validateChangePassword, {
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+    });
+
+    // ---------------------------------------------------------------------------
+    // Edit profile handlers
+    // ---------------------------------------------------------------------------
 
     function openEdit() {
         if (!profile) return;
@@ -137,15 +213,17 @@ export default function ProfilePage() {
         setEditOpen(true);
     }
 
+    function handleEditOpenChange(open: boolean) {
+        setEditOpen(open);
+        if (!open) {
+            editResetValidation();
+        }
+    }
+
     async function handleEditSave() {
-        if (!editFullName.trim() || editFullName.trim().length < 2) {
-            toast.error("Full name must be at least 2 characters");
-            return;
-        }
-        if (editPhone.trim() && !/^\+?[\d\s\-().]{7,20}$/.test(editPhone.trim())) {
-            toast.error("Enter a valid phone number (e.g. +251 911 234 567)");
-            return;
-        }
+        const isValid = editValidateAll({ editFullName, editPhone });
+        if (!isValid) return;
+
         setEditSaving(true);
         try {
             const res = await fetchWithAuth("/api/users/me", {
@@ -158,6 +236,7 @@ export default function ProfilePage() {
             } else {
                 toast.success("Profile updated");
                 mutate("/api/users/me");
+                editResetValidation();
                 setEditOpen(false);
             }
         } catch {
@@ -167,24 +246,15 @@ export default function ProfilePage() {
         }
     }
 
-    function validatePassword() {
-        const errors: Record<string, string> = {};
-        if (!currentPassword) errors.currentPassword = "Current password is required";
-        if (newPassword.length < 8)
-            errors.newPassword = "New password must be at least 8 characters";
-        if (newPassword !== confirmPassword)
-            errors.confirmPassword = "Passwords do not match";
-        return errors;
-    }
+    // ---------------------------------------------------------------------------
+    // Change password handler
+    // ---------------------------------------------------------------------------
 
     async function handleChangePassword(e: React.FormEvent) {
         e.preventDefault();
-        const errors = validatePassword();
-        if (Object.keys(errors).length > 0) {
-            setPwErrors(errors);
-            return;
-        }
-        setPwErrors({});
+        const isValid = pwValidateAll({ currentPassword, newPassword, confirmPassword });
+        if (!isValid) return;
+
         setPwSaving(true);
         try {
             const res = await fetchWithAuth("/api/users/me/change-password", {
@@ -199,6 +269,7 @@ export default function ProfilePage() {
                 setCurrentPassword("");
                 setNewPassword("");
                 setConfirmPassword("");
+                pwResetValidation();
             }
         } catch {
             toast.error("Failed to change password");
@@ -315,6 +386,19 @@ export default function ProfilePage() {
                                             type={showCurrentPassword ? "text" : "password"}
                                             value={currentPassword}
                                             onChange={(e) => setCurrentPassword(e.target.value)}
+                                            onBlur={() =>
+                                                pwHandleBlur("currentPassword", {
+                                                    currentPassword,
+                                                    newPassword,
+                                                    confirmPassword,
+                                                })
+                                            }
+                                            aria-invalid={!!pwErrors.currentPassword}
+                                            aria-describedby={
+                                                pwErrors.currentPassword
+                                                    ? "currentPassword-error"
+                                                    : undefined
+                                            }
                                             required
                                             autoComplete="current-password"
                                             className="pr-10"
@@ -329,7 +413,13 @@ export default function ProfilePage() {
                                         </button>
                                     </div>
                                     {pwErrors.currentPassword && (
-                                        <p className="text-xs text-destructive">{pwErrors.currentPassword}</p>
+                                        <p
+                                            id="currentPassword-error"
+                                            role="alert"
+                                            className="text-xs text-destructive mt-1"
+                                        >
+                                            {pwErrors.currentPassword}
+                                        </p>
                                     )}
                                 </div>
                                 <div className="flex flex-col gap-2">
@@ -340,6 +430,17 @@ export default function ProfilePage() {
                                             type={showNewPassword ? "text" : "password"}
                                             value={newPassword}
                                             onChange={(e) => setNewPassword(e.target.value)}
+                                            onBlur={() =>
+                                                pwHandleBlur("newPassword", {
+                                                    currentPassword,
+                                                    newPassword,
+                                                    confirmPassword,
+                                                })
+                                            }
+                                            aria-invalid={!!pwErrors.newPassword}
+                                            aria-describedby={
+                                                pwErrors.newPassword ? "newPassword-error" : undefined
+                                            }
                                             required
                                             minLength={8}
                                             placeholder="Minimum 8 characters"
@@ -356,7 +457,13 @@ export default function ProfilePage() {
                                         </button>
                                     </div>
                                     {pwErrors.newPassword && (
-                                        <p className="text-xs text-destructive">{pwErrors.newPassword}</p>
+                                        <p
+                                            id="newPassword-error"
+                                            role="alert"
+                                            className="text-xs text-destructive mt-1"
+                                        >
+                                            {pwErrors.newPassword}
+                                        </p>
                                     )}
                                 </div>
                                 <div className="flex flex-col gap-2">
@@ -367,6 +474,19 @@ export default function ProfilePage() {
                                             type={showConfirmPassword ? "text" : "password"}
                                             value={confirmPassword}
                                             onChange={(e) => setConfirmPassword(e.target.value)}
+                                            onBlur={() =>
+                                                pwHandleBlur("confirmPassword", {
+                                                    currentPassword,
+                                                    newPassword,
+                                                    confirmPassword,
+                                                })
+                                            }
+                                            aria-invalid={!!pwErrors.confirmPassword}
+                                            aria-describedby={
+                                                pwErrors.confirmPassword
+                                                    ? "confirmPassword-error"
+                                                    : undefined
+                                            }
                                             required
                                             minLength={8}
                                             placeholder="Repeat new password"
@@ -383,7 +503,13 @@ export default function ProfilePage() {
                                         </button>
                                     </div>
                                     {pwErrors.confirmPassword && (
-                                        <p className="text-xs text-destructive">{pwErrors.confirmPassword}</p>
+                                        <p
+                                            id="confirmPassword-error"
+                                            role="alert"
+                                            className="text-xs text-destructive mt-1"
+                                        >
+                                            {pwErrors.confirmPassword}
+                                        </p>
                                     )}
                                 </div>
                                 <Button type="submit" disabled={pwSaving} className="self-start">
@@ -396,7 +522,7 @@ export default function ProfilePage() {
             )}
 
             {/* Edit Profile Dialog */}
-            <Dialog open={editOpen} onOpenChange={setEditOpen}>
+            <Dialog open={editOpen} onOpenChange={handleEditOpenChange}>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Edit Profile</DialogTitle>
@@ -408,12 +534,28 @@ export default function ProfilePage() {
                                 id="editFullName"
                                 value={editFullName}
                                 onChange={(e) => setEditFullName(e.target.value)}
+                                onBlur={() =>
+                                    editHandleBlur("editFullName", { editFullName, editPhone })
+                                }
+                                aria-invalid={!!editErrors.editFullName}
+                                aria-describedby={
+                                    editErrors.editFullName ? "editFullName-error" : undefined
+                                }
                                 required
                                 minLength={2}
                                 maxLength={80}
                                 placeholder="Abebe Kebede"
                                 autoComplete="name"
                             />
+                            {editErrors.editFullName && (
+                                <p
+                                    id="editFullName-error"
+                                    role="alert"
+                                    className="text-xs text-destructive mt-1"
+                                >
+                                    {editErrors.editFullName}
+                                </p>
+                            )}
                         </div>
                         <div className="flex flex-col gap-2">
                             <Label htmlFor="editPhone">
@@ -424,15 +566,33 @@ export default function ProfilePage() {
                                 type="tel"
                                 value={editPhone}
                                 onChange={(e) => setEditPhone(e.target.value)}
+                                onBlur={() =>
+                                    editHandleBlur("editPhone", { editFullName, editPhone })
+                                }
+                                aria-invalid={!!editErrors.editPhone}
+                                aria-describedby={
+                                    editErrors.editPhone ? "editPhone-error" : undefined
+                                }
                                 placeholder="+251 911 234 567"
-                                pattern="^\+?[\d\s\-().]{7,20}$"
-                                title="Enter a valid phone number (e.g. +251 911 234 567)"
                                 autoComplete="tel"
                             />
+                            {editErrors.editPhone && (
+                                <p
+                                    id="editPhone-error"
+                                    role="alert"
+                                    className="text-xs text-destructive mt-1"
+                                >
+                                    {editErrors.editPhone}
+                                </p>
+                            )}
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setEditOpen(false)} disabled={editSaving}>
+                        <Button
+                            variant="outline"
+                            onClick={() => handleEditOpenChange(false)}
+                            disabled={editSaving}
+                        >
                             Cancel
                         </Button>
                         <Button onClick={handleEditSave} disabled={editSaving}>

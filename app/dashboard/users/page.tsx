@@ -5,6 +5,8 @@ import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
+import { useFormValidation } from "@/lib/use-form-validation";
+import { validateRequired, validateLength, validateEmail, validatePhone, validatePassword } from "@/lib/validation";
 import { useOrganization } from "@/lib/org-context";
 import { getRoleLabel } from "@/lib/role-labels";
 import { usePaginated } from "@/lib/use-paginated";
@@ -94,6 +96,30 @@ const roleColors: Record<string, string> = {
 
 const emptyForm = { fullName: "", email: "", phone: "", password: "", role: "" };
 
+// ─── Validation helpers ──────────────────────────────────────────────────────
+
+function validateOrgAdminUserForm(values: { fullName: string; email: string; phone: string }, isEdit: boolean) {
+  const errors: Partial<Record<"fullName" | "email" | "phone", string>> = {};
+  errors.fullName = validateRequired(values.fullName, "Full name") ?? validateLength(values.fullName, 2, 80, "Full name") ?? undefined;
+  if (!isEdit) {
+    errors.email = validateRequired(values.email, "Email") ?? validateEmail(values.email) ?? undefined;
+  }
+  errors.phone = validatePhone(values.phone, false) ?? undefined;
+  return errors;
+}
+
+function validateSuperAdminUserForm(values: { fullName: string; email: string; phone: string; password: string; role: string }, isEdit: boolean) {
+  const errors: Partial<Record<"fullName" | "email" | "phone" | "password" | "role", string>> = {};
+  errors.fullName = validateRequired(values.fullName, "Full name") ?? validateLength(values.fullName, 2, 80, "Full name") ?? undefined;
+  if (!isEdit) {
+    errors.email = validateRequired(values.email, "Email") ?? validateEmail(values.email) ?? undefined;
+    errors.password = validatePassword(values.password) ?? undefined;
+    errors.role = values.role ? undefined : "Role is required";
+  }
+  errors.phone = validatePhone(values.phone, false) ?? undefined;
+  return errors;
+}
+
 // ─── Organization Admin View ─────────────────────────────────────────────────
 // View users in their organization and create Match Event Admins only
 
@@ -124,6 +150,11 @@ function OrgAdminUsersView() {
   const [isSaving, setIsSaving] = useState(false);
   const [passwordSetupLink, setPasswordSetupLink] = useState<string | null>(null);
 
+  const { errors, handleBlur, validateAll, resetValidation } = useFormValidation(
+    (values) => validateOrgAdminUserForm(values, !!editingUser),
+    { fullName: "", email: "", phone: "" }
+  );
+
   // Filter users that belong to this organization
   const orgUsers = useMemo(() => {
     return users.filter((u) =>
@@ -152,6 +183,7 @@ function OrgAdminUsersView() {
   const openCreateMatchEventAdmin = () => {
     setEditingUser(null);
     setForm({ fullName: "", email: "", phone: "" });
+    resetValidation();
     setFormOpen(true);
   };
 
@@ -162,10 +194,12 @@ function OrgAdminUsersView() {
       email: user.email,
       phone: user.phone,
     });
+    resetValidation();
     setFormOpen(true);
   };
 
   const handleSubmit = async () => {
+    if (!validateAll(form)) return;
     setIsSaving(true);
     try {
       if (editingUser) {
@@ -462,7 +496,7 @@ function OrgAdminUsersView() {
       {/* Create / Edit Match Event Admin Dialog */}
       <FormDialog
         open={formOpen}
-        onOpenChange={setFormOpen}
+        onOpenChange={(open) => { setFormOpen(open); if (!open) resetValidation(); }}
         title={editingUser ? "Edit User" : "Add Match Recorder"}
         description={
           editingUser
@@ -479,12 +513,20 @@ function OrgAdminUsersView() {
               id="me-name"
               value={form.fullName}
               onChange={(e) => setForm({ ...form, fullName: e.target.value })}
+              onBlur={() => handleBlur("fullName", form)}
+              aria-invalid={!!errors.fullName}
+              aria-describedby={errors.fullName ? "me-name-error" : undefined}
               placeholder="Abebe Kebede"
               required
               minLength={2}
               maxLength={80}
               autoComplete="name"
             />
+            {errors.fullName && (
+              <p id="me-name-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.fullName}
+              </p>
+            )}
           </div>
           {!editingUser && (
             <div className="flex flex-col gap-2">
@@ -494,10 +536,18 @@ function OrgAdminUsersView() {
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
+                onBlur={() => handleBlur("email", form)}
+                aria-invalid={!!errors.email}
+                aria-describedby={errors.email ? "me-email-error" : undefined}
                 placeholder="abebe@ethioleague.com"
                 required
                 autoComplete="email"
               />
+              {errors.email && (
+                <p id="me-email-error" role="alert" className="text-xs text-destructive mt-1">
+                  {errors.email}
+                </p>
+              )}
             </div>
           )}
           <div className="flex flex-col gap-2">
@@ -509,11 +559,19 @@ function OrgAdminUsersView() {
               type="tel"
               value={form.phone}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              onBlur={() => handleBlur("phone", form)}
+              aria-invalid={!!errors.phone}
+              aria-describedby={errors.phone ? "me-phone-error" : undefined}
               placeholder="+251 911 234 567"
               pattern="^\+?[\d\s\-().]{7,20}$"
               title="Enter a valid phone number (e.g. +251 911 234 567)"
               autoComplete="tel"
             />
+            {errors.phone && (
+              <p id="me-phone-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.phone}
+              </p>
+            )}
           </div>
           {!editingUser && (
             <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
@@ -621,6 +679,11 @@ function SuperAdminUsersView() {
   const [suspendTarget, setSuspendTarget] = useState<User | null>(null);
   const [form, setForm] = useState(emptyForm);
 
+  const { errors: saErrors, handleBlur: saHandleBlur, validateAll: saValidateAll, resetValidation: saResetValidation } = useFormValidation(
+    (values) => validateSuperAdminUserForm(values, !!editingUser),
+    emptyForm
+  );
+
   const filtered = useMemo(() => {
     return users.filter((u) => {
       const matchesRole = roleFilter === "all" || u.roles.includes(roleFilter);
@@ -637,6 +700,7 @@ function SuperAdminUsersView() {
   const openCreate = () => {
     setEditingUser(null);
     setForm(emptyForm);
+    saResetValidation();
     setFormOpen(true);
   };
 
@@ -649,6 +713,7 @@ function SuperAdminUsersView() {
       password: "",
       role: user.roles[0] || "",
     });
+    saResetValidation();
     setFormOpen(true);
   };
 
@@ -672,10 +737,8 @@ function SuperAdminUsersView() {
       }
     } else {
       // Create new user
-      if (!form.fullName || !form.email || !form.password || !form.role) {
-        toast.error("Full name, email, password, and role are required");
-        return;
-      }
+      const isValid = saValidateAll(form);
+      if (!isValid) return;
       try {
         const res = await fetchWithAuth("/api/users", {
           method: "POST",
@@ -912,7 +975,7 @@ function SuperAdminUsersView() {
       {/* Create / Edit Dialog */}
       <FormDialog
         open={formOpen}
-        onOpenChange={setFormOpen}
+        onOpenChange={(open) => { setFormOpen(open); if (!open) saResetValidation(); }}
         title={editingUser ? "Edit User" : "Create User"}
         description={editingUser ? "Update user details and role." : "Add a new system user."}
         submitLabel={editingUser ? "Update" : "Create"}
@@ -921,22 +984,89 @@ function SuperAdminUsersView() {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-2 sm:col-span-2">
             <Label htmlFor="user-name">Full Name *</Label>
-            <Input id="user-name" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} placeholder="Abebe Kebede" required minLength={2} maxLength={80} autoComplete="name" />
+            <Input
+              id="user-name"
+              value={form.fullName}
+              onChange={(e) => setForm({ ...form, fullName: e.target.value })}
+              onBlur={() => saHandleBlur("fullName", form)}
+              aria-invalid={!!saErrors.fullName}
+              aria-describedby={saErrors.fullName ? "user-name-error" : undefined}
+              placeholder="Abebe Kebede"
+              required
+              minLength={2}
+              maxLength={80}
+              autoComplete="name"
+            />
+            {saErrors.fullName && (
+              <p id="user-name-error" role="alert" className="text-xs text-destructive mt-1">
+                {saErrors.fullName}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="user-email">Email *</Label>
-            <Input id="user-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="abebe@ethioleague.com" required autoComplete="email" />
+            <Input
+              id="user-email"
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              onBlur={() => saHandleBlur("email", form)}
+              aria-invalid={!!saErrors.email}
+              aria-describedby={saErrors.email ? "user-email-error" : undefined}
+              placeholder="abebe@ethioleague.com"
+              required
+              autoComplete="email"
+            />
+            {saErrors.email && (
+              <p id="user-email-error" role="alert" className="text-xs text-destructive mt-1">
+                {saErrors.email}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="user-phone">
               Phone <span className="text-muted-foreground font-normal">(optional)</span>
             </Label>
-            <Input id="user-phone" type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+251 911 234 567" pattern="^\+?[\d\s\-().]{7,20}$" title="Enter a valid phone number" autoComplete="tel" />
+            <Input
+              id="user-phone"
+              type="tel"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              onBlur={() => saHandleBlur("phone", form)}
+              aria-invalid={!!saErrors.phone}
+              aria-describedby={saErrors.phone ? "user-phone-error" : undefined}
+              placeholder="+251 911 234 567"
+              pattern="^\+?[\d\s\-().]{7,20}$"
+              title="Enter a valid phone number"
+              autoComplete="tel"
+            />
+            {saErrors.phone && (
+              <p id="user-phone-error" role="alert" className="text-xs text-destructive mt-1">
+                {saErrors.phone}
+              </p>
+            )}
           </div>
           {!editingUser && (
             <div className="flex flex-col gap-2 sm:col-span-2">
               <Label htmlFor="user-pass">Password *</Label>
-              <Input id="user-pass" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Minimum 8 characters" required minLength={8} autoComplete="new-password" />
+              <Input
+                id="user-pass"
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                onBlur={() => saHandleBlur("password", form)}
+                aria-invalid={!!saErrors.password}
+                aria-describedby={saErrors.password ? "user-pass-error" : undefined}
+                placeholder="Minimum 8 characters"
+                required
+                minLength={8}
+                autoComplete="new-password"
+              />
+              {saErrors.password && (
+                <p id="user-pass-error" role="alert" className="text-xs text-destructive mt-1">
+                  {saErrors.password}
+                </p>
+              )}
             </div>
           )}
           <div className="flex flex-col gap-2 sm:col-span-2">
@@ -953,6 +1083,11 @@ function SuperAdminUsersView() {
                 <SelectItem value="MATCH_EVENT_ADMIN">Match Recorder</SelectItem>
               </SelectContent>
             </Select>
+            {saErrors.role && (
+              <p id="user-role-error" role="alert" className="text-xs text-destructive mt-1">
+                {saErrors.role}
+              </p>
+            )}
           </div>
         </div>
       </FormDialog>

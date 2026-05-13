@@ -15,6 +15,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useFormValidation } from "@/lib/use-form-validation";
+import { validateEmail, validateRequired } from "@/lib/validation";
+
+const initialValues = { email: "", password: "" };
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -23,8 +27,24 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
+  const { errors, handleBlur, validateAll, resetValidation } =
+    useFormValidation(
+      (values) => ({
+        email:
+          validateRequired(values.email, "Email") ??
+          validateEmail(values.email) ??
+          undefined,
+        password: validateRequired(values.password, "Password") ?? undefined,
+      }),
+      initialValues
+    );
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    const formValues = { email, password };
+    if (!validateAll(formValues)) return;
+
     setIsLoading(true);
 
     try {
@@ -45,6 +65,7 @@ export default function LoginPage() {
       localStorage.setItem("user", JSON.stringify(data.user));
 
       toast.success("Login successful");
+      resetValidation();
       router.push("/dashboard");
     } catch (error) {
       toast.error(
@@ -80,10 +101,18 @@ export default function LoginPage() {
               placeholder="admin@ethioleague.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => handleBlur("email", { email, password })}
               required
               autoComplete="email"
+              aria-invalid={!!errors.email}
+              aria-describedby={errors.email ? "email-error" : undefined}
               className="bg-input border-border text-foreground placeholder:text-muted-foreground"
             />
+            {errors.email && (
+              <p id="email-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.email}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="password" className="text-card-foreground">
@@ -96,8 +125,11 @@ export default function LoginPage() {
                 placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onBlur={() => handleBlur("password", { email, password })}
                 required
                 autoComplete="current-password"
+                aria-invalid={!!errors.password}
+                aria-describedby={errors.password ? "password-error" : undefined}
                 className="bg-input border-border text-foreground placeholder:text-muted-foreground pr-10"
               />
               <button
@@ -109,6 +141,11 @@ export default function LoginPage() {
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
+            {errors.password && (
+              <p id="password-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.password}
+              </p>
+            )}
           </div>
           <Button
             type="submit"

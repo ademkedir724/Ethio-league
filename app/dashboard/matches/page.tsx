@@ -34,6 +34,8 @@ import {
 import { Swords, Plus, MoreHorizontal, Pencil, Trash2, Play, CheckCircle, Eye, Shuffle, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useFormValidation } from "@/lib/use-form-validation";
+import { validateRequired, validateInteger } from "@/lib/validation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface Match {
@@ -58,6 +60,13 @@ const emptyForm = {
   season: "",
   roundNumber: "",
 };
+
+function validateMatchForm(values: typeof emptyForm) {
+  const errors: Partial<Record<keyof typeof emptyForm, string>> = {};
+  errors.matchDate = validateRequired(values.matchDate, "Match date") ?? undefined;
+  errors.roundNumber = validateInteger(values.roundNumber, 1, 100, "Round number") ?? undefined;
+  return errors;
+}
 
 function LiveTimer({ startedAt }: { startedAt: string }) {
   const [minutes, setMinutes] = useState(() =>
@@ -115,6 +124,8 @@ export default function MatchesPage() {
   const [generateConfirmOpen, setGenerateConfirmOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
 
+  const { errors, handleBlur, validateAll, resetValidation } = useFormValidation(validateMatchForm, emptyForm);
+
   const leagues = useMemo(() => {
     const set = new Set(matches.map((m) => m.season?.name ?? ""));
     return Array.from(set).filter(Boolean).sort();
@@ -137,6 +148,7 @@ export default function MatchesPage() {
   const openCreate = () => {
     setEditingMatch(null);
     setForm(emptyForm);
+    resetValidation();
     setFormOpen(true);
   };
 
@@ -150,6 +162,7 @@ export default function MatchesPage() {
       season: match.season?.name ?? "",
       roundNumber: match.roundNumber?.toString() ?? "",
     });
+    resetValidation();
     setFormOpen(true);
   };
 
@@ -223,6 +236,7 @@ export default function MatchesPage() {
   };
 
   const handleSubmit = async () => {
+    if (!validateAll(form)) return;
     if (!editingMatch) return;
     try {
       const res = await fetchWithAuth(`/api/matches/${editingMatch.id}`, {
@@ -535,7 +549,7 @@ export default function MatchesPage() {
         <>
           <FormDialog
             open={formOpen}
-            onOpenChange={setFormOpen}
+            onOpenChange={(open) => { setFormOpen(open); if (!open) resetValidation(); }}
             title={editingMatch ? "Edit Match" : "Schedule Match"}
             description={editingMatch ? "Update match details." : "Schedule a new match fixture."}
             submitLabel={editingMatch ? "Update" : "Schedule"}
@@ -552,13 +566,43 @@ export default function MatchesPage() {
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="match-date">Match Date & Time *</Label>
-                <Input id="match-date" type="datetime-local" value={form.matchDate} onChange={(e) => setForm({ ...form, matchDate: e.target.value })} required />
+                <Input
+                  id="match-date"
+                  type="datetime-local"
+                  value={form.matchDate}
+                  onChange={(e) => setForm({ ...form, matchDate: e.target.value })}
+                  onBlur={() => handleBlur("matchDate", form)}
+                  aria-invalid={!!errors.matchDate}
+                  aria-describedby={errors.matchDate ? "match-date-error" : undefined}
+                  required
+                />
+                {errors.matchDate && (
+                  <p id="match-date-error" role="alert" className="text-xs text-destructive mt-1">
+                    {errors.matchDate}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="match-round">
                   Round Number <span className="text-muted-foreground font-normal">(optional)</span>
                 </Label>
-                <Input id="match-round" type="number" value={form.roundNumber} onChange={(e) => setForm({ ...form, roundNumber: e.target.value })} placeholder="1" min={1} max={100} />
+                <Input
+                  id="match-round"
+                  type="number"
+                  value={form.roundNumber}
+                  onChange={(e) => setForm({ ...form, roundNumber: e.target.value })}
+                  onBlur={() => handleBlur("roundNumber", form)}
+                  aria-invalid={!!errors.roundNumber}
+                  aria-describedby={errors.roundNumber ? "match-round-error" : undefined}
+                  placeholder="1"
+                  min={1}
+                  max={100}
+                />
+                {errors.roundNumber && (
+                  <p id="match-round-error" role="alert" className="text-xs text-destructive mt-1">
+                    {errors.roundNumber}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-2 sm:col-span-2">
                 <Label htmlFor="match-stadium">

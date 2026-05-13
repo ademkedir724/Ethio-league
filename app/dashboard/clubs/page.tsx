@@ -6,6 +6,8 @@ import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
+import { useFormValidation } from "@/lib/use-form-validation";
+import { validateRequired, validateLength, validateEmail, validatePhone } from "@/lib/validation";
 import { usePaginated } from "@/lib/use-paginated";
 import { Pagination } from "@/components/dashboard/pagination";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -81,6 +83,26 @@ function getInitials(name: string) {
   return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
 }
 
+// ─── Club Form Validation ─────────────────────────────────────────────────────
+
+function validateClubForm(values: typeof emptyCreateForm) {
+  return {
+    name:
+      validateRequired(values.name, "Club name") ??
+      validateLength(values.name, 2, 120, "Club name") ??
+      undefined,
+    adminFullName:
+      validateRequired(values.adminFullName, "Admin full name") ??
+      validateLength(values.adminFullName, 2, 80, "Admin full name") ??
+      undefined,
+    adminEmail:
+      validateRequired(values.adminEmail, "Admin email") ??
+      validateEmail(values.adminEmail) ??
+      undefined,
+    adminPhone: validatePhone(values.adminPhone, false) ?? undefined,
+  };
+}
+
 // ─── League Admin View ────────────────────────────────────────────────────────
 
 function LeagueAdminClubsView() {
@@ -116,6 +138,8 @@ function LeagueAdminClubsView() {
   const [setupLink, setSetupLink] = useState<string | null>(null);
   const [setupEmail, setSetupEmail] = useState("");
 
+  const { errors, handleBlur, validateAll, resetValidation } = useFormValidation(validateClubForm, emptyCreateForm);
+
   const stats = useMemo(() => ({
     total: pagination.total,
     active: clubs.filter((c) => c.status === "active").length,
@@ -123,9 +147,8 @@ function LeagueAdminClubsView() {
   }), [clubs, pagination.total]);
 
   const handleCreate = async () => {
-    if (!form.name.trim()) { toast.error("Club name is required"); return; }
-    if (!form.adminFullName.trim()) { toast.error("Club Admin full name is required"); return; }
-    if (!form.adminEmail.trim()) { toast.error("Club Admin email is required"); return; }
+    const isValid = validateAll(form);
+    if (!isValid) return;
 
     setIsSaving(true);
     try {
@@ -152,6 +175,7 @@ function LeagueAdminClubsView() {
       if (link) setSetupLink(link);
 
       toast.success("Club created");
+      resetValidation();
       setCreateOpen(false);
       setForm(emptyCreateForm);
       mutateClubs();
@@ -283,7 +307,7 @@ function LeagueAdminClubsView() {
       )}
 
       {/* Create Club Dialog */}
-      <Dialog open={createOpen} onOpenChange={(open) => { if (!open) setCreateOpen(false); }}>
+      <Dialog open={createOpen} onOpenChange={(open) => { if (!open) { resetValidation(); setCreateOpen(false); } }}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create Club</DialogTitle>
@@ -299,11 +323,19 @@ function LeagueAdminClubsView() {
                 id="club-name"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
+                onBlur={() => handleBlur("name", form)}
+                aria-invalid={!!errors.name}
+                aria-describedby={errors.name ? "club-name-error" : undefined}
                 placeholder="St. George FC"
                 required
                 minLength={2}
                 maxLength={120}
               />
+              {errors.name && (
+                <p id="club-name-error" role="alert" className="text-xs text-destructive mt-1">
+                  {errors.name}
+                </p>
+              )}
             </div>
 
             <Separator />
@@ -321,12 +353,20 @@ function LeagueAdminClubsView() {
                 id="admin-name"
                 value={form.adminFullName}
                 onChange={(e) => setForm({ ...form, adminFullName: e.target.value })}
+                onBlur={() => handleBlur("adminFullName", form)}
+                aria-invalid={!!errors.adminFullName}
+                aria-describedby={errors.adminFullName ? "admin-name-error" : undefined}
                 placeholder="Abebe Kebede"
                 required
                 minLength={2}
                 maxLength={80}
                 autoComplete="name"
               />
+              {errors.adminFullName && (
+                <p id="admin-name-error" role="alert" className="text-xs text-destructive mt-1">
+                  {errors.adminFullName}
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -337,10 +377,18 @@ function LeagueAdminClubsView() {
                   type="email"
                   value={form.adminEmail}
                   onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
+                  onBlur={() => handleBlur("adminEmail", form)}
+                  aria-invalid={!!errors.adminEmail}
+                  aria-describedby={errors.adminEmail ? "admin-email-error" : undefined}
                   placeholder="admin@club.com"
                   required
                   autoComplete="email"
                 />
+                {errors.adminEmail && (
+                  <p id="admin-email-error" role="alert" className="text-xs text-destructive mt-1">
+                    {errors.adminEmail}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="admin-phone">
@@ -351,11 +399,19 @@ function LeagueAdminClubsView() {
                   type="tel"
                   value={form.adminPhone}
                   onChange={(e) => setForm({ ...form, adminPhone: e.target.value })}
+                  onBlur={() => handleBlur("adminPhone", form)}
+                  aria-invalid={!!errors.adminPhone}
+                  aria-describedby={errors.adminPhone ? "admin-phone-error" : undefined}
                   placeholder="+251 911 234 567"
                   pattern="^\+?[\d\s\-().]{7,20}$"
                   title="Enter a valid phone number (e.g. +251 911 234 567)"
                   autoComplete="tel"
                 />
+                {errors.adminPhone && (
+                  <p id="admin-phone-error" role="alert" className="text-xs text-destructive mt-1">
+                    {errors.adminPhone}
+                  </p>
+                )}
               </div>
             </div>
           </div>

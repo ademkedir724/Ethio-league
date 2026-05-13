@@ -15,6 +15,10 @@ import {
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
+import { useFormValidation } from "@/lib/use-form-validation";
+import { validatePassword, validatePasswordMatch } from "@/lib/validation";
+
+const initialValues = { password: "", confirm: "" };
 
 function ResetPasswordForm() {
     const router = useRouter();
@@ -27,6 +31,15 @@ function ResetPasswordForm() {
     const [showConfirm, setShowConfirm] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [done, setDone] = useState(false);
+
+    const { errors, handleBlur, validateAll, resetValidation } =
+        useFormValidation(
+            (values) => ({
+                password: validatePassword(values.password) ?? undefined,
+                confirm: validatePasswordMatch(values.password, values.confirm) ?? undefined,
+            }),
+            initialValues
+        );
 
     if (!token) {
         return (
@@ -41,8 +54,9 @@ function ResetPasswordForm() {
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
-        if (password !== confirm) { toast.error("Passwords do not match"); return; }
-        if (password.length < 8) { toast.error("Password must be at least 8 characters"); return; }
+
+        const formValues = { password, confirm };
+        if (!validateAll(formValues)) return;
 
         setIsLoading(true);
         try {
@@ -53,6 +67,7 @@ function ResetPasswordForm() {
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || "Reset failed");
+            resetValidation();
             setDone(true);
             setTimeout(() => router.push("/login"), 2500);
         } catch (err) {
@@ -79,9 +94,12 @@ function ResetPasswordForm() {
                         placeholder="Minimum 8 characters"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
+                        onBlur={() => handleBlur("password", { password, confirm })}
                         required
                         minLength={8}
                         autoComplete="new-password"
+                        aria-invalid={!!errors.password}
+                        aria-describedby={errors.password ? "password-error" : undefined}
                         className="pr-10"
                     />
                     <button
@@ -93,6 +111,11 @@ function ResetPasswordForm() {
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                 </div>
+                {errors.password && (
+                    <p id="password-error" role="alert" className="text-xs text-destructive mt-1">
+                        {errors.password}
+                    </p>
+                )}
             </div>
             <div className="flex flex-col gap-2">
                 <Label htmlFor="confirm">Confirm Password</Label>
@@ -103,9 +126,12 @@ function ResetPasswordForm() {
                         placeholder="Repeat your password"
                         value={confirm}
                         onChange={(e) => setConfirm(e.target.value)}
+                        onBlur={() => handleBlur("confirm", { password, confirm })}
                         required
                         minLength={8}
                         autoComplete="new-password"
+                        aria-invalid={!!errors.confirm}
+                        aria-describedby={errors.confirm ? "confirm-error" : undefined}
                         className="pr-10"
                     />
                     <button
@@ -117,6 +143,11 @@ function ResetPasswordForm() {
                         {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                 </div>
+                {errors.confirm && (
+                    <p id="confirm-error" role="alert" className="text-xs text-destructive mt-1">
+                        {errors.confirm}
+                    </p>
+                )}
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Resetting..." : "Reset Password"}

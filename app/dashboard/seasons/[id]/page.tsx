@@ -6,6 +6,8 @@ import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
+import { useFormValidation } from "@/lib/use-form-validation";
+import { validateRequired } from "@/lib/validation";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
@@ -231,14 +233,25 @@ interface FixtureMatch {
     stadium: { id: string; name: string } | null;
 }
 
+type FixtureEditForm = { matchDate: string; matchTime: string; stadiumId: string };
+
+function validateFixtureEditForm(values: FixtureEditForm): Partial<Record<keyof FixtureEditForm, string>> {
+    return {
+        matchDate: validateRequired(values.matchDate, "Match date") ?? undefined,
+        matchTime: validateRequired(values.matchTime, "Kickoff time") ?? undefined,
+    };
+}
+
 function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
     const router = useRouter();
     const { isLeagueAdmin } = useAuth();
     const [isGenerating, setIsGenerating] = useState(false);
     const [generateErrors, setGenerateErrors] = useState<Array<{ criterion: string; message: string; clubs?: string[] }>>([]);
     const [editingMatch, setEditingMatch] = useState<FixtureMatch | null>(null);
-    const [editForm, setEditForm] = useState({ matchDate: "", matchTime: "", stadiumId: "" });
+    const [editForm, setEditForm] = useState<FixtureEditForm>({ matchDate: "", matchTime: "", stadiumId: "" });
     const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+    const { errors: fixtureErrors, handleBlur: fixtureHandleBlur, validateAll: fixtureValidateAll, resetValidation: fixtureResetValidation } = useFormValidation(validateFixtureEditForm, { matchDate: "", matchTime: "", stadiumId: "" });
 
     const { data: fixturesResponse, isLoading, mutate: mutateFixtures } = useSWR<{ data: FixtureMatch[]; pagination: unknown }>(
         `/api/matches?seasonId=${seasonId}&limit=200`,
@@ -298,6 +311,7 @@ function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
     };
 
     const handleSaveEdit = async () => {
+        if (!fixtureValidateAll(editForm)) return;
         if (!editingMatch) return;
         setIsSavingEdit(true);
         try {
@@ -318,6 +332,7 @@ function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
                 return;
             }
             toast.success("Match updated");
+            fixtureResetValidation();
             setEditingMatch(null);
             mutateFixtures();
         } catch {
@@ -464,7 +479,7 @@ function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
             )}
 
             {/* Match Edit Dialog */}
-            <Dialog open={!!editingMatch} onOpenChange={(open) => !open && setEditingMatch(null)}>
+            <Dialog open={!!editingMatch} onOpenChange={(open) => { if (!open) { setEditingMatch(null); fixtureResetValidation(); } }}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
                         <DialogTitle>Edit Match</DialogTitle>
@@ -480,8 +495,16 @@ function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
                                     type="date"
                                     value={editForm.matchDate}
                                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditForm({ ...editForm, matchDate: e.target.value })}
+                                    onBlur={() => fixtureHandleBlur("matchDate", editForm)}
+                                    aria-invalid={!!fixtureErrors.matchDate}
+                                    aria-describedby={fixtureErrors.matchDate ? "fixture-date-error" : undefined}
                                     className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
                                 />
+                                {fixtureErrors.matchDate && (
+                                    <p id="fixture-date-error" role="alert" className="text-xs text-destructive mt-1">
+                                        {fixtureErrors.matchDate}
+                                    </p>
+                                )}
                             </div>
                             <div className="flex flex-col gap-1.5">
                                 <label className="text-xs font-medium text-muted-foreground">Kickoff Time</label>
@@ -498,6 +521,11 @@ function SeasonFixturesTab({ seasonId }: { seasonId: string }) {
                                         <SelectItem value="20:45">20:45</SelectItem>
                                     </SelectContent>
                                 </Select>
+                                {fixtureErrors.matchTime && (
+                                    <p id="fixture-time-error" role="alert" className="text-xs text-destructive mt-1">
+                                        {fixtureErrors.matchTime}
+                                    </p>
+                                )}
                             </div>
                         </div>
                         <div className="flex flex-col gap-1.5">

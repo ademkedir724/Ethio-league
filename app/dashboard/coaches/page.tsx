@@ -46,6 +46,8 @@ import {
 import { Trophy, Plus, MoreHorizontal, Pencil, Trash2, Eye, UserX, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { RatingBadge } from "@/components/dashboard/rating-badge";
+import { useFormValidation } from "@/lib/use-form-validation";
+import { validateRequired, validateLength, validateDateNotFuture, validateInteger } from "@/lib/validation";
 
 interface CoachImage {
   id: string;
@@ -181,6 +183,18 @@ const emptyForm = {
   role: "",
 };
 
+function validateCoachForm(values: typeof emptyForm) {
+  const errors: Partial<Record<keyof typeof emptyForm, string>> = {};
+  errors.firstName = validateRequired(values.firstName, "First name") ?? validateLength(values.firstName, 2, 50, "First name") ?? undefined;
+  errors.lastName = validateRequired(values.lastName, "Last name") ?? validateLength(values.lastName, 2, 50, "Last name") ?? undefined;
+  errors.dateOfBirth = validateDateNotFuture(values.dateOfBirth, "Date of birth") ?? undefined;
+  errors.nationality = validateLength(values.nationality, 0, 60, "Nationality") ?? undefined;
+  errors.licenseLevel = undefined;
+  errors.experienceYears = validateInteger(values.experienceYears, 0, 60, "Experience") ?? undefined;
+  errors.role = undefined;
+  return errors;
+}
+
 export default function CoachesPage() {
   const { organization, isLoading: orgLoading } = useOrganization();
   const { getOrganizationId, isOrgAdmin, isSuperAdmin, isLeagueAdmin } = useAuth();
@@ -217,6 +231,8 @@ export default function CoachesPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [detailCoachId, setDetailCoachId] = useState<string | null>(null);
 
+  const { errors, handleBlur, validateAll, resetValidation } = useFormValidation(validateCoachForm, emptyForm);
+
   const clubs = useMemo(() => {
     const set = new Set(coaches.map((c) => c.currentClub).filter(Boolean) as string[]);
     return Array.from(set).sort();
@@ -248,6 +264,7 @@ export default function CoachesPage() {
     setEditingCoach(null);
     setForm(emptyForm);
     setFormPhotoUrl("");
+    resetValidation();
     setFormOpen(true);
   };
 
@@ -263,10 +280,14 @@ export default function CoachesPage() {
       role: coach.coachingRole ?? "",
     });
     setFormPhotoUrl(coach.photoUrl ?? "");
+    resetValidation();
     setFormOpen(true);
   };
 
   const handleSubmit = async () => {
+    const isValid = validateAll(form);
+    if (!isValid) return;
+
     const body = JSON.stringify({
       firstName: form.firstName,
       lastName: form.lastName,
@@ -298,6 +319,7 @@ export default function CoachesPage() {
     }
 
     toast.success(editingCoach ? "Coach updated successfully." : "Coach created successfully.");
+    resetValidation();
     mutateCoaches();
   };
 
@@ -601,7 +623,7 @@ export default function CoachesPage() {
         <>
           <FormDialog
             open={formOpen}
-            onOpenChange={setFormOpen}
+            onOpenChange={(open) => { if (!open) resetValidation(); setFormOpen(open); }}
             title={editingCoach ? "Edit Coach" : "Add Coach"}
             description={editingCoach ? "Update coach details." : "Register a new coach."}
             submitLabel={editingCoach ? "Update" : "Create"}
@@ -610,23 +632,43 @@ export default function CoachesPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-2">
                 <Label htmlFor="coach-first">First Name *</Label>
-                <Input id="coach-first" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="Wubetu" required minLength={2} maxLength={50} />
+                <Input id="coach-first" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} onBlur={() => handleBlur('firstName', form)} aria-invalid={!!errors.firstName} aria-describedby={errors.firstName ? 'firstName-error' : undefined} placeholder="Wubetu" required minLength={2} maxLength={50} />
+                {errors.firstName && (
+                  <p id="firstName-error" role="alert" className="text-xs text-destructive mt-1">
+                    {errors.firstName}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="coach-last">Last Name *</Label>
-                <Input id="coach-last" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Abate" required minLength={2} maxLength={50} />
+                <Input id="coach-last" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} onBlur={() => handleBlur('lastName', form)} aria-invalid={!!errors.lastName} aria-describedby={errors.lastName ? 'lastName-error' : undefined} placeholder="Abate" required minLength={2} maxLength={50} />
+                {errors.lastName && (
+                  <p id="lastName-error" role="alert" className="text-xs text-destructive mt-1">
+                    {errors.lastName}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="coach-dob">
                   Date of Birth <span className="text-muted-foreground font-normal">(optional)</span>
                 </Label>
-                <Input id="coach-dob" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} max={new Date().toISOString().split("T")[0]} />
+                <Input id="coach-dob" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} onBlur={() => handleBlur('dateOfBirth', form)} aria-invalid={!!errors.dateOfBirth} aria-describedby={errors.dateOfBirth ? 'dateOfBirth-error' : undefined} max={new Date().toISOString().split("T")[0]} />
+                {errors.dateOfBirth && (
+                  <p id="dateOfBirth-error" role="alert" className="text-xs text-destructive mt-1">
+                    {errors.dateOfBirth}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="coach-nat">
                   Nationality <span className="text-muted-foreground font-normal">(optional)</span>
                 </Label>
-                <Input id="coach-nat" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} placeholder="Ethiopian" maxLength={60} />
+                <Input id="coach-nat" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} onBlur={() => handleBlur('nationality', form)} aria-invalid={!!errors.nationality} aria-describedby={errors.nationality ? 'nationality-error' : undefined} placeholder="Ethiopian" maxLength={60} />
+                {errors.nationality && (
+                  <p id="nationality-error" role="alert" className="text-xs text-destructive mt-1">
+                    {errors.nationality}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="coach-license">
@@ -649,7 +691,12 @@ export default function CoachesPage() {
                 <Label htmlFor="coach-exp">
                   Experience (Years) <span className="text-muted-foreground font-normal">(optional)</span>
                 </Label>
-                <Input id="coach-exp" type="number" value={form.experienceYears} onChange={(e) => setForm({ ...form, experienceYears: e.target.value })} placeholder="10" min={0} max={60} />
+                <Input id="coach-exp" type="number" value={form.experienceYears} onChange={(e) => setForm({ ...form, experienceYears: e.target.value })} onBlur={() => handleBlur('experienceYears', form)} aria-invalid={!!errors.experienceYears} aria-describedby={errors.experienceYears ? 'experienceYears-error' : undefined} placeholder="10" min={0} max={60} />
+                {errors.experienceYears && (
+                  <p id="experienceYears-error" role="alert" className="text-xs text-destructive mt-1">
+                    {errors.experienceYears}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-2 sm:col-span-2">
                 <Label htmlFor="coach-role">

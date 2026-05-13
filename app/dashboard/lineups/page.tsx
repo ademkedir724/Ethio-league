@@ -30,6 +30,13 @@ import { AlertTriangle, Calendar, Users } from "lucide-react";
 
 interface Club { id: string; name: string; shortName?: string }
 interface Season { id: string; name: string; status: string }
+interface SeasonDetail {
+    id: string;
+    name: string;
+    status: string;
+    minStartingPlayers: number | null;
+    maxBenchPlayers: number | null;
+}
 
 interface Match {
     id: string;
@@ -80,6 +87,7 @@ export default function LineupsPage() {
     const [captainId, setCaptainId] = useState<string>("");
     const [submitting, setSubmitting] = useState(false);
     const [apiErrors, setApiErrors] = useState<string[]>([]);
+    const [lineupErrors, setLineupErrors] = useState<{ starters?: string; substitutes?: string; captain?: string }>({});
 
     // Fetch all seasons for this club
     const { data: seasonsRaw } = useSWR(
@@ -95,6 +103,14 @@ export default function LineupsPage() {
             if (active) setSelectedSeasonId(active.id);
         }
     }, [seasons, selectedSeasonId]);
+
+    // Fetch full season detail to get lineup limits
+    const { data: seasonDetail } = useSWR<SeasonDetail>(
+        selectedSeasonId ? `/api/seasons/${selectedSeasonId}` : null,
+        authFetcher
+    );
+    const requiredStarters = seasonDetail?.minStartingPlayers ?? 11;
+    const maxBench = seasonDetail?.maxBenchPlayers ?? 7;
 
     // Fetch matches for selected season + club
     const { data: matchesData, isLoading: matchesLoading, error: matchesError } = useSWR(
@@ -136,12 +152,30 @@ export default function LineupsPage() {
         setPositions({});
         setCaptainId("");
         setApiErrors([]);
+        setLineupErrors({});
     };
 
     const closeDialog = () => {
         setSelectedMatch(null);
         setApiErrors([]);
+        setLineupErrors({});
     };
+
+    function validateLineup() {
+        const errors: { starters?: string; substitutes?: string; captain?: string } = {};
+        if (starters.size !== requiredStarters) {
+            errors.starters = `Exactly ${requiredStarters} starters must be selected`;
+        }
+        if (substitutes.size > maxBench) {
+            errors.substitutes = `Maximum ${maxBench} substitutes allowed`;
+        }
+        if (starters.size > 0 && !captainId) {
+            errors.captain = "Captain must be selected from the starting lineup";
+        } else if (captainId && !starters.has(captainId)) {
+            errors.captain = "Captain must be one of the selected starters";
+        }
+        return errors;
+    }
 
     const toggleStarter = (scpId: string) => {
         setStarters((prev) => {
@@ -173,6 +207,11 @@ export default function LineupsPage() {
 
     const handleSubmit = async () => {
         if (!selectedMatch || !clubId) return;
+
+        const errors = validateLineup();
+        setLineupErrors(errors);
+        if (Object.keys(errors).length > 0) return;
+
         setApiErrors([]);
 
         const lineups: LineupEntry[] = [
@@ -334,7 +373,7 @@ export default function LineupsPage() {
                             <div className="flex flex-col gap-6 py-2">
                                 {/* Starters */}
                                 <div>
-                                    <p className="mb-2 text-sm font-semibold">Starters ({starters.size}/11)</p>
+                                    <p className="mb-2 text-sm font-semibold">Starters ({starters.size}/{requiredStarters})</p>
                                     <div className="flex flex-col gap-2">
                                         {clubPlayers.map((scp) => {
                                             const isStarter = starters.has(scp.id);
@@ -345,7 +384,7 @@ export default function LineupsPage() {
                                                         type="checkbox"
                                                         id={`starter-${scp.id}`}
                                                         checked={isStarter}
-                                                        disabled={!isStarter && starters.size >= 11}
+                                                        disabled={!isStarter && starters.size >= requiredStarters}
                                                         onChange={() => toggleStarter(scp.id)}
                                                         className="h-4 w-4 accent-primary"
                                                     />
@@ -371,11 +410,21 @@ export default function LineupsPage() {
                                             );
                                         })}
                                     </div>
+                                    {lineupErrors.starters && (
+                                        <p id="starters-error" role="alert" className="mt-1 text-xs text-destructive">
+                                            {lineupErrors.starters}
+                                        </p>
+                                    )}
+                                    {lineupErrors.substitutes && (
+                                        <p id="substitutes-error" role="alert" className="mt-1 text-xs text-destructive">
+                                            {lineupErrors.substitutes}
+                                        </p>
+                                    )}
                                 </div>
 
                                 {/* Substitutes */}
                                 <div>
-                                    <p className="mb-2 text-sm font-semibold">Substitutes ({substitutes.size})</p>
+                                    <p className="mb-2 text-sm font-semibold">Substitutes ({substitutes.size}/{maxBench})</p>
                                     <div className="flex flex-col gap-2">
                                         {clubPlayers.filter((p) => !starters.has(p.id)).map((scp) => {
                                             const isSub = substitutes.has(scp.id);
@@ -385,6 +434,7 @@ export default function LineupsPage() {
                                                         type="checkbox"
                                                         id={`sub-${scp.id}`}
                                                         checked={isSub}
+                                                        disabled={!isSub && substitutes.size >= maxBench}
                                                         onChange={() => toggleSubstitute(scp.id)}
                                                         className="h-4 w-4 accent-primary"
                                                     />
@@ -412,6 +462,11 @@ export default function LineupsPage() {
                                                 ))}
                                             </SelectContent>
                                         </Select>
+                                        {lineupErrors.captain && (
+                                            <p id="captain-error" role="alert" className="mt-1 text-xs text-destructive">
+                                                {lineupErrors.captain}
+                                            </p>
+                                        )}
                                     </div>
                                 )}
 
