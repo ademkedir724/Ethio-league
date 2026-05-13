@@ -14,14 +14,33 @@ import {
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
+import { useFormValidation } from "@/lib/use-form-validation";
+import { validateEmail, validateRequired } from "@/lib/validation";
+
+const initialValues = { email: "" };
 
 export default function ForgotPasswordPage() {
     const [email, setEmail] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [sent, setSent] = useState(false);
 
+    const { errors, handleBlur, validateAll, resetValidation } =
+        useFormValidation(
+            (values) => ({
+                email:
+                    validateRequired(values.email, "Email") ??
+                    validateEmail(values.email) ??
+                    undefined,
+            }),
+            initialValues
+        );
+
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
+
+        const formValues = { email };
+        if (!validateAll(formValues)) return;
+
         setIsLoading(true);
         try {
             const res = await fetch("/api/auth/forgot-password", {
@@ -33,6 +52,7 @@ export default function ForgotPasswordPage() {
                 const data = await res.json().catch(() => ({}));
                 throw new Error(data.error || "Request failed");
             }
+            resetValidation();
             setSent(true);
         } catch (err) {
             toast.error(err instanceof Error ? err.message : "Something went wrong");
@@ -76,9 +96,17 @@ export default function ForgotPasswordPage() {
                                 placeholder="your@email.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
+                                onBlur={() => handleBlur("email", { email })}
                                 required
                                 autoComplete="email"
+                                aria-invalid={!!errors.email}
+                                aria-describedby={errors.email ? "email-error" : undefined}
                             />
+                            {errors.email && (
+                                <p id="email-error" role="alert" className="text-xs text-destructive mt-1">
+                                    {errors.email}
+                                </p>
+                            )}
                         </div>
                         <Button type="submit" className="w-full" disabled={isLoading}>
                             {isLoading ? "Sending..." : "Send Reset Link"}
