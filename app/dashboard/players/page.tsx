@@ -49,6 +49,8 @@ import { MediaUploadWidget } from "@/components/dashboard/media-upload-widget";
 import { RatingBadge } from "@/components/dashboard/rating-badge";
 import { PlayerBulkImportDialog } from "@/components/dashboard/player-bulk-import-dialog";
 import { ClubPendingBanner, useClubIsActive } from "@/components/dashboard/club-pending-banner";
+import { useFormValidation } from "@/lib/use-form-validation";
+import { validateRequired, validateLength, validateDateNotFuture, validateInteger } from "@/lib/validation";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -108,6 +110,18 @@ function getAge(dob: string) {
   return Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000));
 }
 
+function validatePlayerForm(values: typeof emptyForm) {
+  const errors: Partial<Record<keyof typeof emptyForm, string>> = {};
+  errors.firstName = validateRequired(values.firstName, "First name") ?? validateLength(values.firstName, 2, 50, "First name") ?? undefined;
+  errors.lastName = validateRequired(values.lastName, "Last name") ?? validateLength(values.lastName, 2, 50, "Last name") ?? undefined;
+  errors.dateOfBirth = validateDateNotFuture(values.dateOfBirth, "Date of birth") ?? undefined;
+  errors.nationality = validateLength(values.nationality, 0, 60, "Nationality") ?? undefined;
+  errors.preferredFoot = undefined;
+  errors.heightCm = validateInteger(values.heightCm, 100, 250, "Height") ?? undefined;
+  errors.weightKg = validateInteger(values.weightKg, 30, 200, "Weight") ?? undefined;
+  return errors;
+}
+
 // ─── Club Admin Players View ──────────────────────────────────────────────────
 
 function ClubAdminPlayersView() {
@@ -145,6 +159,8 @@ function ClubAdminPlayersView() {
   const [isSaving, setIsSaving] = useState(false);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
 
+  const { errors, handleBlur, validateAll, resetValidation } = useFormValidation(validatePlayerForm, emptyForm);
+
   // Players assigned to the selected season
   const { data: seasonPlayers, isLoading: seasonPlayersLoading } = useSWR<SeasonClubPlayer[]>(
     selectedSeasonId !== "unassigned" ? `/api/seasons/${selectedSeasonId}/players` : null,
@@ -164,6 +180,7 @@ function ClubAdminPlayersView() {
   const openCreate = () => {
     setEditingPlayer(null);
     setForm(emptyForm);
+    resetValidation();
     setFormOpen(true);
   };
 
@@ -178,14 +195,12 @@ function ClubAdminPlayersView() {
       heightCm: player.heightCm?.toString() ?? "",
       weightKg: player.weightKg?.toString() ?? "",
     });
+    resetValidation();
     setFormOpen(true);
   };
 
   const handleSubmit = async () => {
-    if (!form.firstName.trim() || !form.lastName.trim()) {
-      toast.error("First and last name are required");
-      return;
-    }
+    if (!validateAll(form)) return;
 
     // Duplicate check
     if (!editingPlayer) {
@@ -234,6 +249,7 @@ function ClubAdminPlayersView() {
       }
 
       toast.success(editingPlayer ? "Player updated" : "Player created");
+      resetValidation();
       mutatePlayers();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
@@ -411,7 +427,10 @@ function ClubAdminPlayersView() {
 
       <FormDialog
         open={formOpen}
-        onOpenChange={setFormOpen}
+        onOpenChange={(open) => {
+          if (!open) resetValidation();
+          setFormOpen(open);
+        }}
         title={editingPlayer ? "Edit Player" : "Add Player"}
         description={editingPlayer ? "Update player details." : "Register a new player (permanent record)."}
         submitLabel={editingPlayer ? "Update" : "Create"}
@@ -420,23 +439,67 @@ function ClubAdminPlayersView() {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-2">
             <Label htmlFor="p-first">First Name *</Label>
-            <Input id="p-first" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="Abebe" required minLength={2} maxLength={50} />
+            <Input
+              id="p-first"
+              value={form.firstName}
+              onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+              onBlur={() => handleBlur("firstName", form)}
+              aria-invalid={!!errors.firstName}
+              aria-describedby={errors.firstName ? "p-first-error" : undefined}
+              placeholder="Abebe"
+              required
+              minLength={2}
+              maxLength={50}
+            />
+            {errors.firstName && <p id="p-first-error" role="alert" className="text-xs text-destructive mt-1">{errors.firstName}</p>}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="p-last">Last Name *</Label>
-            <Input id="p-last" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Bikila" required minLength={2} maxLength={50} />
+            <Input
+              id="p-last"
+              value={form.lastName}
+              onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+              onBlur={() => handleBlur("lastName", form)}
+              aria-invalid={!!errors.lastName}
+              aria-describedby={errors.lastName ? "p-last-error" : undefined}
+              placeholder="Bikila"
+              required
+              minLength={2}
+              maxLength={50}
+            />
+            {errors.lastName && <p id="p-last-error" role="alert" className="text-xs text-destructive mt-1">{errors.lastName}</p>}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="p-dob">
               Date of Birth <span className="text-muted-foreground font-normal">(optional)</span>
             </Label>
-            <Input id="p-dob" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} max={new Date().toISOString().split("T")[0]} />
+            <Input
+              id="p-dob"
+              type="date"
+              value={form.dateOfBirth}
+              onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
+              onBlur={() => handleBlur("dateOfBirth", form)}
+              aria-invalid={!!errors.dateOfBirth}
+              aria-describedby={errors.dateOfBirth ? "p-dob-error" : undefined}
+              max={new Date().toISOString().split("T")[0]}
+            />
+            {errors.dateOfBirth && <p id="p-dob-error" role="alert" className="text-xs text-destructive mt-1">{errors.dateOfBirth}</p>}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="p-nat">
               Nationality <span className="text-muted-foreground font-normal">(optional)</span>
             </Label>
-            <Input id="p-nat" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} placeholder="Ethiopian" maxLength={60} />
+            <Input
+              id="p-nat"
+              value={form.nationality}
+              onChange={(e) => setForm({ ...form, nationality: e.target.value })}
+              onBlur={() => handleBlur("nationality", form)}
+              aria-invalid={!!errors.nationality}
+              aria-describedby={errors.nationality ? "p-nat-error" : undefined}
+              placeholder="Ethiopian"
+              maxLength={60}
+            />
+            {errors.nationality && <p id="p-nat-error" role="alert" className="text-xs text-destructive mt-1">{errors.nationality}</p>}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="p-foot">
@@ -456,13 +519,37 @@ function ClubAdminPlayersView() {
             <Label htmlFor="p-height">
               Height (cm) <span className="text-muted-foreground font-normal">(optional)</span>
             </Label>
-            <Input id="p-height" type="number" value={form.heightCm} onChange={(e) => setForm({ ...form, heightCm: e.target.value })} placeholder="178" min={100} max={250} />
+            <Input
+              id="p-height"
+              type="number"
+              value={form.heightCm}
+              onChange={(e) => setForm({ ...form, heightCm: e.target.value })}
+              onBlur={() => handleBlur("heightCm", form)}
+              aria-invalid={!!errors.heightCm}
+              aria-describedby={errors.heightCm ? "p-height-error" : undefined}
+              placeholder="178"
+              min={100}
+              max={250}
+            />
+            {errors.heightCm && <p id="p-height-error" role="alert" className="text-xs text-destructive mt-1">{errors.heightCm}</p>}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="p-weight">
               Weight (kg) <span className="text-muted-foreground font-normal">(optional)</span>
             </Label>
-            <Input id="p-weight" type="number" value={form.weightKg} onChange={(e) => setForm({ ...form, weightKg: e.target.value })} placeholder="72" min={30} max={200} />
+            <Input
+              id="p-weight"
+              type="number"
+              value={form.weightKg}
+              onChange={(e) => setForm({ ...form, weightKg: e.target.value })}
+              onBlur={() => handleBlur("weightKg", form)}
+              aria-invalid={!!errors.weightKg}
+              aria-describedby={errors.weightKg ? "p-weight-error" : undefined}
+              placeholder="72"
+              min={30}
+              max={200}
+            />
+            {errors.weightKg && <p id="p-weight-error" role="alert" className="text-xs text-destructive mt-1">{errors.weightKg}</p>}
           </div>
         </div>
         {editingPlayer && (

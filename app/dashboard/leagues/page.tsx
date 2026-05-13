@@ -5,6 +5,8 @@ import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
+import { useFormValidation } from "@/lib/use-form-validation";
+import { validateRequired, validateLength, validateEmail, validatePhone } from "@/lib/validation";
 import { usePaginated } from "@/lib/use-paginated";
 import { Pagination } from "@/components/dashboard/pagination";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -90,6 +92,30 @@ const emptyForm = {
   adminPhone: "",
 };
 
+// ─── Validation ───────────────────────────────────────────────────────────────
+
+function validateLeagueForm(values: typeof emptyForm, isEdit: boolean) {
+  const errors: Partial<Record<keyof typeof emptyForm, string>> = {};
+  errors.name =
+    validateRequired(values.name, "League name") ??
+    validateLength(values.name, 2, 120, "League name") ??
+    undefined;
+  errors.description =
+    validateLength(values.description, 0, 500, "Description") ?? undefined;
+  if (!isEdit) {
+    errors.adminFullName =
+      validateRequired(values.adminFullName, "Admin full name") ??
+      validateLength(values.adminFullName, 2, 80, "Admin full name") ??
+      undefined;
+    errors.adminEmail =
+      validateRequired(values.adminEmail, "Admin email") ??
+      validateEmail(values.adminEmail) ??
+      undefined;
+    errors.adminPhone = validatePhone(values.adminPhone, false) ?? undefined;
+  }
+  return errors;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function LeaguesPage() {
@@ -129,12 +155,18 @@ export default function LeaguesPage() {
   const [setupLink, setSetupLink] = useState<string | null>(null);
   const [setupLinkEmail, setSetupLinkEmail] = useState<string>("");
 
+  const { errors, handleBlur, validateAll, resetValidation } = useFormValidation(
+    (values) => validateLeagueForm(values, !!editingLeague),
+    emptyForm
+  );
+
   const filtered = leagues;
 
   const openCreate = () => {
     setEditingLeague(null);
     setForm(emptyForm);
     setLogoUrl("");
+    resetValidation();
     setFormOpen(true);
   };
 
@@ -152,17 +184,13 @@ export default function LeaguesPage() {
       adminPhone: "",
     });
     setLogoUrl(league.logoUrl ?? "");
+    resetValidation();
     setFormOpen(true);
   };
 
   const handleSubmit = async () => {
-    if (!form.name.trim()) { toast.error("League name is required"); return; }
-
-    // League admin is mandatory on create
-    if (!editingLeague) {
-      if (!form.adminFullName.trim()) { toast.error("League Admin full name is required"); return; }
-      if (!form.adminEmail.trim()) { toast.error("League Admin email is required"); return; }
-    }
+    const isValid = validateAll(form);
+    if (!isValid) return;
 
     setIsSaving(true);
     try {
@@ -325,7 +353,7 @@ export default function LeaguesPage() {
       )}
 
       {/* Create / Edit Dialog */}
-      <Dialog open={formOpen} onOpenChange={(open) => { if (!open) setFormOpen(false); }} modal={false}>
+      <Dialog open={formOpen} onOpenChange={(open) => { if (!open) { setFormOpen(false); resetValidation(); } }} modal={false}>
         <DialogContent
           className="max-w-lg max-h-[90vh] overflow-y-auto"
           onInteractOutside={(e) => e.preventDefault()}
@@ -346,11 +374,19 @@ export default function LeaguesPage() {
                 id="league-name"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
+                onBlur={() => handleBlur("name", form)}
+                aria-invalid={!!errors.name}
+                aria-describedby={errors.name ? "league-name-error" : undefined}
                 placeholder="Ethiopian Premier League"
                 required
                 minLength={2}
                 maxLength={120}
               />
+              {errors.name && (
+                <p id="league-name-error" role="alert" className="text-xs text-destructive mt-1">
+                  {errors.name}
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -468,9 +504,17 @@ export default function LeaguesPage() {
                 id="description"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
+                onBlur={() => handleBlur("description", form)}
+                aria-invalid={!!errors.description}
+                aria-describedby={errors.description ? "description-error" : undefined}
                 placeholder="Optional description..."
                 rows={2}
               />
+              {errors.description && (
+                <p id="description-error" role="alert" className="text-xs text-destructive mt-1">
+                  {errors.description}
+                </p>
+              )}
             </div>
 
             {/* League Admin section — only on create */}
@@ -489,12 +533,20 @@ export default function LeaguesPage() {
                     id="admin-name"
                     value={form.adminFullName}
                     onChange={(e) => setForm({ ...form, adminFullName: e.target.value })}
+                    onBlur={() => handleBlur("adminFullName", form)}
+                    aria-invalid={!!errors.adminFullName}
+                    aria-describedby={errors.adminFullName ? "admin-name-error" : undefined}
                     placeholder="Abebe Kebede"
                     required
                     minLength={2}
                     maxLength={80}
                     autoComplete="name"
                   />
+                  {errors.adminFullName && (
+                    <p id="admin-name-error" role="alert" className="text-xs text-destructive mt-1">
+                      {errors.adminFullName}
+                    </p>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-2">
@@ -504,10 +556,18 @@ export default function LeaguesPage() {
                       type="email"
                       value={form.adminEmail}
                       onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
+                      onBlur={() => handleBlur("adminEmail", form)}
+                      aria-invalid={!!errors.adminEmail}
+                      aria-describedby={errors.adminEmail ? "admin-email-error" : undefined}
                       placeholder="admin@example.com"
                       required
                       autoComplete="email"
                     />
+                    {errors.adminEmail && (
+                      <p id="admin-email-error" role="alert" className="text-xs text-destructive mt-1">
+                        {errors.adminEmail}
+                      </p>
+                    )}
                   </div>
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="admin-phone">
@@ -518,11 +578,19 @@ export default function LeaguesPage() {
                       type="tel"
                       value={form.adminPhone}
                       onChange={(e) => setForm({ ...form, adminPhone: e.target.value })}
+                      onBlur={() => handleBlur("adminPhone", form)}
+                      aria-invalid={!!errors.adminPhone}
+                      aria-describedby={errors.adminPhone ? "admin-phone-error" : undefined}
                       placeholder="+251 911 234 567"
                       pattern="^\+?[\d\s\-().]{7,20}$"
                       title="Enter a valid phone number (e.g. +251 911 234 567)"
                       autoComplete="tel"
                     />
+                    {errors.adminPhone && (
+                      <p id="admin-phone-error" role="alert" className="text-xs text-destructive mt-1">
+                        {errors.adminPhone}
+                      </p>
+                    )}
                   </div>
                 </div>
               </>
