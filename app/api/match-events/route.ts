@@ -5,6 +5,7 @@ import { success, created, badRequest, notFound, forbidden, serverError } from "
 import { assertMEASeasonScope } from "@/lib/scope-guard";
 import { logAudit } from "@/lib/audit";
 import { recomputeEventRatings } from "@/lib/ratings";
+import { broadcastMatchEvent, PUSHER_EVENTS } from "@/lib/pusher";
 
 // GET /api/match-events?matchId=X — list events for a match
 export async function GET(req: NextRequest) {
@@ -106,6 +107,8 @@ export async function POST(req: NextRequest) {
       include: {
         eventType: true,
         player: { select: { id: true, firstName: true, lastName: true } },
+        relatedPlayer: { select: { id: true, firstName: true, lastName: true } },
+        club: { select: { id: true, name: true } },
       },
     });
 
@@ -124,6 +127,33 @@ export async function POST(req: NextRequest) {
         // Own goal by away team — increment home score
         await prisma.match.update({ where: { id: matchId }, data: { homeScore: { increment: 1 } } });
       }
+    }
+
+    // Broadcast to fan site via Pusher
+    const updatedMatch = await prisma.match.findUnique({
+      where: { id: matchId },
+      select: { homeScore: true, awayScore: true },
+    });
+
+    broadcastMatchEvent(PUSHER_EVENTS.EVENT_CREATED, matchId, {
+      id: event.id,
+      matchId,
+      minute: event.minute,
+      extraTime: event.extraTime,
+      description: event.description,
+      eventType: { id: String(event.eventType.id), name: event.eventType.name },
+      player: event.player ?? null,
+      relatedPlayer: event.relatedPlayer ?? null,
+      club: event.club ?? null,
+      createdAt: (event as unknown as { createdAt: Date }).createdAt?.toISOString(),
+    });
+
+    if (updatedMatch) {
+      broadcastMatchEvent(PUSHER_EVENTS.SCORE_UPDATED, matchId, {
+        matchId,
+        homeScore: updatedMatch.homeScore ?? 0,
+        awayScore: updatedMatch.awayScore ?? 0,
+      });
     }
 
     // Notify league admin for this season — find via season → league → league_admin scope

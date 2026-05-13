@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { success, badRequest, notFound, serverError, parseUUID } from "@/lib/api-helpers";
 import { destroyAsset, extractPublicId } from "@/lib/cloudinary";
+import { broadcastMatchEvent, PUSHER_EVENTS } from "@/lib/pusher";
 
 // GET /api/matches/:id
 export async function GET(
@@ -119,6 +120,22 @@ export async function PATCH(
       where: { id },
       data: updateData,
     });
+
+    // Broadcast status and score changes to fan site
+    if (data.status !== undefined) {
+      broadcastMatchEvent(PUSHER_EVENTS.STATUS_CHANGED, id, {
+        matchId: id,
+        status: match.status,
+        liveStartedAt: match.liveStartedAt?.toISOString() ?? null,
+      });
+    }
+    if (data.homeScore !== undefined || data.awayScore !== undefined) {
+      broadcastMatchEvent(PUSHER_EVENTS.SCORE_UPDATED, id, {
+        matchId: id,
+        homeScore: match.homeScore ?? 0,
+        awayScore: match.awayScore ?? 0,
+      });
+    }
 
     return success(match);
   } catch (error) {
