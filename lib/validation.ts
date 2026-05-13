@@ -72,10 +72,11 @@ export function validatePhone(
     value: string,
     required: boolean
 ): string | null {
-    if (value === "" || value.trim() === "") {
+    const v = String(value ?? "");
+    if (v === "" || v.trim() === "") {
         return required ? MSG_PHONE_REQUIRED : null;
     }
-    if (PHONE_PATTERN.test(value)) {
+    if (PHONE_PATTERN.test(v)) {
         return null;
     }
     return MSG_PHONE_INVALID;
@@ -90,7 +91,7 @@ export function validateRequired(
     value: string,
     label: string
 ): string | null {
-    if (value.trim().length > 0) {
+    if (String(value ?? "").trim().length > 0) {
         return null;
     }
     return `${label} is required`;
@@ -107,7 +108,7 @@ export function validateLength(
     max: number,
     label: string
 ): string | null {
-    const len = value.trim().length;
+    const len = String(value ?? "").trim().length;
     if (len < min) {
         return `${label} must be at least ${min} characters`;
     }

@@ -30,6 +30,13 @@ import { AlertTriangle, Calendar, Users } from "lucide-react";
 
 interface Club { id: string; name: string; shortName?: string }
 interface Season { id: string; name: string; status: string }
+interface SeasonDetail {
+    id: string;
+    name: string;
+    status: string;
+    minStartingPlayers: number | null;
+    maxBenchPlayers: number | null;
+}
 
 interface Match {
     id: string;
@@ -97,6 +104,14 @@ export default function LineupsPage() {
         }
     }, [seasons, selectedSeasonId]);
 
+    // Fetch full season detail to get lineup limits
+    const { data: seasonDetail } = useSWR<SeasonDetail>(
+        selectedSeasonId ? `/api/seasons/${selectedSeasonId}` : null,
+        authFetcher
+    );
+    const requiredStarters = seasonDetail?.minStartingPlayers ?? 11;
+    const maxBench = seasonDetail?.maxBenchPlayers ?? 7;
+
     // Fetch matches for selected season + club
     const { data: matchesData, isLoading: matchesLoading, error: matchesError } = useSWR(
         clubId && selectedSeasonId ? `/api/matches?clubId=${clubId}&seasonId=${selectedSeasonId}` : null,
@@ -148,11 +163,11 @@ export default function LineupsPage() {
 
     function validateLineup() {
         const errors: { starters?: string; substitutes?: string; captain?: string } = {};
-        if (starters.size !== 11) {
-            errors.starters = "Exactly 11 starters must be selected";
+        if (starters.size !== requiredStarters) {
+            errors.starters = `Exactly ${requiredStarters} starters must be selected`;
         }
-        if (substitutes.size > 7) {
-            errors.substitutes = "Maximum 7 substitutes allowed";
+        if (substitutes.size > maxBench) {
+            errors.substitutes = `Maximum ${maxBench} substitutes allowed`;
         }
         if (starters.size > 0 && !captainId) {
             errors.captain = "Captain must be selected from the starting lineup";
@@ -358,7 +373,7 @@ export default function LineupsPage() {
                             <div className="flex flex-col gap-6 py-2">
                                 {/* Starters */}
                                 <div>
-                                    <p className="mb-2 text-sm font-semibold">Starters ({starters.size}/11)</p>
+                                    <p className="mb-2 text-sm font-semibold">Starters ({starters.size}/{requiredStarters})</p>
                                     <div className="flex flex-col gap-2">
                                         {clubPlayers.map((scp) => {
                                             const isStarter = starters.has(scp.id);
@@ -369,7 +384,7 @@ export default function LineupsPage() {
                                                         type="checkbox"
                                                         id={`starter-${scp.id}`}
                                                         checked={isStarter}
-                                                        disabled={!isStarter && starters.size >= 11}
+                                                        disabled={!isStarter && starters.size >= requiredStarters}
                                                         onChange={() => toggleStarter(scp.id)}
                                                         className="h-4 w-4 accent-primary"
                                                     />
@@ -409,7 +424,7 @@ export default function LineupsPage() {
 
                                 {/* Substitutes */}
                                 <div>
-                                    <p className="mb-2 text-sm font-semibold">Substitutes ({substitutes.size})</p>
+                                    <p className="mb-2 text-sm font-semibold">Substitutes ({substitutes.size}/{maxBench})</p>
                                     <div className="flex flex-col gap-2">
                                         {clubPlayers.filter((p) => !starters.has(p.id)).map((scp) => {
                                             const isSub = substitutes.has(scp.id);
@@ -419,6 +434,7 @@ export default function LineupsPage() {
                                                         type="checkbox"
                                                         id={`sub-${scp.id}`}
                                                         checked={isSub}
+                                                        disabled={!isSub && substitutes.size >= maxBench}
                                                         onChange={() => toggleSubstitute(scp.id)}
                                                         className="h-4 w-4 accent-primary"
                                                     />
