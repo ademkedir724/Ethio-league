@@ -1,175 +1,275 @@
 /**
- * lib/validation.ts — Shared client-side validation utilities
+ * lib/validation.ts
  *
- * All validators return null on success or an error string on failure.
- * Use validateForm() to run multiple validators at once.
+ * Pure validator functions and error message constants for the Ethio-League
+ * admin dashboard. All functions are pure with no side effects.
+ *
+ * Each function returns null when the value is valid, or a non-empty error
+ * message string when the value is invalid.
  */
 
-// ─── Individual validators ────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Error message constants
+// ---------------------------------------------------------------------------
 
-export function validateRequired(value: string, label: string): string | null {
-    if (!value || !value.trim()) return `${label} is required`;
-    return null;
-}
+export const MSG_EMAIL_INVALID = "Enter a valid email address";
+export const MSG_PHONE_INVALID =
+    "Enter a valid phone number (e.g. +251 911 234 567)";
+export const MSG_PHONE_REQUIRED = "Phone number is required";
+export const MSG_PASSWORD_MIN = "Password must be at least 8 characters";
+export const MSG_PASSWORDS_MISMATCH = "Passwords do not match";
+export const MSG_POSITION_CODE_INVALID =
+    "Position code must be 1\u201310 uppercase letters (e.g. GK, CB)";
 
+// ---------------------------------------------------------------------------
+// Internal patterns
+// ---------------------------------------------------------------------------
+
+/**
+ * RFC-5322-compatible email regex.
+ * Equivalent to the browser's built-in type="email" validation.
+ */
+const EMAIL_PATTERN =
+    /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$/;
+
+/**
+ * Phone_Pattern: /^\+?[\d\s\-().]{7,20}$/
+ */
+const PHONE_PATTERN = /^\+?[\d\s\-().]{7,20}$/;
+
+/**
+ * Position code: 1–10 uppercase ASCII letters only.
+ */
+const POSITION_CODE_PATTERN = /^[A-Z]{1,10}$/;
+
+// ---------------------------------------------------------------------------
+// Validator functions
+// ---------------------------------------------------------------------------
+
+/**
+ * Validates an email address against an RFC-5322-compatible pattern.
+ *
+ * @returns null when valid, MSG_EMAIL_INVALID otherwise.
+ */
 export function validateEmail(value: string): string | null {
-    if (!value || !value.trim()) return "Email is required";
-    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!re.test(value.trim())) return "Enter a valid email address";
-    return null;
-}
-
-export function validatePhone(value: string, required = false): string | null {
-    if (!value || !value.trim()) {
-        return required ? "Phone number is required" : null;
+    if (EMAIL_PATTERN.test(value)) {
+        return null;
     }
-    // Allow +, digits, spaces, dashes, parentheses — min 7 digits
-    const digits = value.replace(/\D/g, "");
-    if (digits.length < 7) return "Phone number is too short";
-    if (digits.length > 15) return "Phone number is too long";
-    const re = /^\+?[\d\s\-().]{7,20}$/;
-    if (!re.test(value.trim())) return "Enter a valid phone number (e.g. +251 911 234 567)";
-    return null;
+    return MSG_EMAIL_INVALID;
 }
 
-export function validatePassword(value: string): string | null {
-    if (!value) return "Password is required";
-    if (value.length < 8) return "Password must be at least 8 characters";
-    if (!/[A-Z]/.test(value)) return "Password must contain at least one uppercase letter";
-    if (!/[a-z]/.test(value)) return "Password must contain at least one lowercase letter";
-    if (!/\d/.test(value)) return "Password must contain at least one number";
-    return null;
+/**
+ * Validates a phone number with optional/required branching.
+ *
+ * - Empty + required=false → null (field is optional)
+ * - Empty + required=true  → MSG_PHONE_REQUIRED
+ * - Non-empty, matches PHONE_PATTERN → null
+ * - Non-empty, does not match → MSG_PHONE_INVALID
+ *
+ * @returns null when valid, an error message string otherwise.
+ */
+export function validatePhone(
+    value: string,
+    required: boolean
+): string | null {
+    if (value === "" || value.trim() === "") {
+        return required ? MSG_PHONE_REQUIRED : null;
+    }
+    if (PHONE_PATTERN.test(value)) {
+        return null;
+    }
+    return MSG_PHONE_INVALID;
 }
 
-export function validatePasswordMatch(password: string, confirm: string): string | null {
-    if (!confirm) return "Please confirm your password";
-    if (password !== confirm) return "Passwords do not match";
-    return null;
+/**
+ * Validates that a value is non-empty after trimming.
+ *
+ * @returns null when the trimmed value is non-empty, "${label} is required" otherwise.
+ */
+export function validateRequired(
+    value: string,
+    label: string
+): string | null {
+    if (value.trim().length > 0) {
+        return null;
+    }
+    return `${label} is required`;
 }
 
-export function validateMinLength(value: string, min: number, label: string): string | null {
-    if (value && value.trim().length < min) return `${label} must be at least ${min} characters`;
-    return null;
-}
-
-export function validateMaxLength(value: string, max: number, label: string): string | null {
-    if (value && value.trim().length > max) return `${label} must be at most ${max} characters`;
-    return null;
-}
-
-export function validateNumberRange(
-    value: string | number,
+/**
+ * Validates that the trimmed length of a string is within [min, max].
+ *
+ * @returns null when within bounds, an error message string otherwise.
+ */
+export function validateLength(
+    value: string,
     min: number,
     max: number,
-    label: string,
-    required = false
+    label: string
 ): string | null {
-    const str = String(value).trim();
-    if (!str) return required ? `${label} is required` : null;
-    const n = Number(str);
-    if (isNaN(n)) return `${label} must be a number`;
-    if (n < min) return `${label} must be at least ${min}`;
-    if (n > max) return `${label} must be at most ${max}`;
+    const len = value.trim().length;
+    if (len < min) {
+        return `${label} must be at least ${min} characters`;
+    }
+    if (len > max) {
+        return `${label} must be at most ${max} characters`;
+    }
     return null;
 }
 
-export function validateDate(value: string, label: string, required = false): string | null {
-    if (!value) return required ? `${label} is required` : null;
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return `${label} must be a valid date`;
-    return null;
-}
-
-export function validateDateNotFuture(value: string, label: string): string | null {
-    if (!value) return null;
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return `${label} must be a valid date`;
-    if (d > new Date()) return `${label} cannot be in the future`;
-    return null;
-}
-
-export function validateDateAfter(
-    startValue: string,
-    endValue: string,
-    startLabel = "Start date",
-    endLabel = "End date"
-): string | null {
-    if (!startValue || !endValue) return null;
-    const start = new Date(startValue);
-    const end = new Date(endValue);
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
-    if (end <= start) return `${endLabel} must be after ${startLabel}`;
-    return null;
-}
-
-export function validateUrl(value: string, label: string, required = false): string | null {
-    if (!value || !value.trim()) return required ? `${label} is required` : null;
-    try {
-        new URL(value);
+/**
+ * Validates that a password has at least 8 characters.
+ *
+ * @returns null when valid, MSG_PASSWORD_MIN otherwise.
+ */
+export function validatePassword(value: string): string | null {
+    if (value.length >= 8) {
         return null;
-    } catch {
-        return `${label} must be a valid URL (e.g. https://example.com)`;
     }
+    return MSG_PASSWORD_MIN;
 }
 
-// ─── Batch validator ──────────────────────────────────────────────────────────
+/**
+ * Validates that two password strings are identical.
+ *
+ * @returns null when they match, MSG_PASSWORDS_MISMATCH otherwise.
+ */
+export function validatePasswordMatch(
+    password: string,
+    confirm: string
+): string | null {
+    if (password === confirm) {
+        return null;
+    }
+    return MSG_PASSWORDS_MISMATCH;
+}
 
 /**
- * Run multiple validators and return the first error found, or null if all pass.
- * Usage: const err = validateForm([validateRequired(name, "Name"), validateEmail(email)])
+ * Validates an optional integer field within [min, max].
+ *
+ * - Empty string → null (field is optional)
+ * - Non-empty, not a valid integer → "${label} must be a whole number"
+ * - Parsed integer outside [min, max] → "${label} must be between ${min} and ${max}"
+ * - Otherwise → null
+ *
+ * @returns null when valid or empty, an error message string otherwise.
  */
-export function validateForm(results: (string | null)[]): string | null {
-    for (const r of results) {
-        if (r !== null) return r;
+export function validateInteger(
+    value: string,
+    min: number,
+    max: number,
+    label: string
+): string | null {
+    if (value === "" || value.trim() === "") {
+        return null;
+    }
+    // Must be a whole number: no decimal point, no exponent notation
+    const trimmed = value.trim();
+    if (!/^-?\d+$/.test(trimmed)) {
+        return `${label} must be a whole number`;
+    }
+    const parsed = parseInt(trimmed, 10);
+    if (parsed < min || parsed > max) {
+        return `${label} must be between ${min} and ${max}`;
     }
     return null;
 }
 
 /**
- * Run multiple validators and return ALL errors as a record.
- * Usage: const errors = validateFields({ name: validateRequired(name, "Name"), email: validateEmail(email) })
+ * Validates an optional date string.
+ *
+ * - Empty string → null (field is optional)
+ * - Parses to a valid date → null
+ * - Otherwise → "${label} must be a valid date"
+ *
+ * @returns null when valid or empty, an error message string otherwise.
  */
-export function validateFields(
-    checks: Record<string, string | null>
-): Record<string, string> {
-    const errors: Record<string, string> = {};
-    for (const [key, err] of Object.entries(checks)) {
-        if (err !== null) errors[key] = err;
+export function validateDate(value: string, label: string): string | null {
+    if (value === "" || value.trim() === "") {
+        return null;
     }
-    return errors;
+    const date = new Date(value);
+    if (isNaN(date.getTime())) {
+        return `${label} must be a valid date`;
+    }
+    return null;
 }
 
-// ─── Password strength helper ─────────────────────────────────────────────────
-
-export interface PasswordStrength {
-    score: number; // 0-4
-    label: "Weak" | "Fair" | "Good" | "Strong";
-    color: string;
-    checks: {
-        length: boolean;
-        uppercase: boolean;
-        lowercase: boolean;
-        number: boolean;
-        special: boolean;
-    };
+/**
+ * Validates that an optional date is not in the future.
+ *
+ * - Empty string → null (field is optional)
+ * - Parsed date is today or in the past → null
+ * - Parsed date is after today → "${label} cannot be in the future"
+ * - Invalid date string → "${label} must be a valid date" (delegates to validateDate)
+ *
+ * @returns null when valid or empty, an error message string otherwise.
+ */
+export function validateDateNotFuture(
+    value: string,
+    label: string
+): string | null {
+    if (value === "" || value.trim() === "") {
+        return null;
+    }
+    const dateError = validateDate(value, label);
+    if (dateError !== null) {
+        return dateError;
+    }
+    const date = new Date(value);
+    // Compare against the start of today (midnight local time)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (date > today) {
+        return `${label} cannot be in the future`;
+    }
+    return null;
 }
 
-export function getPasswordStrength(password: string): PasswordStrength {
-    const checks = {
-        length: password.length >= 8,
-        uppercase: /[A-Z]/.test(password),
-        lowercase: /[a-z]/.test(password),
-        number: /\d/.test(password),
-        special: /[^A-Za-z0-9]/.test(password),
-    };
-    const score = Object.values(checks).filter(Boolean).length;
-    const labels: PasswordStrength["label"][] = ["Weak", "Weak", "Fair", "Good", "Strong"];
-    const colors = [
-        "bg-destructive",
-        "bg-destructive",
-        "bg-amber-500",
-        "bg-yellow-400",
-        "bg-emerald-500",
-    ];
-    return { score, label: labels[score], color: colors[score], checks };
+/**
+ * Validates that an end date is strictly after a start date (both optional).
+ *
+ * - endValue is empty → null
+ * - startValue is empty → null
+ * - Either value is an invalid date → null (date validity is checked separately)
+ * - Parsed end date is strictly after parsed start date → null
+ * - Otherwise → "${label} must be after the start date"
+ *
+ * @returns null when valid or either date is empty/invalid, an error message string otherwise.
+ */
+export function validateDateAfter(
+    endValue: string,
+    startValue: string,
+    label: string
+): string | null {
+    if (
+        endValue === "" ||
+        endValue.trim() === "" ||
+        startValue === "" ||
+        startValue.trim() === ""
+    ) {
+        return null;
+    }
+    const endDate = new Date(endValue);
+    const startDate = new Date(startValue);
+    // If either date is invalid, skip the comparison (validateDate handles that)
+    if (isNaN(endDate.getTime()) || isNaN(startDate.getTime())) {
+        return null;
+    }
+    if (endDate > startDate) {
+        return null;
+    }
+    return `${label} must be after the start date`;
+}
+
+/**
+ * Validates a position code against /^[A-Z]{1,10}$/.
+ *
+ * @returns null when valid, MSG_POSITION_CODE_INVALID otherwise.
+ */
+export function validatePositionCode(value: string): string | null {
+    if (POSITION_CODE_PATTERN.test(value)) {
+        return null;
+    }
+    return MSG_POSITION_CODE_INVALID;
 }
