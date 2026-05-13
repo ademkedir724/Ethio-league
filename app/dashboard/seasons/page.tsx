@@ -6,6 +6,8 @@ import useSWR from "swr";
 import { authFetcher, fetchWithAuth } from "@/lib/fetch-client";
 import { useAuth } from "@/lib/auth-context";
 import { usePermissions } from "@/lib/use-permissions";
+import { useFormValidation } from "@/lib/use-form-validation";
+import { validateRequired, validateLength, validateInteger, validateDateAfter } from "@/lib/validation";
 import { usePaginated } from "@/lib/use-paginated";
 import { Pagination } from "@/components/dashboard/pagination";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -67,6 +69,26 @@ const emptyForm = {
   rules: "",
 };
 
+// ─── Validation ───────────────────────────────────────────────────────────────
+
+function validateSeasonForm(values: typeof emptyForm, isEdit: boolean) {
+  const errors: Partial<Record<keyof typeof emptyForm, string>> = {};
+  errors.name = validateRequired(values.name, "Season name") ?? validateLength(values.name, 2, 100, "Season name") ?? undefined;
+  if (!isEdit) {
+    errors.leagueId = values.leagueId ? undefined : "Please select a league";
+  }
+  errors.startDate = validateRequired(values.startDate, "Start date") ?? undefined;
+  errors.endDate = validateRequired(values.endDate, "End date") ?? validateDateAfter(values.endDate, values.startDate, "End date") ?? undefined;
+  errors.pointsWin = validateInteger(values.pointsWin, 0, 10, "Points for win") ?? undefined;
+  errors.pointsDraw = validateInteger(values.pointsDraw, 0, 10, "Points for draw") ?? undefined;
+  errors.pointsLoss = validateInteger(values.pointsLoss, 0, 10, "Points for loss") ?? undefined;
+  errors.minSquadSize = validateInteger(values.minSquadSize, 1, 50, "Min squad size") ?? undefined;
+  errors.minStartingPlayers = validateInteger(values.minStartingPlayers, 1, 25, "Starting players") ?? undefined;
+  errors.maxBenchPlayers = validateInteger(values.maxBenchPlayers, 0, 20, "Bench players") ?? undefined;
+  errors.rules = validateLength(values.rules, 0, 1000, "Rules") ?? undefined;
+  return errors;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SeasonsPage() {
@@ -102,6 +124,11 @@ export default function SeasonsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Season | null>(null);
   const [form, setForm] = useState(emptyForm);
 
+  const { errors, handleBlur, validateAll, resetValidation } = useFormValidation(
+    (values) => validateSeasonForm(values, !!editingSeason),
+    emptyForm
+  );
+
   const stats = useMemo(() => {
     const active = seasons.filter((s) => s.status === "active").length;
     const totalMatches = seasons.reduce((sum, s) => sum + (s._count?.matches ?? 0), 0);
@@ -113,6 +140,7 @@ export default function SeasonsPage() {
     // Pre-select league for league_admin
     const defaultLeagueId = isLeagueAdmin() ? (getLeagueId() ?? "") : "";
     setForm({ ...emptyForm, leagueId: defaultLeagueId });
+    resetValidation();
     setFormOpen(true);
   };
 
@@ -131,18 +159,13 @@ export default function SeasonsPage() {
       maxBenchPlayers: String((season as any).maxBenchPlayers ?? 7),
       rules: (season as any).rules ?? "",
     });
+    resetValidation();
     setFormOpen(true);
   };
 
   const handleSubmit = async () => {
-    if (!form.name.trim()) {
-      toast.error("Season name is required");
-      return;
-    }
-    if (!form.startDate || !form.endDate) {
-      toast.error("Start and end dates are required");
-      return;
-    }
+    const isValid = validateAll(form);
+    if (!isValid) return;
 
     if (editingSeason) {
       const res = await fetchWithAuth(`/api/seasons/${editingSeason.id}`, {
@@ -167,10 +190,6 @@ export default function SeasonsPage() {
       }
       toast.success("Season updated");
     } else {
-      if (!form.leagueId) {
-        toast.error("Please select a league");
-        return;
-      }
       const res = await fetchWithAuth("/api/seasons", {
         method: "POST",
         body: JSON.stringify({
@@ -403,7 +422,7 @@ export default function SeasonsPage() {
       {/* Create / Edit Dialog */}
       <FormDialog
         open={formOpen}
-        onOpenChange={setFormOpen}
+        onOpenChange={(open) => { setFormOpen(open); if (!open) resetValidation(); }}
         title={editingSeason ? "Edit Season" : "Create Season"}
         description={
           editingSeason ? "Update season details." : "Set up a new league season."
@@ -418,11 +437,19 @@ export default function SeasonsPage() {
               id="season-name"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
+              onBlur={() => handleBlur("name", form)}
+              aria-invalid={!!errors.name}
+              aria-describedby={errors.name ? "season-name-error" : undefined}
               placeholder="2025/26 Season"
               required
               minLength={2}
               maxLength={100}
             />
+            {errors.name && (
+              <p id="season-name-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.name}
+              </p>
+            )}
           </div>
 
           {/* League selector — shown for create; hidden for edit (league can't change) */}
@@ -447,6 +474,11 @@ export default function SeasonsPage() {
                   ))}
                 </SelectContent>
               </Select>
+              {errors.leagueId && (
+                <p id="season-league-error" role="alert" className="text-xs text-destructive mt-1">
+                  {errors.leagueId}
+                </p>
+              )}
             </div>
           )}
 
@@ -457,8 +489,16 @@ export default function SeasonsPage() {
               type="date"
               value={form.startDate}
               onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+              onBlur={() => handleBlur("startDate", form)}
+              aria-invalid={!!errors.startDate}
+              aria-describedby={errors.startDate ? "season-start-error" : undefined}
               required
             />
+            {errors.startDate && (
+              <p id="season-start-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.startDate}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="season-end">End Date *</Label>
@@ -467,9 +507,17 @@ export default function SeasonsPage() {
               type="date"
               value={form.endDate}
               onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+              onBlur={() => handleBlur("endDate", form)}
+              aria-invalid={!!errors.endDate}
+              aria-describedby={errors.endDate ? "season-end-error" : undefined}
               required
               min={form.startDate || undefined}
             />
+            {errors.endDate && (
+              <p id="season-end-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.endDate}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="season-pw">Points for Win</Label>
@@ -478,9 +526,17 @@ export default function SeasonsPage() {
               type="number"
               value={form.pointsWin}
               onChange={(e) => setForm({ ...form, pointsWin: e.target.value })}
+              onBlur={() => handleBlur("pointsWin", form)}
+              aria-invalid={!!errors.pointsWin}
+              aria-describedby={errors.pointsWin ? "season-pw-error" : undefined}
               min={0}
               max={10}
             />
+            {errors.pointsWin && (
+              <p id="season-pw-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.pointsWin}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="season-pd">Points for Draw</Label>
@@ -489,9 +545,17 @@ export default function SeasonsPage() {
               type="number"
               value={form.pointsDraw}
               onChange={(e) => setForm({ ...form, pointsDraw: e.target.value })}
+              onBlur={() => handleBlur("pointsDraw", form)}
+              aria-invalid={!!errors.pointsDraw}
+              aria-describedby={errors.pointsDraw ? "season-pd-error" : undefined}
               min={0}
               max={10}
             />
+            {errors.pointsDraw && (
+              <p id="season-pd-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.pointsDraw}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="season-squad">Min Squad Size</Label>
@@ -502,7 +566,15 @@ export default function SeasonsPage() {
               max={50}
               value={form.minSquadSize}
               onChange={(e) => setForm({ ...form, minSquadSize: e.target.value })}
+              onBlur={() => handleBlur("minSquadSize", form)}
+              aria-invalid={!!errors.minSquadSize}
+              aria-describedby={errors.minSquadSize ? "season-squad-error" : undefined}
             />
+            {errors.minSquadSize && (
+              <p id="season-squad-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.minSquadSize}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="season-starters">Starting Players</Label>
@@ -513,7 +585,15 @@ export default function SeasonsPage() {
               max={25}
               value={form.minStartingPlayers}
               onChange={(e) => setForm({ ...form, minStartingPlayers: e.target.value })}
+              onBlur={() => handleBlur("minStartingPlayers", form)}
+              aria-invalid={!!errors.minStartingPlayers}
+              aria-describedby={errors.minStartingPlayers ? "season-starters-error" : undefined}
             />
+            {errors.minStartingPlayers && (
+              <p id="season-starters-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.minStartingPlayers}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="season-bench">Max Bench Players</Label>
@@ -524,7 +604,15 @@ export default function SeasonsPage() {
               max={20}
               value={form.maxBenchPlayers}
               onChange={(e) => setForm({ ...form, maxBenchPlayers: e.target.value })}
+              onBlur={() => handleBlur("maxBenchPlayers", form)}
+              aria-invalid={!!errors.maxBenchPlayers}
+              aria-describedby={errors.maxBenchPlayers ? "season-bench-error" : undefined}
             />
+            {errors.maxBenchPlayers && (
+              <p id="season-bench-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.maxBenchPlayers}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2 sm:col-span-2">
             <Label htmlFor="season-rules">
@@ -538,7 +626,15 @@ export default function SeasonsPage() {
               placeholder="e.g. Max 3 foreign players per lineup. Yellow card accumulation: 3 cards = 1 match ban."
               value={form.rules}
               onChange={(e) => setForm({ ...form, rules: e.target.value })}
+              onBlur={() => handleBlur("rules", form)}
+              aria-invalid={!!errors.rules}
+              aria-describedby={errors.rules ? "season-rules-error" : undefined}
             />
+            {errors.rules && (
+              <p id="season-rules-error" role="alert" className="text-xs text-destructive mt-1">
+                {errors.rules}
+              </p>
+            )}
           </div>
         </div>
       </FormDialog>
