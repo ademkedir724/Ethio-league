@@ -125,7 +125,7 @@ function validateEventForm(values: typeof emptyEventForm, eventCategory: string)
     errors.eventTypeId = validateRequired(values.eventTypeId, "Event type") ?? undefined;
     errors.clubSide = validateRequired(values.clubSide, "Club side") ?? undefined;
     errors.playerId = validateRequired(values.playerId, "Player") ?? undefined;
-    errors.minute = validateInteger(values.minute, 0, 120, "Minute") ?? undefined;
+    errors.minute = validateInteger(values.minute, 0, 150, "Minute") ?? undefined;
     errors.extraTime = validateInteger(values.extraTime, 0, 30, "Extra time") ?? undefined;
     errors.description = validateLength(values.description, 0, 255, "Description") ?? undefined;
     if (eventCategory === "substitution") {
@@ -883,7 +883,7 @@ export default function MatchDetailPage() {
                                     id="evt-minute"
                                     type="number"
                                     min={1}
-                                    max={120}
+                                    max={150}
                                     value={eventForm.minute !== "" ? eventForm.minute : String(elapsedMinutes)}
                                     onChange={(e) => setEventForm({ ...eventForm, minute: e.target.value })}
                                     onBlur={() => eventHandleBlur("minute", eventForm)}
